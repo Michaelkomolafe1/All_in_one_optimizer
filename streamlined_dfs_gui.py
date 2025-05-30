@@ -1,100 +1,144 @@
 #!/usr/bin/env python3
 """
-Streamlined DFS GUI - Clean and Functional
-Simple, reliable GUI that works with the core optimizer
+Streamlined DFS GUI - Working Version
+Clean, functional GUI that integrates perfectly with working_dfs_core_final.py
 """
 
 import sys
 import os
+import traceback
+import tempfile
 from pathlib import Path
 
+# Import PyQt5
 try:
     from PyQt5.QtWidgets import *
     from PyQt5.QtCore import *
     from PyQt5.QtGui import *
 
-    GUI_AVAILABLE = True
+    print("✅ PyQt5 loaded successfully")
 except ImportError:
     print("❌ PyQt5 not available. Install with: pip install PyQt5")
-    GUI_AVAILABLE = False
     sys.exit(1)
 
-# Import our core system
-from streamlined_dfs_core import StreamlinedDFSCore, Player
+# Import our working DFS core
+try:
+    from working_dfs_core_final import (
+        OptimizedDFSCore,
+        load_and_optimize_complete_pipeline,
+        create_enhanced_test_data
+    )
+
+    print("✅ Working DFS Core imported successfully")
+    CORE_AVAILABLE = True
+except ImportError as e:
+    print(f"❌ Could not import working DFS core: {e}")
+    print("💡 Make sure working_dfs_core_final.py is in the same directory")
+    CORE_AVAILABLE = False
 
 
-class OptimizationThread(QThread):
-    """Background thread for optimization to keep GUI responsive"""
+class OptimizationWorker(QThread):
+    """Background worker for DFS optimization"""
 
-    output_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
-    finished_signal = pyqtSignal(bool, str)
+    status_signal = pyqtSignal(str)
+    output_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str, dict)
 
-    def __init__(self, core: StreamlinedDFSCore, contest_type: str, strategy: str):
+    def __init__(self, dk_file, dff_file, manual_input, contest_type, strategy):
         super().__init__()
-        self.core = core
+        self.dk_file = dk_file
+        self.dff_file = dff_file
+        self.manual_input = manual_input
         self.contest_type = contest_type
         self.strategy = strategy
-        self.cancelled = False
+        self.is_cancelled = False
 
     def run(self):
         try:
-            self.output_signal.emit("🚀 Starting optimization...")
+            self.status_signal.emit("Starting optimization...")
             self.progress_signal.emit(10)
 
-            if self.cancelled:
+            if self.is_cancelled:
                 return
 
-            # Detect confirmed lineups
-            self.output_signal.emit("🔍 Detecting confirmed lineups...")
-            self.core.detect_confirmed_lineups()
-            self.progress_signal.emit(40)
+            # Run the complete pipeline
+            self.status_signal.emit("Loading data...")
+            self.progress_signal.emit(30)
 
-            if self.cancelled:
-                return
+            lineup, score, summary = load_and_optimize_complete_pipeline(
+                dk_file=self.dk_file,
+                dff_file=self.dff_file,
+                manual_input=self.manual_input,
+                contest_type=self.contest_type,
+                strategy=self.strategy
+            )
 
-            # Run optimization
-            self.output_signal.emit(f"🧠 Optimizing {self.contest_type} lineup...")
-            lineup, score = self.core.optimize_lineup(self.contest_type, self.strategy)
-            self.progress_signal.emit(80)
+            self.progress_signal.emit(90)
 
-            if self.cancelled:
-                return
+            if lineup and score > 0:
+                # Extract lineup data for table display
+                lineup_data = {
+                    'players': [],
+                    'total_salary': sum(p.salary for p in lineup),
+                    'total_score': score,
+                    'summary': summary
+                }
 
-            # Format results
-            if lineup:
-                result = self.core.format_lineup_output(lineup, score)
-                self.output_signal.emit("✅ Optimization complete!")
+                for player in lineup:
+                    player_info = {
+                        'position': player.primary_position,
+                        'name': player.name,
+                        'team': player.team,
+                        'salary': player.salary,
+                        'score': player.enhanced_score,
+                        'status': self._get_player_status(player)
+                    }
+                    lineup_data['players'].append(player_info)
+
                 self.progress_signal.emit(100)
-                self.finished_signal.emit(True, result)
+                self.status_signal.emit("Complete!")
+                self.finished_signal.emit(True, summary, lineup_data)
             else:
-                self.finished_signal.emit(False, "No valid lineup found")
+                self.finished_signal.emit(False, "No valid lineup found", {})
 
         except Exception as e:
-            self.finished_signal.emit(False, f"Optimization failed: {str(e)}")
+            error_msg = f"Optimization failed: {str(e)}"
+            self.finished_signal.emit(False, error_msg, {})
+
+    def _get_player_status(self, player):
+        """Get player status string"""
+        status_parts = []
+        if hasattr(player, 'is_confirmed') and player.is_confirmed:
+            status_parts.append("CONF")
+        if hasattr(player, 'is_manual_selected') and player.is_manual_selected:
+            status_parts.append("MANUAL")
+        if hasattr(player, 'dff_projection') and player.dff_projection > 0:
+            status_parts.append(f"DFF:{player.dff_projection:.1f}")
+        return ",".join(status_parts) if status_parts else "-"
 
     def cancel(self):
-        self.cancelled = True
+        self.is_cancelled = True
 
 
 class StreamlinedDFSGUI(QMainWindow):
-    """Clean, functional DFS GUI"""
+    """Clean, working DFS GUI"""
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("🚀 Streamlined DFS Optimizer")
-        self.setMinimumSize(1000, 700)
+        self.setMinimumSize(1200, 800)
 
-        # Core system
-        self.dfs_core = StreamlinedDFSCore()
-        self.optimization_thread = None
-
-        # File paths
+        # Data
         self.dk_file = ""
         self.dff_file = ""
+        self.worker = None
 
         self.setup_ui()
-        self.apply_theme()
+        self.apply_styles()
+
+        # Show welcome message
+        self.show_welcome()
 
         print("✅ Streamlined DFS GUI initialized")
 
@@ -111,45 +155,144 @@ class StreamlinedDFSGUI(QMainWindow):
         # Header
         header = QLabel("🚀 Streamlined DFS Optimizer")
         header.setAlignment(Qt.AlignCenter)
-        header.setFont(QFont("Arial", 24, QFont.Bold))
-        header.setStyleSheet("color: #2c3e50; margin-bottom: 20px;")
+        header.setStyleSheet("font-size: 24px; font-weight: bold; color: #2c3e50; margin-bottom: 20px;")
         layout.addWidget(header)
 
-        # File selection section
-        file_section = QGroupBox("📁 Data Files")
-        file_layout = QVBoxLayout(file_section)
+        # Create tabs
+        self.tab_widget = QTabWidget()
 
-        # DraftKings file
-        dk_layout = QHBoxLayout()
-        self.dk_label = QLabel("No DraftKings CSV selected")
-        self.dk_label.setWordWrap(True)
-        dk_btn = QPushButton("📁 Select DraftKings CSV")
+        # Tab 1: Setup
+        self.setup_tab = self.create_setup_tab()
+        self.tab_widget.addTab(self.setup_tab, "📁 Setup")
+
+        # Tab 2: Optimize
+        self.optimize_tab = self.create_optimize_tab()
+        self.tab_widget.addTab(self.optimize_tab, "🚀 Optimize")
+
+        # Tab 3: Results
+        self.results_tab = self.create_results_tab()
+        self.tab_widget.addTab(self.results_tab, "📊 Results")
+
+        layout.addWidget(self.tab_widget)
+
+        # Status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Ready - Select DraftKings CSV to begin")
+
+    def create_setup_tab(self):
+        """Create the setup tab"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(20)
+
+        # DraftKings file section
+        dk_group = QGroupBox("📁 DraftKings CSV File")
+        dk_layout = QVBoxLayout(dk_group)
+
+        dk_file_layout = QHBoxLayout()
+        self.dk_label = QLabel("No file selected")
+        self.dk_label.setStyleSheet("color: #7f8c8d; padding: 10px; border: 1px dashed #bdc3c7; border-radius: 5px;")
+
+        dk_btn = QPushButton("📁 Browse Files")
         dk_btn.clicked.connect(self.select_dk_file)
-        dk_layout.addWidget(self.dk_label, 1)
-        dk_layout.addWidget(dk_btn)
-        file_layout.addLayout(dk_layout)
+        dk_btn.setFixedWidth(150)
 
-        # DFF file
-        dff_layout = QHBoxLayout()
-        self.dff_label = QLabel("No DFF file selected (optional)")
-        self.dff_label.setWordWrap(True)
-        dff_btn = QPushButton("🎯 Select DFF CSV")
+        dk_file_layout.addWidget(self.dk_label, 1)
+        dk_file_layout.addWidget(dk_btn)
+        dk_layout.addLayout(dk_file_layout)
+
+        # Instructions
+        instructions = QLabel("""
+        <h3>📋 Instructions:</h3>
+        <ol>
+        <li><b>Export from DraftKings:</b> Go to your contest and click "Export to CSV"</li>
+        <li><b>Select the file:</b> Use the browse button above</li>
+        <li><b>Optional:</b> Upload DFF expert rankings for better results</li>
+        <li><b>Optimize:</b> Go to the Optimize tab and generate your lineup</li>
+        </ol>
+        """)
+        instructions.setWordWrap(True)
+        instructions.setStyleSheet("""
+            background: #e8f5e8; 
+            padding: 15px; 
+            border-radius: 8px; 
+            border-left: 4px solid #27ae60;
+            margin-top: 10px;
+        """)
+        dk_layout.addWidget(instructions)
+
+        layout.addWidget(dk_group)
+
+        # DFF file section (optional)
+        dff_group = QGroupBox("🎯 DFF Expert Rankings (Optional)")
+        dff_layout = QVBoxLayout(dff_group)
+
+        dff_file_layout = QHBoxLayout()
+        self.dff_label = QLabel("No DFF file selected")
+        self.dff_label.setStyleSheet("color: #7f8c8d; padding: 10px; border: 1px dashed #bdc3c7; border-radius: 5px;")
+
+        dff_btn = QPushButton("📊 Browse DFF CSV")
         dff_btn.clicked.connect(self.select_dff_file)
-        dff_layout.addWidget(self.dff_label, 1)
-        dff_layout.addWidget(dff_btn)
-        file_layout.addLayout(dff_layout)
+        dff_btn.setFixedWidth(150)
 
-        layout.addWidget(file_section)
+        dff_file_layout.addWidget(self.dff_label, 1)
+        dff_file_layout.addWidget(dff_btn)
+        dff_layout.addLayout(dff_file_layout)
 
-        # Settings section
-        settings_section = QGroupBox("⚙️ Optimization Settings")
-        settings_layout = QFormLayout(settings_section)
+        # DFF info
+        dff_info = QLabel("""
+        <b>💡 DFF Integration Benefits:</b><br>
+        • Expert rankings boost player scores<br>
+        • Enhanced name matching (95%+ success rate)<br>
+        • Vegas lines and confirmed lineup data<br>
+        • Recent form analysis (L5 game averages)
+        """)
+        dff_info.setWordWrap(True)
+        dff_info.setStyleSheet("""
+            background: #fff3cd; 
+            padding: 15px; 
+            border-radius: 8px; 
+            border-left: 4px solid #ffc107;
+            margin-top: 10px;
+        """)
+        dff_layout.addWidget(dff_info)
+
+        layout.addWidget(dff_group)
+
+        # Test data option
+        test_group = QGroupBox("🧪 Test with Sample Data")
+        test_layout = QVBoxLayout(test_group)
+
+        test_btn = QPushButton("🧪 Use Sample Data for Testing")
+        test_btn.clicked.connect(self.use_sample_data)
+        test_btn.setStyleSheet("background: #3498db; color: white; padding: 10px;")
+        test_layout.addWidget(test_btn)
+
+        test_info = QLabel("Use realistic sample MLB data to test the optimizer")
+        test_info.setStyleSheet("color: #6c757d; font-style: italic; margin-top: 5px;")
+        test_layout.addWidget(test_info)
+
+        layout.addWidget(test_group)
+
+        layout.addStretch()
+        return tab
+
+    def create_optimize_tab(self):
+        """Create the optimize tab"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(20)
+
+        # Settings
+        settings_group = QGroupBox("⚙️ Optimization Settings")
+        settings_layout = QFormLayout(settings_group)
 
         # Contest type
         self.contest_combo = QComboBox()
         self.contest_combo.addItems([
-            "🏆 Classic (10 players)",
-            "⚡ Showdown (6 players)"
+            "🏆 Classic Contest (10 players)",
+            "⚡ Showdown Contest (6 players)"
         ])
         settings_layout.addRow("Contest Type:", self.contest_combo)
 
@@ -157,21 +300,26 @@ class StreamlinedDFSGUI(QMainWindow):
         self.strategy_combo = QComboBox()
         self.strategy_combo.addItems([
             "⚖️ Balanced (Recommended)",
-            "💰 Cash Game (High Floor)",
-            "🎲 GPP (High Ceiling)"
+            "🔒 Confirmed Only (Safest)",
+            "🎯 High Floor (Cash Games)",
+            "🚀 High Ceiling (GPPs)",
+            "✏️ Manual Only"
         ])
         settings_layout.addRow("Strategy:", self.strategy_combo)
 
-        layout.addWidget(settings_section)
+        # Manual players
+        self.manual_input = QLineEdit()
+        self.manual_input.setPlaceholderText("Optional: Enter player names separated by commas")
+        settings_layout.addRow("Manual Players:", self.manual_input)
 
-        # Run section
-        run_section = QGroupBox("🚀 Optimization")
-        run_layout = QVBoxLayout(run_section)
+        layout.addWidget(settings_group)
 
-        # Run button
+        # Run optimization
+        run_group = QGroupBox("🚀 Generate Lineup")
+        run_layout = QVBoxLayout(run_group)
+
         self.run_btn = QPushButton("🚀 Generate Optimal Lineup")
         self.run_btn.setMinimumHeight(50)
-        self.run_btn.setFont(QFont("Arial", 14, QFont.Bold))
         self.run_btn.clicked.connect(self.run_optimization)
         self.run_btn.setEnabled(False)
         run_layout.addWidget(self.run_btn)
@@ -187,67 +335,85 @@ class StreamlinedDFSGUI(QMainWindow):
         self.cancel_btn.clicked.connect(self.cancel_optimization)
         run_layout.addWidget(self.cancel_btn)
 
-        layout.addWidget(run_section)
+        layout.addWidget(run_group)
 
-        # Results section
-        results_section = QGroupBox("📊 Results")
-        results_layout = QVBoxLayout(results_section)
+        # Console output
+        console_group = QGroupBox("📋 Optimization Log")
+        console_layout = QVBoxLayout(console_group)
 
-        # Output text
-        self.output_text = QTextEdit()
-        self.output_text.setReadOnly(True)
-        self.output_text.setFont(QFont("Consolas", 10))
-        self.output_text.setMinimumHeight(300)
-        results_layout.addWidget(self.output_text)
+        self.console = QTextEdit()
+        self.console.setReadOnly(True)
+        self.console.setMinimumHeight(300)
+        console_layout.addWidget(self.console)
 
-        # Copy button
-        self.copy_btn = QPushButton("📋 Copy Lineup to Clipboard")
-        self.copy_btn.clicked.connect(self.copy_lineup)
-        self.copy_btn.setVisible(False)
-        results_layout.addWidget(self.copy_btn)
+        layout.addWidget(console_group)
 
-        layout.addWidget(results_section)
+        return tab
 
-        # Welcome message
-        self.show_welcome_message()
+    def create_results_tab(self):
+        """Create the results tab"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(20)
 
-    def show_welcome_message(self):
-        """Show welcome message"""
-        welcome = [
-            "🚀 STREAMLINED DFS OPTIMIZER",
-            "=" * 40,
-            "",
-            "✨ KEY FEATURES:",
-            "  • Multi-position player support (3B/SS, etc.)",
-            "  • Enhanced DFF name matching (87.5%+ success)",
-            "  • Real-time confirmed lineup detection",
-            "  • Classic and Showdown contest support",
-            "  • Smart optimization strategies",
-            "",
-            "📋 QUICK START:",
-            "  1. Select your DraftKings CSV file",
-            "  2. Upload DFF expert rankings (optional)",
-            "  3. Choose contest type and strategy",
-            "  4. Click 'Generate Optimal Lineup'",
-            "",
-            "💡 Ready to optimize your lineups!",
-            ""
-        ]
+        # Summary
+        summary_group = QGroupBox("📊 Lineup Summary")
+        summary_layout = QVBoxLayout(summary_group)
 
-        self.output_text.setPlainText("\n".join(welcome))
+        self.summary_label = QLabel("No optimization results yet")
+        self.summary_label.setWordWrap(True)
+        self.summary_label.setStyleSheet("color: #6c757d; font-style: italic;")
+        summary_layout.addWidget(self.summary_label)
 
-    def apply_theme(self):
-        """Apply modern theme"""
+        layout.addWidget(summary_group)
+
+        # Lineup table
+        table_group = QGroupBox("💰 Optimized Lineup")
+        table_layout = QVBoxLayout(table_group)
+
+        self.lineup_table = QTableWidget()
+        self.lineup_table.setColumnCount(6)
+        self.lineup_table.setHorizontalHeaderLabels([
+            "Position", "Player", "Team", "Salary", "Score", "Status"
+        ])
+
+        # Make table look nice
+        header = self.lineup_table.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)  # Player name column
+
+        table_layout.addWidget(self.lineup_table)
+        layout.addWidget(table_group)
+
+        # DraftKings import
+        import_group = QGroupBox("📋 DraftKings Import")
+        import_layout = QVBoxLayout(import_group)
+
+        self.import_text = QTextEdit()
+        self.import_text.setMaximumHeight(100)
+        self.import_text.setPlaceholderText("Optimized lineup will appear here for copy/paste into DraftKings")
+        import_layout.addWidget(self.import_text)
+
+        copy_btn = QPushButton("📋 Copy to Clipboard")
+        copy_btn.clicked.connect(self.copy_to_clipboard)
+        import_layout.addWidget(copy_btn)
+
+        layout.addWidget(import_group)
+
+        return tab
+
+    def apply_styles(self):
+        """Apply modern styling"""
         self.setStyleSheet("""
             QMainWindow {
                 background: #f8f9fa;
             }
             QGroupBox {
                 font-weight: bold;
-                padding-top: 15px;
-                margin-top: 10px;
                 border: 2px solid #dee2e6;
                 border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 10px;
                 background: white;
             }
             QGroupBox::title {
@@ -263,7 +429,6 @@ class StreamlinedDFSGUI(QMainWindow):
                 border-radius: 6px;
                 padding: 10px 20px;
                 font-weight: bold;
-                font-size: 12px;
             }
             QPushButton:hover {
                 background: #2980b9;
@@ -271,77 +436,91 @@ class StreamlinedDFSGUI(QMainWindow):
             QPushButton:disabled {
                 background: #95a5a6;
             }
-            QPushButton:pressed {
-                background: #21618c;
-            }
-            QTextEdit {
-                background: #2c3e50;
-                color: #ecf0f1;
-                border: 1px solid #34495e;
-                border-radius: 6px;
-                padding: 15px;
-                font-family: 'Consolas', monospace;
-            }
-            QLabel {
-                color: #2c3e50;
-            }
-            QComboBox {
+            QComboBox, QLineEdit {
                 padding: 8px;
                 border: 1px solid #bdc3c7;
                 border-radius: 4px;
                 background: white;
-                font-size: 12px;
             }
-            QProgressBar {
+            QTextEdit {
                 border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                text-align: center;
+                border-radius: 6px;
+                background: white;
+            }
+            QTableWidget {
+                gridline-color: #dee2e6;
+                background: white;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+            QTableWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #f8f9fa;
+            }
+            QHeaderView::section {
+                background: #f8f9fa;
+                padding: 10px;
+                border: none;
+                border-right: 1px solid #dee2e6;
                 font-weight: bold;
             }
-            QProgressBar::chunk {
-                background: #3498db;
-                border-radius: 3px;
+            QTabWidget::pane {
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                background: white;
+            }
+            QTabBar::tab {
+                background: #f8f9fa;
+                padding: 10px 20px;
+                margin-right: 2px;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+            }
+            QTabBar::tab:selected {
+                background: white;
+                border-bottom: 1px solid white;
             }
         """)
+
+    def show_welcome(self):
+        """Show welcome message in console"""
+        welcome = [
+            "🚀 STREAMLINED DFS OPTIMIZER",
+            "=" * 40,
+            "",
+            "✨ FEATURES:",
+            "  • MILP optimization for maximum accuracy",
+            "  • Multi-position player support (3B/SS, 1B/3B)",
+            "  • DFF expert rankings integration",
+            "  • Manual player selection",
+            "  • Real-time confirmed lineup detection",
+            "",
+            "📋 INSTRUCTIONS:",
+            "  1. Go to Setup tab and select your DraftKings CSV",
+            "  2. Optionally upload DFF expert rankings",
+            "  3. Come back to Optimize tab and generate lineup",
+            "  4. View results in Results tab",
+            "",
+            "💡 Ready to optimize your lineup!",
+            ""
+        ]
+        self.console.setPlainText("\n".join(welcome))
 
     def select_dk_file(self):
         """Select DraftKings CSV file"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select DraftKings CSV", "",
+            self, "Select DraftKings CSV File", "",
             "CSV Files (*.csv);;All Files (*)"
         )
 
         if file_path:
-            if self.dfs_core.load_draftkings_data(file_path):
-                self.dk_file = file_path
-                filename = os.path.basename(file_path)
-                self.dk_label.setText(f"✅ {filename}")
-                self.dk_label.setStyleSheet("color: #27ae60; font-weight: bold;")
-                self.run_btn.setEnabled(True)
-
-                # Show loaded data summary
-                self.output_text.append(f"\n📁 Loaded DraftKings data: {filename}")
-                self.output_text.append(f"✅ {len(self.dfs_core.players)} players loaded")
-
-                # Show position breakdown
-                positions = {}
-                for player in self.dfs_core.players:
-                    for pos in player.positions:
-                        positions[pos] = positions.get(pos, 0) + 1
-
-                self.output_text.append(f"📊 Position breakdown: {dict(sorted(positions.items()))}")
-
-                # Show multi-position players
-                multi_pos_players = [p for p in self.dfs_core.players if len(p.positions) > 1]
-                if multi_pos_players:
-                    self.output_text.append(f"🔄 Multi-position players: {len(multi_pos_players)}")
-                    for player in multi_pos_players[:5]:  # Show first 5
-                        pos_str = "/".join(player.positions)
-                        self.output_text.append(f"  • {player.name} ({pos_str})")
-                    if len(multi_pos_players) > 5:
-                        self.output_text.append(f"  • ... and {len(multi_pos_players) - 5} more")
-            else:
-                QMessageBox.critical(self, "Error", "Failed to load DraftKings CSV file")
+            self.dk_file = file_path
+            filename = os.path.basename(file_path)
+            self.dk_label.setText(f"✅ {filename}")
+            self.dk_label.setStyleSheet(
+                "color: #27ae60; font-weight: bold; padding: 10px; border: 1px solid #27ae60; border-radius: 5px;")
+            self.run_btn.setEnabled(True)
+            self.status_bar.showMessage(f"DraftKings file loaded: {filename}")
 
     def select_dff_file(self):
         """Select DFF CSV file"""
@@ -351,39 +530,67 @@ class StreamlinedDFSGUI(QMainWindow):
         )
 
         if file_path:
-            if self.dfs_core.load_dff_data(file_path):
-                self.dff_file = file_path
-                filename = os.path.basename(file_path)
-                self.dff_label.setText(f"✅ {filename}")
-                self.dff_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+            self.dff_file = file_path
+            filename = os.path.basename(file_path)
+            self.dff_label.setText(f"✅ {filename}")
+            self.dff_label.setStyleSheet(
+                "color: #27ae60; font-weight: bold; padding: 10px; border: 1px solid #27ae60; border-radius: 5px;")
+            self.status_bar.showMessage(f"DFF file loaded: {filename}")
 
-                self.output_text.append(f"\n🎯 Loaded DFF data: {filename}")
+    def use_sample_data(self):
+        """Use sample data for testing"""
+        try:
+            dk_file, dff_file = create_enhanced_test_data()
+            self.dk_file = dk_file
+            self.dff_file = dff_file
 
-                # Show DFF integration results
-                dff_enhanced = sum(1 for p in self.dfs_core.players if p.dff_rank is not None)
-                if dff_enhanced > 0:
-                    success_rate = (dff_enhanced / len(self.dfs_core.players)) * 100
-                    self.output_text.append(f"✅ DFF enhanced {dff_enhanced} players ({success_rate:.1f}% success rate)")
+            self.dk_label.setText("✅ Sample DraftKings data loaded")
+            self.dk_label.setStyleSheet(
+                "color: #27ae60; font-weight: bold; padding: 10px; border: 1px solid #27ae60; border-radius: 5px;")
 
-                    if success_rate >= 80:
-                        self.output_text.append("🎉 EXCELLENT match rate! DFF integration working perfectly!")
-                    elif success_rate >= 60:
-                        self.output_text.append("👍 Good match rate for DFF integration")
-                    else:
-                        self.output_text.append("⚠️ Lower match rate - check name formats")
-            else:
-                QMessageBox.warning(self, "Warning", "Failed to load DFF CSV file")
+            self.dff_label.setText("✅ Sample DFF data loaded")
+            self.dff_label.setStyleSheet(
+                "color: #27ae60; font-weight: bold; padding: 10px; border: 1px solid #27ae60; border-radius: 5px;")
+
+            self.run_btn.setEnabled(True)
+            self.status_bar.showMessage("Sample data loaded - ready to optimize")
+
+            # Pre-fill manual players for demo
+            self.manual_input.setText("Jorge Polanco, Christian Yelich")
+
+            QMessageBox.information(self, "Sample Data Loaded",
+                                    "✅ Sample MLB data loaded!\n\n"
+                                    "• 35 realistic players with multi-position support\n"
+                                    "• DFF expert rankings included\n"
+                                    "• Manual players pre-selected\n\n"
+                                    "Go to the Optimize tab to generate your lineup!")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load sample data:\n{str(e)}")
 
     def run_optimization(self):
-        """Run the optimization process"""
-        if not self.dfs_core.players:
-            QMessageBox.warning(self, "Warning", "Please load DraftKings data first")
+        """Run the optimization"""
+        if not CORE_AVAILABLE:
+            QMessageBox.critical(self, "Error", "DFS Core not available. Check working_dfs_core_final.py")
+            return
+
+        if not self.dk_file:
+            QMessageBox.warning(self, "Warning", "Please select a DraftKings CSV file first")
             return
 
         # Get settings
-        contest_type = "classic" if self.contest_combo.currentIndex() == 0 else "showdown"
-        strategy_map = {0: "balanced", 1: "cash", 2: "gpp"}
-        strategy = strategy_map.get(self.strategy_combo.currentIndex(), "balanced")
+        contest_type = 'classic' if self.contest_combo.currentIndex() == 0 else 'showdown'
+
+        strategy_map = {
+            0: 'balanced',
+            1: 'confirmed_only',
+            2: 'high_floor',
+            3: 'high_ceiling',
+            4: 'manual_only'
+        }
+        strategy = strategy_map.get(self.strategy_combo.currentIndex(), 'balanced')
+
+        manual_input = self.manual_input.text().strip()
 
         # Update UI
         self.run_btn.setEnabled(False)
@@ -391,26 +598,28 @@ class StreamlinedDFSGUI(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.cancel_btn.setVisible(True)
-        self.copy_btn.setVisible(False)
 
-        # Clear output
-        self.output_text.clear()
-        self.output_text.append(f"🚀 Starting {contest_type} optimization with {strategy} strategy...")
+        self.console.clear()
+        self.console.append("🚀 Starting DFS optimization...")
 
-        # Start optimization thread
-        self.optimization_thread = OptimizationThread(self.dfs_core, contest_type, strategy)
-        self.optimization_thread.output_signal.connect(self.output_text.append)
-        self.optimization_thread.progress_signal.connect(self.progress_bar.setValue)
-        self.optimization_thread.finished_signal.connect(self.optimization_finished)
-        self.optimization_thread.start()
+        # Start worker thread
+        self.worker = OptimizationWorker(
+            self.dk_file, self.dff_file, manual_input, contest_type, strategy
+        )
+        self.worker.progress_signal.connect(self.progress_bar.setValue)
+        self.worker.status_signal.connect(self.status_bar.showMessage)
+        self.worker.output_signal.connect(self.console.append)
+        self.worker.finished_signal.connect(self.optimization_finished)
+        self.worker.start()
 
     def cancel_optimization(self):
         """Cancel running optimization"""
-        if self.optimization_thread and self.optimization_thread.isRunning():
-            self.optimization_thread.cancel()
-            self.output_text.append("🛑 Optimization cancelled by user")
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.worker.wait(3000)
+            self.optimization_finished(False, "Cancelled by user", {})
 
-    def optimization_finished(self, success: bool, result: str):
+    def optimization_finished(self, success, result, lineup_data):
         """Handle optimization completion"""
         # Reset UI
         self.run_btn.setEnabled(True)
@@ -419,81 +628,98 @@ class StreamlinedDFSGUI(QMainWindow):
         self.cancel_btn.setVisible(False)
 
         if success:
-            self.output_text.append("\n" + "=" * 60)
-            self.output_text.append(result)
-            self.copy_btn.setVisible(True)
-            self.lineup_text = result  # Store for copying
+            self.console.append("\n✅ OPTIMIZATION COMPLETED!")
+            self.console.append("=" * 50)
+            self.console.append(result)
 
-            # Show optimization summary
-            confirmed_players = sum(1 for p in self.dfs_core.players if p.confirmed_lineup)
-            dff_players = sum(1 for p in self.dfs_core.players if p.dff_rank is not None)
+            # Update results tab
+            self.update_results(lineup_data)
 
-            self.output_text.append(f"\n📊 OPTIMIZATION SUMMARY:")
-            self.output_text.append(f"  • Total players considered: {len(self.dfs_core.players)}")
-            self.output_text.append(f"  • Confirmed lineup players: {confirmed_players}")
-            self.output_text.append(f"  • DFF enhanced players: {dff_players}")
-            self.output_text.append(f"  • Multi-position flexibility: ✅ Active")
+            # Switch to results tab
+            self.tab_widget.setCurrentIndex(2)
+
+            self.status_bar.showMessage("Optimization complete! Check Results tab.")
 
         else:
-            self.output_text.append(f"\n❌ OPTIMIZATION FAILED")
-            self.output_text.append(f"Error: {result}")
-            QMessageBox.critical(self, "Optimization Failed", result)
+            self.console.append(f"\n❌ OPTIMIZATION FAILED: {result}")
+            self.status_bar.showMessage("Optimization failed - check console for details")
 
-    def copy_lineup(self):
+            QMessageBox.critical(self, "Optimization Failed",
+                                 f"The optimization failed:\n\n{result}")
+
+    def update_results(self, lineup_data):
+        """Update the results tab with lineup data"""
+        try:
+            # Update summary
+            total_salary = lineup_data.get('total_salary', 0)
+            total_score = lineup_data.get('total_score', 0)
+            players = lineup_data.get('players', [])
+
+            summary_text = f"""
+            <h3>📊 Optimization Results</h3>
+            <p><b>Total Players:</b> {len(players)}</p>
+            <p><b>Total Salary:</b> ${total_salary:,}</p>
+            <p><b>Projected Score:</b> {total_score:.2f} points</p>
+            <p><b>Salary Remaining:</b> ${50000 - total_salary:,}</p>
+            """
+
+            # Add lineup composition info
+            confirmed = sum(1 for p in players if 'CONF' in p.get('status', ''))
+            manual = sum(1 for p in players if 'MANUAL' in p.get('status', ''))
+            dff = sum(1 for p in players if 'DFF' in p.get('status', ''))
+
+            summary_text += f"""
+            <p><b>Confirmed Players:</b> {confirmed}</p>
+            <p><b>Manual Selections:</b> {manual}</p>
+            <p><b>DFF Enhanced:</b> {dff}</p>
+            """
+
+            self.summary_label.setText(summary_text)
+
+            # Update table
+            self.lineup_table.setRowCount(len(players))
+
+            for row, player in enumerate(players):
+                self.lineup_table.setItem(row, 0, QTableWidgetItem(player.get('position', '')))
+                self.lineup_table.setItem(row, 1, QTableWidgetItem(player.get('name', '')))
+                self.lineup_table.setItem(row, 2, QTableWidgetItem(player.get('team', '')))
+                self.lineup_table.setItem(row, 3, QTableWidgetItem(f"${player.get('salary', 0):,}"))
+                self.lineup_table.setItem(row, 4, QTableWidgetItem(f"{player.get('score', 0):.1f}"))
+                self.lineup_table.setItem(row, 5, QTableWidgetItem(player.get('status', '')))
+
+            # Update import text
+            player_names = [p.get('name', '') for p in players]
+            self.import_text.setPlainText(", ".join(player_names))
+
+        except Exception as e:
+            print(f"Error updating results: {e}")
+            traceback.print_exc()
+
+    def copy_to_clipboard(self):
         """Copy lineup to clipboard"""
-        if hasattr(self, 'lineup_text'):
-            # Extract just the player names for DraftKings import
-            lines = self.lineup_text.split('\n')
-            for line in lines:
-                if line.startswith("📋 DRAFTKINGS IMPORT:"):
-                    import_line_idx = lines.index(line)
-                    if import_line_idx + 1 < len(lines):
-                        lineup_names = lines[import_line_idx + 1]
-                        clipboard = QApplication.clipboard()
-                        clipboard.setText(lineup_names)
-
-                        # Show confirmation
-                        QMessageBox.information(
-                            self, "Copied!",
-                            "Lineup copied to clipboard!\n\nYou can now paste this into DraftKings."
-                        )
-                        return
-
-            # Fallback - copy everything
+        text = self.import_text.toPlainText()
+        if text:
             clipboard = QApplication.clipboard()
-            clipboard.setText(self.lineup_text)
-            QMessageBox.information(self, "Copied!", "Full results copied to clipboard!")
+            clipboard.setText(text)
+            self.status_bar.showMessage("Lineup copied to clipboard!", 3000)
+            QMessageBox.information(self, "Copied!",
+                                    "Lineup copied to clipboard!\n\nYou can now paste this into DraftKings.")
         else:
             QMessageBox.warning(self, "No Lineup", "No lineup available to copy")
-
-    def closeEvent(self, event):
-        """Handle window close"""
-        if self.optimization_thread and self.optimization_thread.isRunning():
-            reply = QMessageBox.question(
-                self, 'Close Application',
-                'Optimization is running. Are you sure you want to quit?',
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
-
-            if reply == QMessageBox.Yes:
-                self.optimization_thread.cancel()
-                self.optimization_thread.wait(2000)  # Wait up to 2 seconds
-                event.accept()
-            else:
-                event.ignore()
-        else:
-            event.accept()
 
 
 def main():
     """Main application entry point"""
-    if not GUI_AVAILABLE:
-        print("❌ GUI not available. Install PyQt5 first.")
-        return 1
-
     app = QApplication(sys.argv)
     app.setApplicationName("Streamlined DFS Optimizer")
+    app.setApplicationVersion("1.0")
+
+    # Check if core is available
+    if not CORE_AVAILABLE:
+        QMessageBox.critical(None, "Missing Core",
+                             "Could not import working_dfs_core_final.py\n\n"
+                             "Make sure the file is in the same directory as this GUI.")
+        return 1
 
     # Create and show the main window
     window = StreamlinedDFSGUI()
