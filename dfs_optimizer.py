@@ -1,20 +1,21 @@
+
 #!/usr/bin/env python3
 """
 DFS Optimizer - Unified Launcher
-Created by Integration Wizard
+The one launcher to rule them all
 """
 
 import sys
 import os
 
 def main():
-    """Launch the best available DFS optimizer GUI"""
+    """Launch the DFS optimizer GUI"""
     print("🚀 DFS Optimizer - Unified Launcher")
     print("=" * 40)
 
     # Try streamlined GUI first (best option)
     try:
-        print("⚡ Launching Streamlined DFS Optimizer...")
+        print("⚡ Launching Streamlined DFS GUI...")
         from streamlined_dfs_gui import main as streamlined_main
         return streamlined_main()
     except ImportError:
@@ -24,7 +25,7 @@ def main():
 
     # Try enhanced GUI (fallback)
     try:
-        print("🔧 Launching Enhanced DFS Optimizer...")  
+        print("🔧 Launching Enhanced DFS GUI...")  
         from enhanced_dfs_gui import main as enhanced_main
         return enhanced_main()
     except ImportError:
@@ -33,14 +34,12 @@ def main():
         print(f"   ❌ Enhanced GUI error: {e}")
 
     # Error message
-    print("❌ No DFS Optimizer GUI available!")
+    print("❌ No DFS GUI available!")
     print()
     print("💡 TROUBLESHOOTING:")
     print("   1. Make sure you have PyQt5: pip install PyQt5")
-    print("   2. Check you have the GUI files:")
-    print("      - streamlined_dfs_gui.py (recommended)")
-    print("      - enhanced_dfs_gui.py (fallback)")
-    print("   3. Run integration wizard again if needed")
+    print("   2. Make sure streamlined_dfs_gui.py exists")
+    print("   3. Run: python test_with_sample_data.py")
 
     return 1
 
