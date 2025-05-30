@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Import high-performance data loading
+import time
 try:
     from performance_integrated_data import load_dfs_data, SuperEnhancedDFSData
     PERFORMANCE_DATA_AVAILABLE = True
