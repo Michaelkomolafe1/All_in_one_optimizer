@@ -1,0 +1,26 @@
+{
+  "performance": {
+    "use_async_loading": true,
+    "cache_enabled": true,
+    "cache_ttl_hours": 1,
+    "max_connections": 20,
+    "chunk_size": 1000
+  },
+  "optimization": {
+    "default_method": "milp",
+    "default_budget": 50000,
+    "default_min_salary": 49000,
+    "cash_game_settings": {
+      "max_stack_size": 4,
+      "min_stack_size": 2,
+      "floor_emphasis": 0.35,
+      "confirmed_player_bonus": 1.2
+    }
+  },
+  "data_sources": {
+    "statcast_enabled": true,
+    "vegas_enabled": true,
+    "dff_enabled": true,
+    "confirmed_lineups_enabled": true
+  }
+}
