@@ -866,12 +866,12 @@ class OptimizationThread(QThread):
             strategy_engine = StrategyFilterEngine()
 
             strategy_mapping = {
-                0: 'smart_default',
-                1: 'confirmed_only',  # This will now work!
-                2: 'confirmed_pitchers_all_batters',
-                3: 'all_players',
-                4: 'manual_only'
-            }
+            0: 'smart_confirmed',        # Smart Default (RECOMMENDED)
+            1: 'confirmed_only',         # Safe Only
+            2: 'confirmed_plus_manual',  # Smart + Picks  
+            3: 'confirmed_pitchers_all_batters',  # Balanced
+            4: 'manual_only'             # Manual Only
+        }
 
             filtered_players = strategy_engine.apply_strategy_filter(
                 players=players,
@@ -967,12 +967,12 @@ def create_settings_tab_CORRECTED(self):
     # CORRECTED: Strategy combo with clear descriptions
     self.strategy_combo = QComboBox()
     self.strategy_combo.addItems([
-        "🎯 Smart Default - Confirmed + Enhanced Data (RECOMMENDED)",  # Index 0
-        "🔒 Confirmed Only - ONLY Confirmed Starters + Manual",  # Index 1
-        "⚖️ Confirmed Pitchers + All Batters - Safe P, Flexible Batters",  # Index 2
-        "🌟 All Players - Maximum Flexibility (All Available)",  # Index 3
-        "✏️ Manual Only - ONLY Your Specified Players"  # Index 4
-    ])
+            "🎯 Smart Default (Confirmed + Your Picks) - RECOMMENDED",    # Index 0
+            "🔒 Safe Only (Confirmed Players Only)",                    # Index 1  
+            "🎯 Smart + Picks (Confirmed + Your Manual Selections)",    # Index 2
+            "⚖️ Balanced (Confirmed Pitchers + All Batters)",          # Index 3
+            "✏️ Manual Only (Your Specified Players Only)"             # Index 4
+        ])
     self.strategy_combo.setCurrentIndex(0)  # Default to Smart Default
     self.strategy_combo.currentIndexChanged.connect(self.on_strategy_changed)
     self.strategy_combo.setStyleSheet(self.get_combo_style())
@@ -1306,12 +1306,12 @@ SOLUTION:
 
    self.strategy_combo = QComboBox()
    self.strategy_combo.addItems([
-       "🎯 Smart Default - Confirmed + Enhanced Data (RECOMMENDED)",     # Index 0
-       "🔒 Confirmed Only - ONLY Confirmed Starters + Manual",           # Index 1  
-       "⚖️ Confirmed Pitchers + All Batters - Safe P, Flexible Batters", # Index 2
-       "🌟 All Players - Maximum Flexibility (All Available)",           # Index 3
-       "✏️ Manual Only - ONLY Your Specified Players"                    # Index 4
-   ])
+            "🎯 Smart Default (Confirmed + Your Picks) - RECOMMENDED",    # Index 0
+            "🔒 Safe Only (Confirmed Players Only)",                    # Index 1  
+            "🎯 Smart + Picks (Confirmed + Your Manual Selections)",    # Index 2
+            "⚖️ Balanced (Confirmed Pitchers + All Batters)",          # Index 3
+            "✏️ Manual Only (Your Specified Players Only)"             # Index 4
+        ])
 
 🔧 STEP 3: Update Your OptimizationThread
    • In your OptimizationThread.run() method, add this before optimization:
@@ -1321,12 +1321,12 @@ SOLUTION:
    strategy_engine = StrategyFilterEngine()
 
    strategy_mapping = {
-       0: 'smart_default',     # Smart Default
-       1: 'confirmed_only',    # Confirmed Only  
-       2: 'confirmed_pitchers_all_batters', # Confirmed P + All Batters
-       3: 'all_players',       # All Players
-       4: 'manual_only'        # Manual Only
-   }
+            0: 'smart_confirmed',        # Smart Default (RECOMMENDED)
+            1: 'confirmed_only',         # Safe Only
+            2: 'confirmed_plus_manual',  # Smart + Picks  
+            3: 'confirmed_pitchers_all_batters',  # Balanced
+            4: 'manual_only'             # Manual Only
+        }
 
    strategy_index = self.gui.strategy_combo.currentIndex()
    strategy_name = strategy_mapping.get(strategy_index, 'smart_default')
@@ -1715,11 +1715,11 @@ class ModernDFSGUI(QMainWindow):
         # FIXED: Correct order and default
         self.strategy_combo = QComboBox()
         self.strategy_combo.addItems([
-            "🎯 Smart Default (Confirmed + Enhanced Data) - RECOMMENDED",  # Index 0 - YOUR INTENDED DEFAULT
-            "🌟 All Players (Maximum flexibility)",  # Index 1
-            "🔒 Confirmed Only (Strictest filtering)",  # Index 2
-            "⚖️ Confirmed Pitchers + All Batters (Balanced)",  # Index 3
-            "✏️ Manual Players Only (Only players you specify)"  # Index 4
+            "🎯 Smart Default (Confirmed + Your Picks) - RECOMMENDED",    # Index 0
+            "🔒 Safe Only (Confirmed Players Only)",                    # Index 1  
+            "🎯 Smart + Picks (Confirmed + Your Manual Selections)",    # Index 2
+            "⚖️ Balanced (Confirmed Pitchers + All Batters)",          # Index 3
+            "✏️ Manual Only (Your Specified Players Only)"             # Index 4
         ])
         self.strategy_combo.setCurrentIndex(0)  # FIXED: Now defaults to Smart Default
         self.strategy_combo.currentIndexChanged.connect(self.on_strategy_changed)
@@ -2488,10 +2488,11 @@ class ModernDFSGUI(QMainWindow):
 
         self.strategy_combo = QComboBox()
         self.strategy_combo.addItems([
-            "🌟 All Players (Recommended - Most flexible)",
-            "🔒 Confirmed Only (Strictest filtering)",
-            "⚖️ Confirmed Pitchers + All Batters (Balanced)",
-            "✏️ Manual Players Only (Only players you specify)"
+            "🎯 Smart Default (Confirmed + Your Picks) - RECOMMENDED",    # Index 0
+            "🔒 Safe Only (Confirmed Players Only)",                    # Index 1  
+            "🎯 Smart + Picks (Confirmed + Your Manual Selections)",    # Index 2
+            "⚖️ Balanced (Confirmed Pitchers + All Batters)",          # Index 3
+            "✏️ Manual Only (Your Specified Players Only)"             # Index 4
         ])
         self.strategy_combo.setCurrentIndex(0)
         self.strategy_combo.currentIndexChanged.connect(self.on_strategy_changed)

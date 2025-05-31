@@ -323,12 +323,78 @@ class EnhancedDFFMatcher:
         return best_match, best_score, "partial_match" if best_match else "no_match"
 
 
+# Try to import real Baseball Savant integration
+try:
+    from statcast_integration import StatcastIntegration
+    REAL_STATCAST_AVAILABLE = True
+    print("✅ Real Baseball Savant integration available")
+except ImportError:
+    REAL_STATCAST_AVAILABLE = False
+    print("⚠️ Real Baseball Savant integration not available")
+
 class StatcastDataService:
-    """Service for Statcast data"""
+    """Enhanced Statcast service with real Baseball Savant data"""
+
+    def __init__(self):
+        self.use_real_data = REAL_STATCAST_AVAILABLE
+        if self.use_real_data:
+            self.statcast_integration = StatcastIntegration()
 
     def enrich_players_with_statcast(self, players: List[OptimizedPlayer]) -> List[OptimizedPlayer]:
-        """Enrich players with simulated Statcast data"""
-        print("⚠️ Using simulated Statcast data")
+        """Enrich players with real or simulated Statcast data"""
+
+        if self.use_real_data:
+            return self._enrich_with_real_statcast(players)
+        else:
+            return self._enrich_with_simulated_statcast(players)
+
+    
+    def _enrich_with_real_statcast(self, players: List[OptimizedPlayer]) -> List[OptimizedPlayer]:
+        """Enrich with REAL Baseball Savant data - PRIORITIZING confirmed + manual"""
+
+        # Separate players by priority
+        priority_players = [p for p in players if 
+                           getattr(p, 'is_confirmed', False) or 
+                           getattr(p, 'is_manual_selected', False)]
+        other_players = [p for p in players if p not in priority_players]
+
+        print(f"🌐 Fetching REAL Baseball Savant data for players...")
+        print(f"🎯 PRIORITY: {len(priority_players)} confirmed + manual players")
+        print(f"⚡ SIMULATED: {len(other_players)} other players")
+        print("⏳ This will take 2-5 minutes for fresh data...")
+
+        # Process priority players with REAL data
+        if priority_players:
+            print(f"🌐 Fetching real data for {len(priority_players)} priority players...")
+            priority_enhanced = self.statcast_integration.enrich_player_data(priority_players, force_refresh=False)
+        else:
+            priority_enhanced = []
+
+        # For other players, use simulated data (much faster)
+        if other_players:
+            print(f"⚡ Using simulated data for {len(other_players)} other players...")
+            other_enhanced = self._enrich_with_simulated_statcast(other_players)
+        else:
+            other_enhanced = []
+
+        # Combine results
+        all_enhanced = priority_enhanced + other_enhanced
+
+        # Count real vs simulated data
+        real_data_count = 0
+        for player in priority_enhanced:
+            if (hasattr(player, 'statcast_data') and 
+                player.statcast_data and 
+                'Baseball Savant' in player.statcast_data.get('data_source', '')):
+                real_data_count += 1
+
+        print(f"✅ REAL Baseball Savant data: {real_data_count}/{len(priority_players)} priority players")
+        print(f"⚡ Simulated data: {len(other_players)} other players")
+        print(f"🎯 Total enhanced: {len(all_enhanced)} players")
+
+        return all_enhanced
+    def _enrich_with_simulated_statcast(self, players: List[OptimizedPlayer]) -> List[OptimizedPlayer]:
+        """Fallback simulated Statcast data"""
 
         for player in players:
             if player.primary_position == 'P':
@@ -336,12 +402,14 @@ class StatcastDataService:
                     'Hard_Hit': max(0, np.random.normal(33.0, 6.0)),
                     'xwOBA': max(0, np.random.normal(0.310, 0.040)),
                     'K': max(0, np.random.normal(23.0, 5.0)),
+                    'data_source': 'simulated'
                 }
             else:
                 statcast_data = {
                     'Hard_Hit': max(0, np.random.normal(35.0, 8.0)),
                     'xwOBA': max(0, np.random.normal(0.320, 0.050)),
                     'Barrel': max(0, np.random.normal(6.0, 3.0)),
+                    'data_source': 'simulated'
                 }
 
             player.statcast_data = statcast_data
@@ -721,45 +789,117 @@ class OptimizedDFSCore:
             print("🔧 Using greedy fallback")
             return self._optimize_greedy(filtered_players)
 
+    
     def _apply_strategy_filter(self, strategy: str) -> List[OptimizedPlayer]:
-        """Apply strategy-based filtering with confirmed player support"""
-        if strategy == 'confirmed_only':
+        """IMPROVED: Confirmed-first strategy filtering"""
+
+        # Always start by detecting confirmed players
+        confirmed_players = [p for p in self.players if getattr(p, 'is_confirmed', False)]
+        manual_players = [p for p in self.players if getattr(p, 'is_manual_selected', False)]
+
+        print(f"🔍 Strategy '{strategy}': {len(confirmed_players)} confirmed, {len(manual_players)} manual")
+
+        if strategy == 'smart_confirmed':
+            # CUSTOM: Only confirmed players + manual picks (no unconfirmed noise)
+            print("🎯 Smart Default: Confirmed players + your manual picks (NO unconfirmed)")
+
+            # Get confirmed and manual players
             confirmed_players = [p for p in self.players if getattr(p, 'is_confirmed', False)]
-            print(f"🔒 Confirmed Only: Found {len(confirmed_players)} confirmed players")
+            manual_players = [p for p in self.players if getattr(p, 'is_manual_selected', False)]
 
-            if len(confirmed_players) < 10:
-                print("⚠️ Not enough confirmed players for optimization")
-                print("💡 Adding high-scoring players to reach minimum viable pool")
+            # Combine confirmed and manual (avoid duplicates)
+            selected_players = list(confirmed_players)
 
-                # Add best remaining players
-                remaining = [p for p in self.players if p not in confirmed_players]
-                remaining.sort(key=lambda x: x.enhanced_score, reverse=True)
-                needed = min(15 - len(confirmed_players), len(remaining))
-                confirmed_players.extend(remaining[:needed])
-                print(f"📊 Added {needed} high-scoring players for total of {len(confirmed_players)}")
+            added_manual = 0
+            for manual in manual_players:
+                if manual not in selected_players:
+                    selected_players.append(manual)
+                    added_manual += 1
+                    print(f"   📝 Added manual pick: {manual.name} (enhanced score: {manual.enhanced_score:.1f})")
 
-            return confirmed_players
+            # Enhanced data is ALREADY applied to all players during loading!
+            # Your manual picks get DFF, Statcast, Vegas data automatically
+
+            print(f"📊 Smart pool: {len(confirmed_players)} confirmed + {added_manual} manual = {len(selected_players)} total")
+            print(f"✅ NO unconfirmed players added (clean pool)")
+
+            # Verify we have enough for optimization
+            if len(selected_players) < 15:
+                print("⚠️ Pool might be small for optimization")
+                print("💡 Add more manual players if needed")
+
+            return selected_players
+
+        elif strategy == 'confirmed_only':
+            # SAFEST: Only confirmed + manual players
+            print("🔒 Safe Only: Maximum safety with confirmed players")
+
+            selected_players = list(confirmed_players)
+
+            # Add manual players
+            for manual in manual_players:
+                if manual not in selected_players:
+                    selected_players.append(manual)
+
+            # If not enough players, add high-DFF players as backup
+            if len(selected_players) < 20:
+                print("⚠️ Adding high-DFF players to reach minimum viable pool")
+                high_dff = [p for p in self.players 
+                           if p not in selected_players
+                           and getattr(p, 'dff_projection', 0) >= 6.0]
+                high_dff.sort(key=lambda x: x.dff_projection, reverse=True)
+                needed = min(30 - len(selected_players), len(high_dff))
+                selected_players.extend(high_dff[:needed])
+
+            print(f"📊 Safe pool: {len(selected_players)} players")
+            return selected_players
+
+        elif strategy == 'confirmed_plus_manual':
+            # ENHANCED: Confirmed + Manual (perfect hybrid)
+            print("🎯 Smart + Picks: Confirmed players + your manual selections")
+
+            selected_players = list(confirmed_players)
+
+            # Add all manual players
+            for manual in manual_players:
+                if manual not in selected_players:
+                    selected_players.append(manual)
+
+            print(f"📊 Hybrid pool: {len(confirmed_players)} confirmed + {len(manual_players)} manual = {len(selected_players)} total")
+            return selected_players
 
         elif strategy == 'confirmed_pitchers_all_batters':
-            confirmed_pitchers = [p for p in self.players
-                                  if getattr(p, 'is_confirmed', False) and p.primary_position == 'P']
+            # BALANCED: Safe pitchers, flexible batters
+            print("⚖️ Balanced: Confirmed pitchers + all batters")
+
+            confirmed_pitchers = [p for p in confirmed_players if p.primary_position == 'P']
             all_batters = [p for p in self.players if p.primary_position != 'P']
-            result = confirmed_pitchers + all_batters
-            print(f"⚖️ Confirmed P + All Batters: {len(confirmed_pitchers)} confirmed P + {len(all_batters)} batters")
-            return result
 
-        elif strategy == 'high_floor':
-            confirmed_first = [p for p in self.players if getattr(p, 'is_confirmed', False)]
-            unconfirmed = [p for p in self.players if not getattr(p, 'is_confirmed', False)]
-            unconfirmed.sort(key=lambda x: x.enhanced_score, reverse=True)
-            return confirmed_first + unconfirmed
+            selected_players = confirmed_pitchers + all_batters
 
-        elif strategy == 'high_ceiling':
-            return sorted(self.players, key=lambda x: x.enhanced_score, reverse=True)
+            # Add manual players if they're pitchers
+            for manual in manual_players:
+                if manual.primary_position == 'P' and manual not in selected_players:
+                    selected_players.append(manual)
 
-        else:  # balanced or any other strategy
-            return self.players
+            print(f"📊 Balanced pool: {len(confirmed_pitchers)} confirmed P + {len(all_batters)} all batters = {len(selected_players)} total")
+            return selected_players
 
+        elif strategy == 'manual_only':
+            # EXPERT: Only manual selections
+            print("✏️ Manual Only: Using only your specified players")
+
+            if len(manual_players) < 10:
+                print(f"⚠️ Manual Only needs 10+ players, you have {len(manual_players)}")
+                print("💡 Add more players or use Smart Default strategy")
+
+            print(f"📊 Manual pool: {len(manual_players)} specified players")
+            return manual_players
+
+        else:
+            # Fallback to smart confirmed
+            print(f"⚠️ Unknown strategy '{strategy}', using Smart Default")
+            return self._apply_strategy_filter('smart_confirmed')
     def mark_current_players_as_confirmed(self):
         """Emergency: Mark current players as confirmed for testing - ADD TO OptimizedDFSCore class"""
         confirmed_names = {
@@ -1117,7 +1257,7 @@ def load_and_optimize_complete_pipeline(
         contest_type: str = 'classic',
         strategy: str = 'balanced'
 ) -> Tuple[List[OptimizedPlayer], float, str]:
-    """Complete optimization pipeline"""
+    """Complete optimization pipeline with FIXED order for real Statcast data"""
 
     print("🚀 COMPLETE DFS OPTIMIZATION PIPELINE")
     print("=" * 60)
@@ -1130,22 +1270,29 @@ def load_and_optimize_complete_pipeline(
     if not core.load_draftkings_csv(dk_file):
         return [], 0, "Failed to load DraftKings data"
 
-    # Step 2: Apply DFF rankings if provided
+    # Step 2: Apply DFF rankings if provided (BEFORE confirmed detection)
     if dff_file:
         print("🎯 Step 2: Applying DFF rankings...")
         core.apply_dff_rankings(dff_file)
 
-    # Step 3: Enrich with Statcast data
-    print("🔬 Step 3: Enriching with Statcast data...")
-    core.enrich_with_statcast()
+    # Step 3: CRITICAL FIX - Detect confirmed players BEFORE Statcast enrichment
+    print("🔍 Step 3: Detecting confirmed players FIRST...")
+    confirmed_count = core._detect_confirmed_players()
+    print(f"✅ Found {confirmed_count} confirmed players for real Statcast data")
 
-    # Step 4: Apply manual selection if provided
+    # Step 4: Apply manual selection BEFORE Statcast (so manual players get real data too)
     if manual_input:
         print("🎯 Step 4: Applying manual selection...")
-        core.apply_manual_selection(manual_input)
+        manual_count = core.apply_manual_selection(manual_input)
+        print(f"✅ Added {manual_count} manual players for real Statcast data")
 
-    # Step 5: Optimize lineup
-    print("🧠 Step 5: Running optimization...")
+    # Step 5: NOW enrich with Statcast data (confirmed + manual players get REAL data)
+    print("🔬 Step 5: Enriching with Statcast data...")
+    print("🌐 Confirmed + manual players will get REAL Baseball Savant data!")
+    core.enrich_with_statcast()
+
+    # Step 6: Optimize lineup with strategy
+    print("🧠 Step 6: Running optimization...")
     lineup, score = core.optimize_lineup(contest_type, strategy)
 
     if lineup:
@@ -1156,7 +1303,6 @@ def load_and_optimize_complete_pipeline(
         return [], 0, "Optimization failed"
 
 
-# Testing functions
 def test_system():
     """Test the complete system"""
     print("🧪 TESTING STREAMLINED MILP-FOCUSED DFS SYSTEM")

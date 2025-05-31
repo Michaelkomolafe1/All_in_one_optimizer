@@ -39,23 +39,25 @@ except ImportError as e:
 
 
 class OptimizationWorker(QThread):
-    """Background worker for DFS optimization - CORRECTED VERSION"""
+    """Background worker for DFS optimization - FIXED VERSION"""
 
     progress_signal = pyqtSignal(int)
     status_signal = pyqtSignal(str)
     output_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool, str, dict)
 
-    def __init__(self, dk_file, dff_file, manual_input, contest_type, strategy):
+    def __init__(self, dk_file, dff_file, manual_input, contest_type, strategy_index):
+        """FIXED: Pass values directly instead of GUI reference"""
         super().__init__()
         self.dk_file = dk_file
         self.dff_file = dff_file
         self.manual_input = manual_input
         self.contest_type = contest_type
-        self.strategy = strategy
+        self.strategy_index = strategy_index  # Pass strategy index directly
         self.is_cancelled = False
 
     def run(self):
+        """FIXED: Use passed values instead of accessing GUI"""
         try:
             self.status_signal.emit("Starting optimization...")
             self.progress_signal.emit(10)
@@ -63,28 +65,43 @@ class OptimizationWorker(QThread):
             if self.is_cancelled:
                 return
 
+            # FIXED: Map strategy index to strategy name
+            strategy_mapping = {
+            0: 'smart_confirmed',        # Smart Default (RECOMMENDED)
+            1: 'confirmed_only',         # Safe Only
+            2: 'confirmed_plus_manual',  # Smart + Picks  
+            3: 'confirmed_pitchers_all_batters',  # Balanced
+            4: 'manual_only'             # Manual Only
+        }
+
+            strategy_name = strategy_mapping.get(self.strategy_index, 'balanced')
+
+            self.output_signal.emit(f"🎯 Using strategy: {strategy_name}")
+
+            # FIXED: Check Manual Only requirements
+            if strategy_name == 'manual_only':
+                if not self.manual_input or not self.manual_input.strip():
+                    self.finished_signal.emit(False, "Manual Only strategy requires player names", {})
+                    return
+
+                manual_count = len([name.strip() for name in self.manual_input.split(',') if name.strip()])
+                if manual_count < 8:
+                    error_msg = f"Manual Only needs 8+ players for all positions, you provided {manual_count}"
+                    self.finished_signal.emit(False, error_msg, {})
+                    return
+
+                self.output_signal.emit(f"✏️ Manual Only: Using {manual_count} specified players")
+
             # Run the complete pipeline
             self.status_signal.emit("Loading data...")
             self.progress_signal.emit(30)
-
-            # Map GUI strategy to pipeline strategy
-            strategy_mapping = {
-                'balanced': 'balanced',
-                'confirmed_only': 'confirmed_only',
-                'confirmed_pitchers_all_batters': 'confirmed_pitchers_all_batters',
-                'high_floor': 'high_floor',
-                'high_ceiling': 'high_ceiling'
-            }
-
-            # Use the mapped strategy
-            mapped_strategy = strategy_mapping.get(self.strategy, 'balanced')
 
             lineup, score, summary = load_and_optimize_complete_pipeline(
                 dk_file=self.dk_file,
                 dff_file=self.dff_file,
                 manual_input=self.manual_input,
                 contest_type=self.contest_type,
-                strategy=mapped_strategy
+                strategy=strategy_name  # FIXED: Use mapped strategy name
             )
 
             self.progress_signal.emit(90)
@@ -121,15 +138,17 @@ class OptimizationWorker(QThread):
                 # Add strategy results to summary
                 lineup_data['confirmed_count'] = confirmed_count
                 lineup_data['manual_count'] = manual_count
-                lineup_data['strategy_used'] = mapped_strategy
+                lineup_data['strategy_used'] = strategy_name
 
                 self.progress_signal.emit(100)
                 self.status_signal.emit("Complete!")
                 self.finished_signal.emit(True, summary, lineup_data)
             else:
                 error_msg = "No valid lineup found"
-                if mapped_strategy == 'confirmed_only':
+                if strategy_name == 'confirmed_only':
                     error_msg += "\n💡 Try 'Smart Default' for more player options"
+                elif strategy_name == 'manual_only':
+                    error_msg += "\n💡 Make sure you have enough players for all positions"
                 self.finished_signal.emit(False, error_msg, {})
 
         except Exception as e:
@@ -137,15 +156,11 @@ class OptimizationWorker(QThread):
             self.finished_signal.emit(False, error_msg, {})
 
     def _get_player_status(self, player):
-        """Get player status string - CORRECTED"""
+        """Get player status string"""
         status_parts = []
 
-        # Check confirmed status multiple ways
+        # Check confirmed status
         if hasattr(player, 'is_confirmed') and player.is_confirmed:
-            status_parts.append("CONFIRMED")
-        elif hasattr(player, 'confirmed_order') and str(player.confirmed_order).upper() == 'YES':
-            status_parts.append("CONFIRMED")
-        elif hasattr(player, 'batting_order') and player.batting_order is not None:
             status_parts.append("CONFIRMED")
 
         # Check manual selection
@@ -160,6 +175,7 @@ class OptimizationWorker(QThread):
 
     def cancel(self):
         self.is_cancelled = True
+
 
 
 class StreamlinedDFSGUI(QMainWindow):
@@ -444,11 +460,11 @@ class StreamlinedDFSGUI(QMainWindow):
         # Strategy
         self.strategy_combo = QComboBox()
         self.strategy_combo.addItems([
-            "⚖️ Balanced (Recommended)",
-            "🔒 Confirmed Only (Safest)",
-            "🎯 High Floor (Cash Games)",
-            "🚀 High Ceiling (GPPs)",
-            "✏️ Manual Only"
+            "🎯 Smart Default (Confirmed + Your Picks) - RECOMMENDED",    # Index 0
+            "🔒 Safe Only (Confirmed Players Only)",                    # Index 1  
+            "🎯 Smart + Picks (Confirmed + Your Manual Selections)",    # Index 2
+            "⚖️ Balanced (Confirmed Pitchers + All Batters)",          # Index 3
+            "✏️ Manual Only (Your Specified Players Only)"             # Index 4
         ])
         settings_layout.addRow("Strategy:", self.strategy_combo)
 
@@ -713,31 +729,15 @@ class StreamlinedDFSGUI(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load sample data:\n{str(e)}")
 
-
-
-    def run_optimization(self):
-        """Run the optimization"""
-        if not CORE_AVAILABLE:
-            QMessageBox.critical(self, "Error", "DFS Core not available. Check working_dfs_core_final.py")
+    def run_optimization_FIXED(self):
+        """FIXED: Create worker with proper parameters"""
+        if self.worker and self.worker.isRunning():
             return
 
-        if not self.dk_file:
-            QMessageBox.warning(self, "Warning", "Please select a DraftKings CSV file first")
-            return
-
-        # Get settings
-        contest_type = 'classic' if self.contest_combo.currentIndex() == 0 else 'showdown'
-
-        strategy_map = {
-            0: 'balanced',
-            1: 'confirmed_only',
-            2: 'high_floor',
-            3: 'high_ceiling',
-            4: 'manual_only'
-        }
-        strategy = strategy_map.get(self.strategy_combo.currentIndex(), 'balanced')
-
+        # Get all settings from GUI
+        strategy_index = self.strategy_combo.currentIndex()
         manual_input = self.manual_input.text().strip()
+        contest_type = 'classic' if self.contest_combo.currentIndex() == 0 else 'showdown'
 
         # Update UI
         self.run_btn.setEnabled(False)
@@ -749,10 +749,16 @@ class StreamlinedDFSGUI(QMainWindow):
         self.console.clear()
         self.console.append("🚀 Starting DFS optimization...")
 
-        # Start worker thread
+        # FIXED: Create worker with parameters instead of GUI reference
         self.worker = OptimizationWorker(
-            self.dk_file, self.dff_file, manual_input, contest_type, strategy
+            dk_file=self.dk_file,
+            dff_file=self.dff_file,
+            manual_input=manual_input,
+            contest_type=contest_type,
+            strategy_index=strategy_index  # Pass strategy index
         )
+
+        # Connect signals
         self.worker.progress_signal.connect(self.progress_bar.setValue)
         self.worker.status_signal.connect(self.status_bar.showMessage)
         self.worker.output_signal.connect(self.console.append)
@@ -867,6 +873,43 @@ class StreamlinedDFSGUI(QMainWindow):
                                     "Lineup copied to clipboard!\n\nYou can now paste this into DraftKings.")
         else:
             QMessageBox.warning(self, "No Lineup", "No lineup available to copy")
+
+
+    def run_optimization(self):
+        """Run the DFS optimization"""
+        if self.worker and self.worker.isRunning():
+            return
+
+        # Get all settings from GUI
+        strategy_index = self.strategy_combo.currentIndex()
+        manual_input = self.manual_input.text().strip()
+        contest_type = 'classic' if self.contest_combo.currentIndex() == 0 else 'showdown'
+
+        # Update UI
+        self.run_btn.setEnabled(False)
+        self.run_btn.setText("⏳ Optimizing...")
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        self.cancel_btn.setVisible(True)
+
+        self.console.clear()
+        self.console.append("🚀 Starting DFS optimization...")
+
+        # Create worker with parameters
+        self.worker = OptimizationWorker(
+            dk_file=self.dk_file,
+            dff_file=self.dff_file, 
+            manual_input=manual_input,
+            contest_type=contest_type,
+            strategy_index=strategy_index
+        )
+
+        # Connect signals
+        self.worker.progress_signal.connect(self.progress_bar.setValue)
+        self.worker.status_signal.connect(self.status_bar.showMessage)
+        self.worker.output_signal.connect(self.console.append)
+        self.worker.finished_signal.connect(self.optimization_finished)
+        self.worker.start()
 
 def main():
     """Main application entry point"""

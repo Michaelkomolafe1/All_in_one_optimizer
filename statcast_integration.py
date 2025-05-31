@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-statcast_integration.py - REAL Baseball Savant data fetcher
-This version actually fetches live MLB data from Baseball Savant via pybaseball
+Enhanced Baseball Savant Integration
+Fetches REAL MLB data with intelligent caching and confirmed player priority
 """
 
 import os
@@ -10,6 +10,7 @@ import time
 import random
 from datetime import datetime, timedelta
 import pandas as pd
+import numpy as np
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -21,10 +22,8 @@ try:
         statcast_pitcher_exitvelo_barrels,
         statcast_batter_expected_stats,
         statcast_pitcher_expected_stats,
-        playerid_lookup,
         cache
     )
-
     PYBASEBALL_AVAILABLE = True
     # Enable caching to reduce API calls
     cache.enable()
@@ -35,19 +34,18 @@ except ImportError:
 
 
 class StatcastIntegration:
-    """REAL Baseball Savant integration that fetches actual MLB data"""
+    """REAL Baseball Savant integration with confirmed player priority"""
 
     def __init__(self, cache_dir="data/statcast"):
         self.cache_dir = cache_dir
-        self.cache_expiry_hours = 6  # Shorter cache for more current data
+        self.cache_expiry_hours = 4  # 4 hours cache for current data
         self.current_year = datetime.now().year
         self.today = datetime.now().date()
-        self.force_refresh = False
 
         # Rate limiting settings - be respectful to Baseball Savant
         self.api_calls_made = 0
         self.last_api_call = None
-        self.min_delay = 2.0  # 2 seconds between API calls
+        self.min_delay = 1.5  # 1.5 seconds between API calls
 
         # Create cache directory
         os.makedirs(self.cache_dir, exist_ok=True)
@@ -64,15 +62,9 @@ class StatcastIntegration:
         self.season_expected_pitchers = None
         self.data_loaded = False
 
-        print(f"🔬 Real Statcast integration initialized - will fetch live MLB data")
+        print(f"🔬 Real Statcast integration initialized")
         if not PYBASEBALL_AVAILABLE:
-            print("⚠️ pybaseball not available - install with: pip install pybaseball")
-
-    def set_force_refresh(self, force_refresh):
-        """Set force refresh flag"""
-        self.force_refresh = force_refresh
-        if force_refresh:
-            print("🔄 Force refresh enabled - will fetch fresh data from Baseball Savant")
+            print("⚠️ pybaseball not available - will use fallback data")
 
     def _load_cache(self):
         """Load cached data from disk"""
@@ -90,7 +82,7 @@ class StatcastIntegration:
 
             total_cached = len(self.batter_data_cache) + len(self.pitcher_data_cache)
             if total_cached > 0:
-                print(f"📊 Loaded cache: {len(self.batter_data_cache)} batters, {len(self.pitcher_data_cache)} pitchers")
+                print(f"💾 Loaded cache: {len(self.batter_data_cache)} batters, {len(self.pitcher_data_cache)} pitchers")
         except Exception as e:
             print(f"⚠️ Error loading cache: {e}")
             self.batter_data_cache = {}
@@ -124,9 +116,6 @@ class StatcastIntegration:
 
     def _is_cache_stale(self, player_name, is_pitcher=False):
         """Check if cached data is stale"""
-        if self.force_refresh:
-            return True
-
         cache = self.pitcher_data_cache if is_pitcher else self.batter_data_cache
 
         if player_name not in cache:
@@ -136,7 +125,6 @@ class StatcastIntegration:
         if not cache_time:
             return True
 
-        # Check if cache is older than expiry time
         try:
             cache_datetime = datetime.fromisoformat(cache_time)
             age_hours = (datetime.now() - cache_datetime).total_seconds() / 3600
@@ -149,7 +137,8 @@ class StatcastIntegration:
         if self.data_loaded or not PYBASEBALL_AVAILABLE:
             return
 
-        print("🌐 Loading season data from Baseball Savant (this may take 30-60 seconds)...")
+        print("🌐 Loading current season data from Baseball Savant...")
+        print("⏳ This may take 30-90 seconds for fresh data...")
 
         try:
             # Load batter data
@@ -174,14 +163,14 @@ class StatcastIntegration:
 
         except Exception as e:
             print(f"⚠️ Error loading season data: {e}")
-            print("Will fetch individual player data instead...")
+            print("Will use cached data or fallback to simulated...")
             self.data_loaded = False
 
     def _find_player_in_data(self, player_name, data_frame):
-        """Find a player in a DataFrame using proper name matching for Baseball Savant format"""
+        """Find a player in a DataFrame using proper name matching"""
         if data_frame is None or data_frame.empty:
             return None
-        
+
         # Baseball Savant uses 'last_name, first_name' format
         name_column = None
         if 'last_name, first_name' in data_frame.columns:
@@ -190,26 +179,26 @@ class StatcastIntegration:
             name_column = 'player_name'
         else:
             return None
-        
+
         # Convert "Mookie Betts" to "Betts, Mookie" for matching
         if ' ' in player_name:
             parts = player_name.split()
             first_name = parts[0]
-            last_name = ' '.join(parts[1:])  # Handle multiple last names
+            last_name = ' '.join(parts[1:])
             savant_format = f"{last_name}, {first_name}"
         else:
             savant_format = player_name
-        
+
         # Try exact match with converted format
         exact_matches = data_frame[data_frame[name_column] == savant_format]
         if not exact_matches.empty:
             return exact_matches.iloc[0]
-        
+
         # Try case-insensitive exact match
         exact_matches_ci = data_frame[data_frame[name_column].str.upper() == savant_format.upper()]
         if not exact_matches_ci.empty:
             return exact_matches_ci.iloc[0]
-        
+
         # Try partial match on last name
         if ',' in savant_format:
             last_name_only = savant_format.split(',')[0].strip()
@@ -223,56 +212,44 @@ class StatcastIntegration:
                         return row
                 # Return first match if no exact substring match
                 return last_name_matches.iloc[0]
-        
-        return None
-
-        # Try exact match first
-        if 'player_name' in data_frame.columns:
-            exact_matches = data_frame[data_frame['player_name'] == player_name]
-            if not exact_matches.empty:
-                return exact_matches.iloc[0]
-
-        # Try case-insensitive partial match
-        if 'player_name' in data_frame.columns:
-            partial_matches = data_frame[
-                data_frame['player_name'].str.contains(player_name, case=False, na=False)
-            ]
-            if not partial_matches.empty:
-                return partial_matches.iloc[0]
-
-        # Try matching by last name
-        if 'player_name' in data_frame.columns:
-            last_name = player_name.split()[-1] if ' ' in player_name else player_name
-            last_name_matches = data_frame[
-                data_frame['player_name'].str.contains(last_name, case=False, na=False)
-            ]
-            if not last_name_matches.empty:
-                # If multiple matches, try to find the best one
-                for _, row in last_name_matches.iterrows():
-                    if player_name.lower() in row['player_name'].lower():
-                        return row
-                # Return first match if no exact substring match
-                return last_name_matches.iloc[0]
 
         return None
+
+    def fetch_real_player_metrics(self, player_name, is_pitcher=False):
+        """Fetch real metrics for a player from Baseball Savant"""
+
+        if not PYBASEBALL_AVAILABLE:
+            return self._generate_fallback_metrics(player_name, is_pitcher)
+
+        # Check cache first
+        if not self._is_cache_stale(player_name, is_pitcher):
+            cache = self.pitcher_data_cache if is_pitcher else self.batter_data_cache
+            cached_data = cache[player_name].copy()
+            cached_data['data_source'] += ' (cached)'
+            return cached_data
+
+        # Load season data if not already loaded
+        if not self.data_loaded:
+            self._load_season_data()
+
+        try:
+            if is_pitcher:
+                return self._fetch_real_pitcher_data(player_name)
+            else:
+                return self._fetch_real_batter_data(player_name)
+        except Exception as e:
+            print(f"⚠️ Error fetching real data for {player_name}: {e}")
+            return self._generate_fallback_metrics(player_name, is_pitcher)
 
     def _fetch_real_batter_data(self, player_name):
         """Fetch real batter data from Baseball Savant"""
-        if not PYBASEBALL_AVAILABLE:
-            return None
-
         try:
-            # Load season data if not already loaded
-            if not self.data_loaded:
-                self._load_season_data()
-
             # Find player in batter data
             batter_row = self._find_player_in_data(player_name, self.season_batter_data)
             expected_row = self._find_player_in_data(player_name, self.season_expected_batters)
 
             if batter_row is None and expected_row is None:
-                print(f"⚠️ No Baseball Savant data found for batter: {player_name}")
-                return None
+                return self._generate_fallback_metrics(player_name, False)
 
             # Extract metrics
             metrics = {
@@ -284,7 +261,6 @@ class StatcastIntegration:
 
             # Extract exit velocity metrics
             if batter_row is not None:
-                # Map column names (Baseball Savant column names)
                 ev_mapping = {
                     'hard_hit_percent': 'Hard_Hit',
                     'barrel_batted_rate': 'Barrel',
@@ -310,7 +286,7 @@ class StatcastIntegration:
                     if savant_col in expected_row and pd.notna(expected_row[savant_col]):
                         metrics[our_col] = float(expected_row[savant_col])
 
-            # Fill in reasonable defaults for missing values
+            # Fill in defaults for missing values
             defaults = {
                 'Hard_Hit': 35.0,
                 'Barrel': 6.0,
@@ -318,39 +294,35 @@ class StatcastIntegration:
                 'xBA': 0.250,
                 'xSLG': 0.400,
                 'avg_exit_velocity': 88.0,
-                'K': 22.0,  # Strikeout rate placeholder
-                'BB': 8.5,  # Walk rate placeholder
-                'Pull': 38.0  # Pull rate placeholder
+                'K': 22.0,
+                'BB': 8.5,
+                'Pull': 38.0
             }
 
             for key, default_val in defaults.items():
                 if key not in metrics:
                     metrics[key] = default_val
 
-            print(f"✅ Real data fetched for batter: {player_name}")
+            # Cache the result
+            self.batter_data_cache[player_name] = metrics
+            self._save_cache()
+
+            print(f"✅ Real Baseball Savant data fetched for batter: {player_name}")
             return metrics
 
         except Exception as e:
             print(f"⚠️ Error fetching real batter data for {player_name}: {e}")
-            return None
+            return self._generate_fallback_metrics(player_name, False)
 
     def _fetch_real_pitcher_data(self, player_name):
         """Fetch real pitcher data from Baseball Savant"""
-        if not PYBASEBALL_AVAILABLE:
-            return None
-
         try:
-            # Load season data if not already loaded
-            if not self.data_loaded:
-                self._load_season_data()
-
             # Find player in pitcher data
             pitcher_row = self._find_player_in_data(player_name, self.season_pitcher_data)
             expected_row = self._find_player_in_data(player_name, self.season_expected_pitchers)
 
             if pitcher_row is None and expected_row is None:
-                print(f"⚠️ No Baseball Savant data found for pitcher: {player_name}")
-                return None
+                return self._generate_fallback_metrics(player_name, True)
 
             # Extract metrics
             metrics = {
@@ -360,7 +332,7 @@ class StatcastIntegration:
                 'cache_timestamp': datetime.now().isoformat(),
             }
 
-            # Extract pitcher metrics (against opposing batters)
+            # Extract pitcher metrics
             if pitcher_row is not None:
                 pitcher_mapping = {
                     'hard_hit_percent': 'Hard_Hit',
@@ -383,29 +355,33 @@ class StatcastIntegration:
                     if savant_col in expected_row and pd.notna(expected_row[savant_col]):
                         metrics[our_col] = float(expected_row[savant_col])
 
-            # Fill in reasonable defaults for missing values
+            # Fill in defaults
             defaults = {
-                'Hard_Hit': 33.0,  # Lower is better for pitchers
-                'Barrel': 6.5,  # Lower is better for pitchers
-                'xwOBA': 0.310,  # Lower is better for pitchers
+                'Hard_Hit': 33.0,
+                'Barrel': 6.5,
+                'xwOBA': 0.310,
                 'xERA': 4.00,
                 'avg_velocity': 93.0,
-                'Whiff': 25.0,  # Whiff rate placeholder
-                'K': 23.0,  # Strikeout rate placeholder
-                'BB': 8.0,  # Walk rate placeholder
-                'GB': 45.0  # Ground ball rate placeholder
+                'Whiff': 25.0,
+                'K': 23.0,
+                'BB': 8.0,
+                'GB': 45.0
             }
 
             for key, default_val in defaults.items():
                 if key not in metrics:
                     metrics[key] = default_val
 
-            print(f"✅ Real data fetched for pitcher: {player_name}")
+            # Cache the result
+            self.pitcher_data_cache[player_name] = metrics
+            self._save_cache()
+
+            print(f"✅ Real Baseball Savant data fetched for pitcher: {player_name}")
             return metrics
 
         except Exception as e:
             print(f"⚠️ Error fetching real pitcher data for {player_name}: {e}")
-            return None
+            return self._generate_fallback_metrics(player_name, True)
 
     def _generate_fallback_metrics(self, player_name, is_pitcher=False):
         """Generate fallback metrics when real data isn't available"""
@@ -445,46 +421,10 @@ class StatcastIntegration:
         random.seed()
         return metrics
 
-    def fetch_metrics(self, player_name, is_pitcher=False):
-        """Fetch metrics for a player - tries real data first"""
-
-        # Check cache first (unless force refresh)
-        if not self._is_cache_stale(player_name, is_pitcher):
-            cache = self.pitcher_data_cache if is_pitcher else self.batter_data_cache
-            cached_data = cache[player_name].copy()
-            cached_data['data_source'] += ' (cached)'
-            return cached_data
-
-        # Try to fetch real data from Baseball Savant
-        real_data = None
-        if PYBASEBALL_AVAILABLE:
-            if is_pitcher:
-                real_data = self._fetch_real_pitcher_data(player_name)
-            else:
-                real_data = self._fetch_real_batter_data(player_name)
-
-        # Use real data if available, otherwise fallback
-        if real_data:
-            # Cache the real data
-            cache = self.pitcher_data_cache if is_pitcher else self.batter_data_cache
-            cache[player_name] = real_data
-            self._save_cache()
-            return real_data
-        else:
-            # Generate fallback metrics
-            fallback_data = self._generate_fallback_metrics(player_name, is_pitcher)
-
-            # Cache the fallback too
-            cache = self.pitcher_data_cache if is_pitcher else self.batter_data_cache
-            cache[player_name] = fallback_data
-            self._save_cache()
-            return fallback_data
-
     def enrich_player_data(self, players, force_refresh=False):
         """Enrich player data with REAL Statcast metrics"""
-        self.set_force_refresh(force_refresh)
-
         print(f"🌐 FETCHING REAL BASEBALL SAVANT DATA for {len(players)} players...")
+
         if PYBASEBALL_AVAILABLE:
             print("⏳ This will take 2-5 minutes for fresh data from Baseball Savant...")
             print("🔬 Loading current season statistics...")
@@ -502,28 +442,22 @@ class StatcastIntegration:
             self._load_season_data()
 
         for i, player in enumerate(players):
-            player_name = player[1]
-            position = player[2]
+            player_name = player.name
+            position = player.primary_position
             is_pitcher = position == "P"
 
-            # Progress reporting every 10 players for real data
-            if i % 10 == 0 and i > 0:
+            # Progress reporting
+            if i % 5 == 0 and i > 0:
                 elapsed = time.time() - start_time
                 remaining_players = len(players) - i
                 eta = (elapsed / i) * remaining_players if i > 0 else 0
-
-                print(
-                    f"📊 Progress: {i}/{len(players)} ({real_data_count} real, {cached_count} cached, {fallback_count} fallback) - ETA: {eta:.0f}s")
+                print(f"📊 Progress: {i}/{len(players)} ({real_data_count} real, {cached_count} cached) - ETA: {eta:.0f}s")
 
             # Create enhanced player data
-            enhanced_player = list(player)
-
-            # Ensure we have enough elements
-            while len(enhanced_player) < 15:
-                enhanced_player.append(None)
+            enhanced_player = player  # Use the actual OptimizedPlayer object
 
             # Fetch metrics (real data!)
-            metrics = self.fetch_metrics(player_name, is_pitcher)
+            metrics = self.fetch_real_player_metrics(player_name, is_pitcher)
 
             # Count data sources
             data_source = metrics.get('data_source', '')
@@ -535,8 +469,9 @@ class StatcastIntegration:
             else:
                 fallback_count += 1
 
-            # Add metrics at index 14
-            enhanced_player[14] = metrics
+            # Apply metrics to player
+            enhanced_player.statcast_data = metrics
+            enhanced_player._calculate_enhanced_score()
 
             enhanced_players.append(enhanced_player)
 
@@ -553,7 +488,6 @@ class StatcastIntegration:
 
         total_real = real_data_count + cached_count
         if total_real > 0:
-            print(
-                f"🎯 Success rate: {total_real}/{len(players)} ({(total_real / len(players)) * 100:.1f}%) real Baseball Savant data")
+            print(f"🎯 Success rate: {total_real}/{len(players)} ({(total_real / len(players)) * 100:.1f}%) real Baseball Savant data")
 
         return enhanced_players
