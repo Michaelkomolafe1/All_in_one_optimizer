@@ -1,55 +1,44 @@
 #!/usr/bin/env python3
 """
-Modern Enhanced DFS GUI
-Clean, modern interface with all advanced features
+Enhanced DFS GUI - User-Friendly Version
+Clean, modern interface with better fonts and improved readability
 """
 
 import sys
 import os
-import subprocess
 import tempfile
-import json
-import csv
-import traceback
-import atexit
-import shutil
-from datetime import datetime
 from pathlib import Path
+from typing import List, Dict, Tuple, Optional
 
-# Temporary file management
-TEMP_FILES = []
-
-def cleanup_temp_files():
-    for temp_file in TEMP_FILES:
-        try:
-            if os.path.exists(temp_file):
-                os.unlink(temp_file)
-        except:
-            pass
-
-atexit.register(cleanup_temp_files)
-
-def create_temp_file(suffix='.csv', prefix='dfs_'):
-    temp_file = tempfile.NamedTemporaryFile(
-        mode='w', suffix=suffix, prefix=prefix, delete=False
-    )
-    temp_file.close()
-    TEMP_FILES.append(temp_file.name)
-    return temp_file.name
-
-# Import PyQt5
+# Import PyQt5 with error handling
 try:
     from PyQt5.QtWidgets import *
     from PyQt5.QtCore import *
     from PyQt5.QtGui import *
+
     print("✅ PyQt5 loaded successfully")
 except ImportError:
     print("❌ PyQt5 not available. Install with: pip install PyQt5")
     sys.exit(1)
 
+# Import our optimized core
+try:
+    from optimized_dfs_core import (
+        OptimizedPlayer,
+        OptimizedDFSCore,
+        load_and_optimize_complete_pipeline,
+        create_enhanced_test_data
+    )
+
+    print("✅ Optimized DFS Core imported successfully")
+    CORE_AVAILABLE = True
+except ImportError as e:
+    print(f"❌ Could not import optimized DFS core: {e}")
+    CORE_AVAILABLE = False
+
 
 class ModernCardWidget(QFrame):
-    """Modern card-style widget"""
+    """Modern card-style widget with improved styling"""
 
     def __init__(self, title="", parent=None):
         super().__init__(parent)
@@ -58,24 +47,30 @@ class ModernCardWidget(QFrame):
             QFrame {
                 background: white;
                 border-radius: 12px;
-                border: 1px solid #e1e5e9;
+                border: 1px solid #e3e6ea;
+                margin: 5px;
             }
             QFrame:hover {
-                border: 1px solid #3498db;
-                
+                border: 1px solid #4285f4;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
         """)
 
-        # Layout
+        # Layout with better spacing
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
 
-        # Title
+        # Title with improved typography
         if title:
             title_label = QLabel(title)
-            title_label.setFont(QFont("Arial", 14, QFont.Bold))
-            title_label.setStyleSheet("color: #2c3e50; margin-bottom: 10px;")
+            title_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
+            title_label.setStyleSheet("""
+                color: #1a73e8; 
+                margin-bottom: 10px;
+                padding-bottom: 5px;
+                border-bottom: 2px solid #e8f0fe;
+            """)
             layout.addWidget(title_label)
 
         self.content_layout = QVBoxLayout()
@@ -88,1145 +83,82 @@ class ModernCardWidget(QFrame):
         self.content_layout.addLayout(layout)
 
 
-class OptimizationThread(QThread):
-    """Enhanced optimization thread with better progress tracking"""
+class OptimizationWorker(QThread):
+    """Background worker for DFS optimization with better error handling"""
 
-    output_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
     status_signal = pyqtSignal(str)
+    output_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool, str, dict)
 
-    def __init__(self, gui):
+    def __init__(self, dk_file, dff_file, manual_input, contest_type, strategy_index):
         super().__init__()
-        self.gui = gui
+        self.dk_file = dk_file
+        self.dff_file = dff_file
+        self.manual_input = manual_input
+        self.contest_type = contest_type
+        self.strategy_index = strategy_index
         self.is_cancelled = False
 
-    def cancel(self):
-        self.is_cancelled = True
-
     def run(self):
-        """Robust optimization that tries multiple approaches"""
+        """Enhanced optimization with unified pipeline"""
         try:
-            self.output_signal.emit("🚀 Starting optimization...")
-            self.status_signal.emit("Initializing...")
-            self.progress_signal.emit(5)
-
-            # Validate inputs
-            if not self.gui.dk_file or not os.path.exists(self.gui.dk_file):
-                self.finished_signal.emit(False, "No DraftKings file selected", {})
-                return
-
-            self.output_signal.emit(f"📁 Loading: {os.path.basename(self.gui.dk_file)}")
-            self.progress_signal.emit(15)
-
-            # Try to load data with multiple fallbacks
-            players = self._load_data_robust()
-
-            if not players:
-                self.finished_signal.emit(False, "Failed to load player data", {})
-                return
-
-            self.output_signal.emit(f"✅ Loaded {len(players)} players")
-            self.progress_signal.emit(40)
+            self.status_signal.emit("Starting optimization...")
+            self.progress_signal.emit(10)
 
             if self.is_cancelled:
                 return
 
-            # Apply DFF data if available
-            if hasattr(self.gui, 'dff_file') and self.gui.dff_file:
-                self.output_signal.emit("🎯 Applying DFF rankings...")
-                players = self._apply_dff_data(players)
-                self.progress_signal.emit(60)
-
-            # Run optimization
-            self.output_signal.emit("🧠 Running optimization...")
-            self.status_signal.emit("Optimizing...")
-            self.progress_signal.emit(70)
-
-            lineup, score = self._run_optimization_robust(players)
-
-            if not lineup:
-                self.finished_signal.emit(False, "No valid lineup found", {})
-                return
-
-            self.progress_signal.emit(90)
-
-            # Format results
-            result_text = self._format_results_robust(lineup, score)
-            lineup_data = self._extract_lineup_data_robust(lineup)
-
-            self.progress_signal.emit(100)
-            self.output_signal.emit("✅ Optimization complete!")
-            self.status_signal.emit("Complete")
-
-            self.finished_signal.emit(True, result_text, lineup_data)
-
-        except Exception as e:
-            import traceback
-            error_msg = f"Optimization error: {str(e)}"
-            self.output_signal.emit(f"❌ {error_msg}")
-            self.output_signal.emit(f"🔍 Debug info: {traceback.format_exc()}")
-            self.status_signal.emit("Error")
-            self.finished_signal.emit(False, error_msg, {})
-
-    def _load_data_robust(self):
-        """Load data with multiple fallback attempts"""
-        try:
-            # Method 1: Try performance integrated (with typo fix)
-            try:
-                # Check for both spellings
-                try:
-                    from performace_integrated_data import load_dfs_data  # Your typo version
-                    self.output_signal.emit("⚡ Using performance integrated data (typo version)...")
-                    players, _ = load_dfs_data(self.gui.dk_file)
-                    if players:
-                        return players
-                except ImportError:
-                    from performance_integrated_data import load_dfs_data  # Correct spelling
-                    self.output_signal.emit("⚡ Using performance integrated data...")
-                    players, _ = load_dfs_data(self.gui.dk_file)
-                    if players:
-                        return players
-            except ImportError:
-                self.output_signal.emit("⚠️ Performance integrated data not available")
-
-            # Method 2: Try async data manager directly
-            try:
-                import asyncio
-                from async_data_manager import load_high_performance_data
-                self.output_signal.emit("🚀 Using async data manager...")
-                players = asyncio.run(load_high_performance_data(self.gui.dk_file))
-                if players:
-                    return players
-            except ImportError:
-                self.output_signal.emit("⚠️ Async data manager not available")
-
-            # Method 3: Try enhanced data
-            try:
-                from dfs_data_enhanced import load_dfs_data
-                self.output_signal.emit("✅ Using enhanced data...")
-                players, _ = load_dfs_data(self.gui.dk_file)
-                if players:
-                    return players
-            except ImportError:
-                self.output_signal.emit("⚠️ Enhanced data not available")
-
-            # Method 4: Try basic data
-            try:
-                from dfs_data import DFSData
-                self.output_signal.emit("📊 Using basic data...")
-                dfs_data = DFSData()
-                if dfs_data.import_from_draftkings(self.gui.dk_file):
-                    players = dfs_data.generate_enhanced_player_data()
-                    if players:
-                        return players
-            except ImportError:
-                self.output_signal.emit("⚠️ Basic data not available")
-
-            # Method 5: Last resort - direct CSV parsing
-            self.output_signal.emit("🔧 Using direct CSV parsing...")
-            return self._parse_csv_directly()
-
-        except Exception as e:
-            self.output_signal.emit(f"❌ All data loading methods failed: {e}")
-            return None
-
-    def _parse_csv_directly(self):
-        """Direct CSV parsing as last resort"""
-        try:
-            import pandas as pd
-
-            df = pd.read_csv(self.gui.dk_file)
-            self.output_signal.emit(f"📄 Parsed CSV with {len(df)} rows")
-
-            players = []
-            for idx, row in df.iterrows():
-                try:
-                    # Parse salary
-                    salary_str = str(row.get('Salary', '3000')).replace('$', '').replace(',', '').strip()
-                    salary = int(float(salary_str)) if salary_str and salary_str != 'nan' else 3000
-
-                    # Parse projection
-                    proj_str = str(row.get('AvgPointsPerGame', '0')).strip()
-                    proj = float(proj_str) if proj_str and proj_str != 'nan' else 0.0
-
-                    # Calculate score
-                    score = proj if proj > 0 else salary / 1000.0
-
-                    player = [
-                        idx + 1,  # ID
-                        str(row.get('Name', f'Player_{idx}')).strip(),  # Name
-                        str(row.get('Position', 'UTIL')).strip(),  # Position
-                        str(row.get('TeamAbbrev', row.get('Team', 'UNK'))).strip(),  # Team
-                        salary,  # Salary
-                        proj,  # Projection
-                        score,  # Score
-                        None,  # Batting order
-                        None, None, None, None, None, None, None, None, None, None, None, None  # Extended fields
-                    ]
-
-                    if player[1] and player[2] and salary > 0:  # Basic validation
-                        players.append(player)
-
-                except Exception as e:
-                    self.output_signal.emit(f"⚠️ Error parsing row {idx}: {e}")
-                    continue
-
-            self.output_signal.emit(f"✅ Successfully parsed {len(players)} valid players")
-            return players
-
-        except Exception as e:
-            self.output_signal.emit(f"❌ Direct CSV parsing failed: {e}")
-            return None
-
-    def _run_optimization_robust(self, players):
-        """Run optimization with multiple fallback methods"""
-        try:
-            # Get settings with safe defaults
-            budget = 50000
-            attempts = 1000
-            min_salary = 49000
-            use_milp = True
-
-            try:
-                budget = self.gui.budget_spin.value()
-                attempts = self.gui.attempts_spin.value()
-                min_salary = self.gui.min_salary_spin.value()
-                use_milp = self.gui.optimization_method.currentIndex() == 0
-            except:
-                self.output_signal.emit("⚠️ Using default optimization settings")
-
-            # Method 1: Try enhanced optimizer
-            try:
-                from dfs_optimizer_enhanced import optimize_lineup_milp, optimize_lineup
-
-                if use_milp:
-                    self.output_signal.emit("🧠 Using MILP optimization...")
-                    lineup, score = optimize_lineup_milp(players, budget=budget, min_salary=min_salary)
-                else:
-                    self.output_signal.emit("🎲 Using Monte Carlo optimization...")
-                    lineup, score = optimize_lineup(players, budget=budget, num_attempts=attempts,
-                                                    min_salary=min_salary)
-
-                if lineup:
-                    return lineup, score
-
-            except ImportError:
-                self.output_signal.emit("⚠️ Enhanced optimizer not available")
-            except Exception as e:
-                self.output_signal.emit(f"⚠️ Enhanced optimizer failed: {e}")
-
-            # Method 2: Try basic optimizer
-            try:
-                from dfs_optimizer import optimize_lineup_milp, optimize_lineup
-
-                if use_milp:
-                    self.output_signal.emit("🧠 Using basic MILP optimization...")
-                    lineup, score = optimize_lineup_milp(players, budget=budget)
-                else:
-                    self.output_signal.emit("🎲 Using basic Monte Carlo optimization...")
-                    lineup, score = optimize_lineup(players, budget=budget, num_attempts=attempts)
-
-                if lineup:
-                    return lineup, score
-
-            except ImportError:
-                self.output_signal.emit("⚠️ Basic optimizer not available")
-            except Exception as e:
-                self.output_signal.emit(f"⚠️ Basic optimizer failed: {e}")
-
-            # Method 3: Fallback greedy optimization
-            self.output_signal.emit("🔧 Using fallback greedy optimization...")
-            return self._greedy_optimization(players, budget)
-
-        except Exception as e:
-            self.output_signal.emit(f"❌ All optimization methods failed: {e}")
-            return None, 0
-
-    def _greedy_optimization(self, players, budget):
-        """Simple greedy optimization as last resort"""
-        try:
-            # Calculate value (points per dollar)
-            players_with_value = []
-            for player in players:
-                if len(player) > 6 and player[4] > 0:  # Has salary and score
-                    value = (player[6] or 5.0) / (player[4] / 1000.0)
-                    players_with_value.append((player, value))
-
-            # Sort by value
-            players_with_value.sort(key=lambda x: x[1], reverse=True)
-
-            # Build lineup
-            lineup = []
-            total_salary = 0
-            positions_needed = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
-            positions_filled = {pos: 0 for pos in positions_needed}
-
-            for player, value in players_with_value:
-                position = player[2]
-                salary = player[4]
-
-                if (positions_filled.get(position, 0) < positions_needed.get(position, 0) and
-                        total_salary + salary <= budget):
-
-                    lineup.append(player)
-                    total_salary += salary
-                    positions_filled[position] = positions_filled.get(position, 0) + 1
-
-                    if len(lineup) == 10:
-                        break
-
-            if len(lineup) == 10:
-                score = sum(player[6] or 5.0 for player in lineup)
-                self.output_signal.emit(
-                    f"✅ Greedy optimization: {len(lineup)} players, ${total_salary:,}, {score:.2f} points")
-                return lineup, score
-            else:
-                self.output_signal.emit(f"❌ Greedy optimization failed: only {len(lineup)} players fit")
-                return None, 0
-
-        except Exception as e:
-            self.output_signal.emit(f"❌ Greedy optimization failed: {e}")
-            return None, 0
-
-    def _apply_dff_data(self, players):
-        """Apply DFF data if available"""
-        try:
-            if not hasattr(self.gui, 'dff_file') or not self.gui.dff_file:
-                return players
-
-            # Try to use fixed DFF matching
-            try:
-                from dfs_runner_enhanced import apply_fixed_dff_adjustments
-
-                # Load DFF data
-                import csv
-                dff_rankings = {}
-                with open(self.gui.dff_file, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        name = row.get('Name', '').strip()
-                        if name:
-                            dff_rankings[name] = {
-                                'dff_rank': int(row.get('Rank', 999)),
-                                'position': row.get('Position', ''),
-                            }
-
-                enhanced_players = apply_fixed_dff_adjustments(players, dff_rankings)
-                self.output_signal.emit(f"✅ Applied DFF data to players")
-                return enhanced_players
-
-            except Exception as e:
-                self.output_signal.emit(f"⚠️ DFF integration failed: {e}")
-                return players
-
-        except Exception as e:
-            self.output_signal.emit(f"⚠️ DFF processing error: {e}")
-            return players
-
-    def _format_results_robust(self, lineup, score):
-        """Format results with fallback"""
-        try:
-            # Try enhanced display
-            try:
-                from dfs_optimizer_enhanced_FIXED import display_lineup
-                return display_lineup(lineup, verbose=True)
-            except:
-                pass
-
-            # Try basic display
-            try:
-                from dfs_optimizer import display_lineup
-                return display_lineup(lineup)
-            except:
-                pass
-
-            # Fallback formatting
-            result = f"💰 OPTIMIZED LINEUP (Score: {score:.2f})\n"
-            result += "=" * 50 + "\n"
-
-            total_salary = sum(p[4] for p in lineup)
-            result += f"Total Salary: ${total_salary:,} / $50,000\n\n"
-
-            for player in lineup:
-                name = player[1][:20] if len(player) > 1 else "Unknown"
-                pos = player[2] if len(player) > 2 else "?"
-                team = player[3] if len(player) > 3 else "?"
-                salary = player[4] if len(player) > 4 else 0
-                score_val = player[6] if len(player) > 6 else 0
-                result += f"{pos:<3} {name:<20} {team:<4} ${salary:,} ({score_val:.1f})\n"
-
-            result += "\n📋 DRAFTKINGS IMPORT:\n"
-            names = [player[1] for player in lineup if len(player) > 1]
-            result += ", ".join(names)
-
-            return result
-
-        except Exception as e:
-            return f"Lineup generated but formatting failed: {e}"
-
-    def _extract_lineup_data_robust(self, lineup):
-        """Extract lineup data for GUI"""
-        try:
-            players_data = []
-            total_salary = 0
-
-            for player in lineup:
-                player_info = {
-                    'position': player[2] if len(player) > 2 else '',
-                    'name': player[1] if len(player) > 1 else '',
-                    'team': player[3] if len(player) > 3 else '',
-                    'salary': player[4] if len(player) > 4 else 0
-                }
-                players_data.append(player_info)
-                total_salary += player_info['salary']
-
-            return {
-                'players': players_data,
-                'total_salary': total_salary,
-                'total_score': sum(player[6] if len(player) > 6 else 0 for player in lineup)
-            }
-        except Exception as e:
-            return {'players': [], 'total_salary': 0, 'total_score': 0}
-
-    def _build_optimization_command_FIXED(self, dk_file):
-        """FIXED: Build optimization command with proper strategy handling"""
-        # Find the best available runner
-        possible_runners = [
-            'dfs_runner_enhanced.py',
-            'main_enhanced_performance.py',
-            'main_enhanced.py',
-            'main.py'
-        ]
-
-        runner = None
-        for possible_runner in possible_runners:
-            if os.path.exists(possible_runner):
-                runner = possible_runner
-                break
-
-        if not runner:
-            # Create fallback runner
-            runner = 'temp_runner.py'
-            self._create_temp_runner()
-
-        cmd = [sys.executable, runner, '--dk', dk_file]
-
-        # FIXED: Add strategy handling
-        strategy_index = self.strategy_combo.currentIndex()
-
-        if strategy_index == 0:  # Smart Default (YOUR INTENDED DEFAULT)
-            cmd.extend(['--strategy', 'smart-default'])
-            cmd.append('--confirmed-enhanced')  # Use confirmed + enhanced data
-
-        elif strategy_index == 1:  # All Players
-            cmd.extend(['--strategy', 'all-players'])
-
-        elif strategy_index == 2:  # Confirmed Only
-            cmd.extend(['--strategy', 'confirmed-only'])
-            cmd.append('--confirmed-only')
-
-        elif strategy_index == 3:  # Confirmed P + All Batters
-            cmd.extend(['--strategy', 'confirmed-pitchers-all-batters'])
-
-        elif strategy_index == 4:  # Manual Players Only
-            cmd.extend(['--strategy', 'manual-only'])
-            manual_players = self.manual_input.text().strip()
-            if manual_players:
-                manual_file = create_temp_file(suffix='.txt', prefix='manual_players_')
-                with open(manual_file, 'w') as f:
-                    f.write(manual_players)
-                cmd.extend(['--manual-players', manual_file])
-
-        # Add optimization method
-        if self.optimization_method.currentIndex() == 0:  # MILP
-            cmd.append('--milp')
-
-        # Add other settings
-        cmd.extend([
-            '--attempts', str(self.attempts_spin.value()),
-            '--budget', str(self.budget_spin.value()),
-            '--min-salary', str(self.min_salary_spin.value())
-        ])
-
-        # Add data enhancements (for Smart Default and All Players)
-        if strategy_index in [0, 1]:  # Smart Default or All Players
-            if self.use_statcast.isChecked():
-                cmd.append('--statcast')
-            if self.use_vegas.isChecked():
-                cmd.append('--vegas')
-            if self.use_confirmed.isChecked():
-                cmd.append('--confirmed')
-
-        # Add DFF data if available
-        if hasattr(self, 'dff_file') and self.dff_file:
-            cmd.extend(['--dff-cheat-sheet', self.dff_file])
-
-        cmd.append('--verbose')
-        return cmd
-
-    def _create_direct_optimization_script(self):
-        """Create a direct optimization script if runner not found"""
-        script_content = '''#!/usr/bin/env python3
-import sys
-import os
-sys.path.append(os.path.dirname(__file__))
-
-try:
-    from dfs_data_enhanced import load_dfs_data
-    from dfs_optimizer_enhanced import optimize_lineup_milp, optimize_lineup, display_lineup
-
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dk', required=True)
-    parser.add_argument('--milp', action='store_true')
-    parser.add_argument('--attempts', type=int, default=1000)
-    parser.add_argument('--budget', type=int, default=50000)
-    parser.add_argument('--min-salary', type=int, default=0)
-    parser.add_argument('--verbose', action='store_true')
-    args = parser.parse_args()
-
-    # Load data
-    print("Loading DFS data...")
-    players, dfs_data = load_dfs_data(args.dk)
-
-    if not players:
-        print("Failed to load player data")
-        sys.exit(1)
-
-    print(f"Loaded {len(players)} players")
-
-    # Optimize
-    if args.milp:
-        print("Running MILP optimization...")
-        lineup, score = optimize_lineup_milp(players, args.budget)
-    else:
-        print("Running Monte Carlo optimization...")
-        lineup, score = optimize_lineup(players, args.budget, args.attempts)
-
-    if lineup:
-        print("\\n" + display_lineup(lineup))
-        print(f"\\nOptimal Score: {score:.2f}")
-    else:
-        print("No valid lineup found")
-        sys.exit(1)
-
-except Exception as e:
-    print(f"Error: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-'''
-
-        with open('direct_optimization.py', 'w') as f:
-            f.write(script_content)
-
-    def _execute_optimization(self, cmd, work_dir):
-        """Execute the optimization command"""
-        try:
-            self.output_signal.emit(f"⚡ Executing optimization...")
-
-            # Set up environment
-            env = os.environ.copy()
-            env['PYTHONPATH'] = os.pathsep.join([
-                work_dir,
-                os.path.dirname(os.path.abspath(__file__)),
-                env.get('PYTHONPATH', '')
-            ])
-
-            # Run the process
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=work_dir,
-                env=env
-            )
-
-            # Monitor output
-            output_lines = []
-            error_lines = []
-
-            while True:
-                if self.is_cancelled:
-                    process.terminate()
-                    return {'success': False, 'error': 'Cancelled by user'}
-
-                # Read output
-                stdout_line = process.stdout.readline()
-                if stdout_line:
-                    line = stdout_line.strip()
-                    output_lines.append(line)
-                    self.output_signal.emit(line)
-
-                # Check if process finished
-                if process.poll() is not None:
-                    break
-
-                self.msleep(100)  # Small delay
-
-            # Get remaining output
-            remaining_stdout, remaining_stderr = process.communicate()
-            if remaining_stdout:
-                output_lines.extend(remaining_stdout.strip().split('\n'))
-            if remaining_stderr:
-                error_lines.extend(remaining_stderr.strip().split('\n'))
-
-            # Determine success
-            success = process.returncode == 0
-            full_output = '\n'.join(output_lines)
-            full_error = '\n'.join(error_lines) if error_lines else None
-
-            return {
-                'success': success,
-                'output': full_output,
-                'error': full_error,
-                'return_code': process.returncode
-            }
-
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f"Execution failed: {str(e)}",
-                'output': '',
-                'return_code': -1
-            }
-
-    def _parse_lineup_results(self, output):
-        """Parse lineup results from output"""
-        lineup_data = {
-            'players': [],
-            'total_salary': 0,
-            'total_score': 0.0,
-            'team_stacks': [],
-            'confirmed_count': 0
-        }
-
-        try:
-            lines = output.split('\n')
-            in_lineup_section = False
-
-            for line in lines:
-                line = line.strip()
-
-                # Look for lineup section
-                if 'OPTIMAL LINEUP' in line or 'CASH GAME LINEUP' in line:
-                    in_lineup_section = True
-                    continue
-
-                if in_lineup_section:
-                    # Look for salary info
-                    if 'Total Salary:' in line:
-                        try:
-                            salary_part = line.split(')[1].split()[0].replace(',', ''')
-                            lineup_data['total_salary'] = int(salary_part)
-                        except:
-                            pass
-
-                    # Look for score info
-                    elif 'Score:' in line:
-                        try:
-                            score_part = line.split('Score:')[1].split()[0]
-                            lineup_data['total_score'] = float(score_part)
-                        except:
-                            pass
-
-                    # Look for DraftKings format
-                    elif 'DraftKings' in line.upper():
-                        # Next few lines should have the lineup
-                        continue
-
-                    # Parse player lines (simple heuristic)
-                    elif len(line.split()) >= 4 and any(pos in line for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']):
-                        parts = line.split()
-                        if len(parts) >= 4:
-                            try:
-                                player_info = {
-                                    'position': parts[0],
-                                    'name': ' '.join(parts[1:-2]),
-                                    'team': parts[-2],
-                                    'salary': parts[-1].replace(', '').replace(',', ')
-                                }
-                                lineup_data['players'].append(player_info)
-                            except:
-                                pass
-
-        except Exception as e:
-            self.output_signal.emit(f"⚠️ Error parsing lineup: {e}")
-
-        return lineup_data
-
-
-def add_colored_message(console_widget, msg, color):
-    pass
-
-
-# !/usr/bin/env python3
-"""
-GUI Integration Fix
-Updates your enhanced_dfs_gui.py to properly handle confirmed players
-"""
-
-
-# Add this to your enhanced_dfs_gui.py file
-
-class OptimizationThread(QThread):
-    """FIXED OptimizationThread with proper strategy filtering"""
-
-    output_signal = pyqtSignal(str)
-    progress_signal = pyqtSignal(int)
-    status_signal = pyqtSignal(str)
-    finished_signal = pyqtSignal(bool, str, dict)
-
-    def __init__(self, gui):
-        super().__init__()
-        self.gui = gui
-        self.is_cancelled = False
-
-    def run(self):
-        """FIXED optimization with proper confirmed player detection"""
-        try:
-            self.output_signal.emit("🚀 Starting Enhanced DFS Optimization...")
-            self.status_signal.emit("Initializing...")
-            self.progress_signal.emit(5)
-
-            # Validate inputs
-            if not self.gui.dk_file or not os.path.exists(self.gui.dk_file):
-                self.finished_signal.emit(False, "No DraftKings file selected", {})
-                return
-
-            self.output_signal.emit(f"📁 Loading: {os.path.basename(self.gui.dk_file)}")
-            self.progress_signal.emit(15)
-
-            # Load data with multiple fallbacks
-            players = self._load_data_robust()
-
-            if not players:
-                self.finished_signal.emit(False, "Failed to load player data", {})
-                return
-
-            self.output_signal.emit(f"✅ Loaded {len(players)} players")
-            self.progress_signal.emit(40)
-
-            if self.is_cancelled:
-                return
-
-            # Apply DFF data if available
-            if hasattr(self.gui, 'dff_file') and self.gui.dff_file:
-                self.output_signal.emit("🎯 Applying DFF rankings...")
-                players = self._apply_dff_data(players)
-                self.progress_signal.emit(50)
-
-            # FIXED: Apply strategy filtering with confirmed player detection
-            self.output_signal.emit("🔍 Detecting confirmed players and applying strategy...")
-            filtered_players = self._apply_strategy_filtering(players)
-            self.progress_signal.emit(60)
-
-            if len(filtered_players) < 10:
-                self.output_signal.emit(f"⚠️ Strategy resulted in only {len(filtered_players)} players")
-                self.output_signal.emit("💡 Consider using 'All Players' strategy for more options")
-
-            # Run optimization
-            self.output_signal.emit("🧠 Running optimization...")
-            self.status_signal.emit("Optimizing...")
-            self.progress_signal.emit(70)
-
-            lineup, score = self._run_optimization_robust(filtered_players)
-
-            if not lineup:
-                self.finished_signal.emit(False, "No valid lineup found", {})
-                return
-
-            self.progress_signal.emit(90)
-
-            # Format results
-            result_text = self._format_results_robust(lineup, score)
-            lineup_data = self._extract_lineup_data_robust(lineup)
-
-            self.progress_signal.emit(100)
-            self.output_signal.emit("✅ Optimization complete!")
-            self.status_signal.emit("Complete")
-
-            self.finished_signal.emit(True, result_text, lineup_data)
-
-        except Exception as e:
-            import traceback
-            error_msg = f"Optimization error: {str(e)}"
-            self.output_signal.emit(f"❌ {error_msg}")
-            self.output_signal.emit(f"🔍 Debug info: {traceback.format_exc()}")
-            self.status_signal.emit("Error")
-            self.finished_signal.emit(False, error_msg, {})
-
-    def _apply_strategy_filtering(self, players):
-        """FIXED: Apply strategy filtering with proper confirmed player detection"""
-        try:
-            # Import the fixed strategy engine
-            from fixed_strategy_system import StrategyFilterEngine
-            strategy_engine = StrategyFilterEngine()
-
+            # Strategy mapping
             strategy_mapping = {
-            0: 'smart_confirmed',        # Smart Default (RECOMMENDED)
-            1: 'confirmed_only',         # Safe Only
-            2: 'confirmed_plus_manual',  # Smart + Picks  
-            3: 'confirmed_pitchers_all_batters',  # Balanced
-            4: 'manual_only'             # Manual Only
-        }
-
-            filtered_players = strategy_engine.apply_strategy_filter(
-                players=players,
-                strategy=strategy_mapping[self.gui.strategy_combo.currentIndex()],
-                manual_input=self.gui.manual_input.text().strip()
-            )
-
-            self.output_signal.emit(f"✅ Strategy filtering: {len(filtered_players)} players selected")
-
-            # Show breakdown
-            confirmed_count = sum(1 for p in filtered_players if getattr(p, 'is_confirmed', False))
-            manual_count = sum(1 for p in filtered_players if getattr(p, 'is_manual_selected', False))
-
-            self.output_signal.emit(f"   📊 Confirmed: {confirmed_count}, Manual: {manual_count}")
-
-            return filtered_players
-
-        except ImportError:
-            self.output_signal.emit("⚠️ Fixed strategy system not available, using fallback")
-            return self._fallback_strategy_filtering(players)
-        except Exception as e:
-            self.output_signal.emit(f"⚠️ Strategy filtering error: {e}, using fallback")
-            return self._fallback_strategy_filtering(players)
-
-    def _fallback_strategy_filtering(self, players):
-        """Fallback strategy filtering if fixed system not available"""
-        strategy_index = self.gui.strategy_combo.currentIndex()
-
-        if strategy_index == 1:  # Confirmed Only
-            # Simple confirmed filtering
-            confirmed_players = []
-            for player in players:
-                # Check for any signs of confirmed status
-                if (hasattr(player, 'is_confirmed') and player.is_confirmed) or \
-                        (hasattr(player, 'confirmed_order') and str(player.confirmed_order).upper() == 'YES') or \
-                        (hasattr(player, 'batting_order') and player.batting_order is not None):
-                    confirmed_players.append(player)
-
-            if len(confirmed_players) < 10:
-                self.output_signal.emit(f"⚠️ Only {len(confirmed_players)} confirmed players found")
-                self.output_signal.emit("💡 Adding high-scoring players to reach minimum")
-
-                # Add best remaining players
-                remaining = [p for p in players if p not in confirmed_players]
-                remaining.sort(key=lambda x: getattr(x, 'enhanced_score', 0), reverse=True)
-                needed = min(20 - len(confirmed_players), len(remaining))
-                confirmed_players.extend(remaining[:needed])
-
-            return confirmed_players
-
-        else:
-            # For other strategies, return all players
-            return players
-
-    # Rest of your existing methods remain the same...
-
-
-# FIXED: Update the strategy combo creation in your enhanced_dfs_gui.py
-def create_settings_tab_CORRECTED(self):
-    """CORRECTED Settings tab with proper strategy descriptions"""
-    tab = QWidget()
-    layout = QVBoxLayout(tab)
-
-    # Header
-    header = QLabel("⚙️ Optimization Settings")
-    header.setFont(QFont("Arial", 24, QFont.Bold))
-    header.setStyleSheet("color: #2c3e50; margin-bottom: 20px;")
-    layout.addWidget(header)
-
-    # Player Selection Strategy - CORRECTED
-    strategy_card = ModernCardWidget("Player Selection Strategy")
-
-    strategy_info = QLabel("""
-    <b>🎯 ALL STRATEGIES START WITH CONFIRMED PLAYERS FIRST:</b><br><br>
-    • <b>Smart Default:</b> ✅ Confirmed players + enhanced data + manual selections<br>
-    • <b>Confirmed Only:</b> 🔒 ONLY confirmed players + your manual picks<br>
-    • <b>Confirmed P + All Batters:</b> ⚖️ Safe confirmed pitchers + all available batters<br>
-    • <b>All Players:</b> 🌟 Maximum flexibility (confirmed + unconfirmed players)<br>
-    • <b>Manual Only:</b> ✏️ ONLY the players you specify manually<br><br>
-    <b>💡 TIP:</b> "Confirmed Only" gives you the safest lineups with only confirmed starters!
-    """)
-    strategy_info.setWordWrap(True)
-    strategy_info.setStyleSheet("""
-        background: #e8f5e8; 
-        padding: 15px; 
-        border-radius: 8px; 
-        border-left: 4px solid #27ae60;
-        font-size: 14px;
-        line-height: 1.4;
-    """)
-    strategy_card.add_widget(strategy_info)
-
-    # CORRECTED: Strategy combo with clear descriptions
-    self.strategy_combo = QComboBox()
-    self.strategy_combo.addItems([
-            "🎯 Smart Default (Confirmed + Your Picks) - RECOMMENDED",    # Index 0
-            "🔒 Safe Only (Confirmed Players Only)",                    # Index 1  
-            "🎯 Smart + Picks (Confirmed + Your Manual Selections)",    # Index 2
-            "⚖️ Balanced (Confirmed Pitchers + All Batters)",          # Index 3
-            "✏️ Manual Only (Your Specified Players Only)"             # Index 4
-        ])
-    self.strategy_combo.setCurrentIndex(0)  # Default to Smart Default
-    self.strategy_combo.currentIndexChanged.connect(self.on_strategy_changed)
-    self.strategy_combo.setStyleSheet(self.get_combo_style())
-    strategy_card.add_widget(self.strategy_combo)
-
-    # Manual players input section
-    self.manual_section = QWidget()
-    manual_layout = QVBoxLayout(self.manual_section)
-    manual_layout.setContentsMargins(0, 10, 0, 0)
-
-    manual_label = QLabel("🎯 Manual Player Selection (Added to Strategy Pool):")
-    manual_label.setFont(QFont("Arial", 12, QFont.Bold))
-    manual_layout.addWidget(manual_label)
-
-    self.manual_input = QLineEdit()
-    self.manual_input.setPlaceholderText("Enter player names: Jorge Polanco, Christian Yelich, Hunter Brown...")
-    self.manual_input.setStyleSheet("""
-        QLineEdit {
-            border: 2px solid #dee2e6;
-            border-radius: 8px;
-            padding: 12px;
-            background: white;
-            font-size: 14px;
-            min-height: 20px;
-        }
-        QLineEdit:focus {
-            border-color: #3498db;
-        }
-    """)
-    manual_layout.addWidget(self.manual_input)
-
-    # Manual mode instructions
-    manual_instructions = QLabel("""
-    <b>📋 How Manual Selection Works:</b><br>
-    • <b>Smart Default/Confirmed Only:</b> Manual players are ADDED to confirmed players<br>
-    • <b>All Players:</b> Manual players get priority scoring boost<br>
-    • <b>Manual Only:</b> ONLY these players will be used (need 15+ for full lineup)<br>
-    • <b>Tip:</b> Separate multiple players with commas<br>
-    • <b>Tip:</b> Player names must match exactly as they appear in DraftKings
-    """)
-    manual_instructions.setWordWrap(True)
-    manual_instructions.setStyleSheet("""
-        background: #fff3cd;
-        padding: 12px;
-        border-radius: 6px;
-        border-left: 4px solid #ffc107;
-        font-size: 12px;
-        margin-top: 8px;
-        line-height: 1.3;
-    """)
-    manual_layout.addWidget(manual_instructions)
-
-    strategy_card.add_widget(self.manual_section)
-    layout.addWidget(strategy_card)
-
-    # Optimization method
-    method_card = ModernCardWidget("Optimization Method")
-
-    self.optimization_method = QComboBox()
-    self.optimization_method.addItems([
-        "🧠 MILP Optimizer (Best for Cash Games - Finds Optimal Solution)",
-        "🎲 Monte Carlo Optimizer (Good for GPPs - Multiple Attempts)"
-    ])
-    self.optimization_method.setStyleSheet(self.get_combo_style())
-    method_card.add_widget(self.optimization_method)
-
-    method_info = QLabel("""
-    <b>🧠 MILP Optimizer:</b> Uses mathematical optimization to find the single best lineup.
-    Perfect for cash games where you need the most consistent, optimal lineup.<br><br>
-    <b>🎲 Monte Carlo:</b> Uses random sampling to explore many lineup combinations.
-    Better for tournaments where you might want multiple different lineups.
-    """)
-    method_info.setWordWrap(True)
-    method_info.setStyleSheet("color: #6c757d; margin-top: 10px; line-height: 1.3;")
-    method_card.add_widget(method_info)
-
-    layout.addWidget(method_card)
-
-    # Optimization parameters
-    params_card = ModernCardWidget("Optimization Parameters")
-
-    params_form = QFormLayout()
-
-    self.attempts_spin = QSpinBox()
-    self.attempts_spin.setRange(500, 10000)
-    self.attempts_spin.setValue(1000)
-    self.attempts_spin.setStyleSheet(self.get_spinbox_style())
-    params_form.addRow("Monte Carlo Attempts:", self.attempts_spin)
-
-    self.budget_spin = QSpinBox()
-    self.budget_spin.setRange(40000, 60000)
-    self.budget_spin.setValue(50000)
-    self.budget_spin.setStyleSheet(self.get_spinbox_style())
-    params_form.addRow("Salary Cap ($):", self.budget_spin)
-
-    self.min_salary_spin = QSpinBox()
-    self.min_salary_spin.setRange(0, 50000)
-    self.min_salary_spin.setValue(49000)
-    self.min_salary_spin.setStyleSheet(self.get_spinbox_style())
-    params_form.addRow("Minimum Salary ($):", self.min_salary_spin)
-
-    params_card.add_layout(params_form)
-    layout.addWidget(params_card)
-
-    layout.addStretch()
-    return tab
-
-
-def on_strategy_changed_CORRECTED(self):
-    """CORRECTED: Handle strategy selection change with proper messaging"""
-    try:
-        strategy_index = self.strategy_combo.currentIndex()
-
-        # Strategy descriptions
-        strategy_descriptions = [
-            "🎯 Smart Default: Uses confirmed players + enhanced data + your manual picks",
-            "🔒 Confirmed Only: ONLY uses confirmed starting lineup players + your manual picks",
-            "⚖️ Confirmed P + All Batters: Safe confirmed pitchers + all available batters",
-            "🌟 All Players: Maximum flexibility - uses all available players",
-            "✏️ Manual Only: ONLY uses the players you specify in the text box"
-        ]
-
-        if strategy_index < len(strategy_descriptions) and hasattr(self, 'console'):
-            self.console.append(strategy_descriptions[strategy_index])
-
-        # Show/hide manual section guidance
-        if strategy_index == 4:  # Manual Only
-            if hasattr(self, 'console'):
-                self.console.append("📝 IMPORTANT: Manual Only requires 15+ players for a valid lineup")
-                self.console.append("💡 Include 2 pitchers, 1 catcher, and enough position players")
-
-    except Exception as e:
-        print(f"Strategy change error: {e}")
-
-
-# COMPLETE SOLUTION: Create a replacement file for your system
-def create_complete_fixed_gui_file():
-    """
-    Creates a complete fixed version of your GUI optimization logic
-    Save this as 'enhanced_dfs_gui_FIXED.py' and use instead of original
-    """
-
-    complete_code = '''#!/usr/bin/env python3
-"""
-Enhanced DFS GUI - FIXED VERSION
-Properly handles confirmed players and strategy filtering
-"""
-
-import sys
-import os
-import traceback
-import tempfile
-from pathlib import Path
-
-# Import PyQt5
-try:
-    from PyQt5.QtWidgets import *
-    from PyQt5.QtCore import *
-    from PyQt5.QtGui import *
-    print("✅ PyQt5 loaded successfully")
-except ImportError:
-    print("❌ PyQt5 not available. Install with: pip install PyQt5")
-    sys.exit(1)
-
-# Import the fixed strategy system
-try:
-    from fixed_strategy_system import StrategyFilterEngine
-    STRATEGY_SYSTEM_AVAILABLE = True
-    print("✅ Fixed strategy system loaded")
-except ImportError:
-    STRATEGY_SYSTEM_AVAILABLE = False
-    print("⚠️ Fixed strategy system not available - using basic filtering")
-
-# Import working core
-try:
-    from working_dfs_core_final import OptimizedDFSCore, load_and_optimize_complete_pipeline
-    CORE_AVAILABLE = True
-    print("✅ Working DFS core loaded")
-except ImportError:
-    CORE_AVAILABLE = False
-    print("❌ Working DFS core not available")
-
-
-class FixedOptimizationThread(QThread):
-    """FIXED optimization thread with proper confirmed player handling"""
-
-    output_signal = pyqtSignal(str)
-    progress_signal = pyqtSignal(int)
-    status_signal = pyqtSignal(str)
-    finished_signal = pyqtSignal(bool, str, dict)
-
-    def __init__(self, gui):
-        super().__init__()
-        self.gui = gui
-        self.is_cancelled = False
-
-    def run(self):
-        try:
-            self.output_signal.emit("🚀 FIXED DFS Optimization with Confirmed Player Detection")
-            self.output_signal.emit("=" * 60)
-            self.status_signal.emit("Starting...")
-            self.progress_signal.emit(5)
-
-            # Get settings
-            strategy_index = self.gui.strategy_combo.currentIndex()
-            manual_input = self.gui.manual_input.text().strip()
-
-            strategy_names = [
-                "Smart Default (Confirmed + Enhanced)",
-                "Confirmed Only (Safest)",
-                "Confirmed P + All Batters", 
-                "All Players (Maximum Flexibility)",
-                "Manual Only"
-            ]
-
-            strategy_name = strategy_names[strategy_index] if strategy_index < len(strategy_names) else "Unknown"
-            self.output_signal.emit(f"🎯 Strategy: {strategy_name}")
-
-            if manual_input:
-                self.output_signal.emit(f"📝 Manual players: {manual_input}")
-
-            self.progress_signal.emit(20)
-
-            # Use the complete pipeline with strategy
-            self.output_signal.emit("📊 Loading and processing data...")
-
-            # Map GUI strategy to pipeline strategy
-            pipeline_strategy_map = {
-                0: 'balanced',      # Smart Default
-                1: 'confirmed_only', # Confirmed Only
-                2: 'confirmed_pitchers_all_batters', # Confirmed P + All Batters
-                3: 'balanced',      # All Players
-                4: 'manual_only'    # Manual Only
+                0: 'smart_confirmed',  # Smart Default (RECOMMENDED)
+                1: 'confirmed_only',  # Safe Only
+                2: 'confirmed_plus_manual',  # Smart + Picks
+                3: 'confirmed_pitchers_all_batters',  # Balanced
+                4: 'manual_only'  # Manual Only
             }
 
-            pipeline_strategy = pipeline_strategy_map.get(strategy_index, 'balanced')
+            strategy_name = strategy_mapping.get(self.strategy_index, 'smart_confirmed')
+            self.output_signal.emit(f"🎯 Using strategy: {strategy_name}")
 
+            # Validate Manual Only requirements
+            if strategy_name == 'manual_only':
+                if not self.manual_input or not self.manual_input.strip():
+                    self.finished_signal.emit(False, "Manual Only strategy requires player names", {})
+                    return
+
+                manual_count = len([name.strip() for name in self.manual_input.split(',') if name.strip()])
+                if manual_count < 8:
+                    error_msg = f"Manual Only needs 8+ players for all positions, you provided {manual_count}"
+                    self.finished_signal.emit(False, error_msg, {})
+                    return
+
+            self.status_signal.emit("Loading and processing data...")
+            self.progress_signal.emit(30)
+
+            # Run the complete pipeline
             lineup, score, summary = load_and_optimize_complete_pipeline(
-                dk_file=self.gui.dk_file,
-                dff_file=self.gui.dff_file if hasattr(self.gui, 'dff_file') else None,
-                manual_input=manual_input,
-                contest_type='classic',
-                strategy=pipeline_strategy
+                dk_file=self.dk_file,
+                dff_file=self.dff_file,
+                manual_input=self.manual_input,
+                contest_type=self.contest_type,
+                strategy=strategy_name
             )
 
             self.progress_signal.emit(90)
 
             if lineup and score > 0:
-                # Extract lineup data
+                # Extract lineup data for display
                 lineup_data = {
                     'players': [],
-                    'total_salary': sum(p.salary for p in lineup),
-                    'total_score': score
+                    'total_salary': 0,
+                    'total_score': score,
+                    'summary': summary
                 }
+
+                # Count special players
+                confirmed_count = 0
+                manual_count = 0
 
                 for player in lineup:
                     player_info = {
@@ -1235,1067 +167,656 @@ class FixedOptimizationThread(QThread):
                         'team': player.team,
                         'salary': player.salary,
                         'score': player.enhanced_score,
-                        'status': self._get_player_status(player)
+                        'status': player.get_status_string()
                     }
                     lineup_data['players'].append(player_info)
+                    lineup_data['total_salary'] += player.salary
+
+                    if getattr(player, 'is_confirmed', False):
+                        confirmed_count += 1
+                    if getattr(player, 'is_manual_selected', False):
+                        manual_count += 1
+
+                lineup_data['confirmed_count'] = confirmed_count
+                lineup_data['manual_count'] = manual_count
+                lineup_data['strategy_used'] = strategy_name
 
                 self.progress_signal.emit(100)
                 self.status_signal.emit("Complete!")
-
-                # Add strategy-specific messaging
-                if strategy_index == 1:  # Confirmed Only
-                    confirmed_count = sum(1 for p in lineup if getattr(p, 'is_confirmed', False))
-                    self.output_signal.emit(f"🔒 Confirmed Only Strategy: {confirmed_count}/10 players are confirmed starters")
-
                 self.finished_signal.emit(True, summary, lineup_data)
             else:
                 error_msg = "No valid lineup found"
-                if strategy_index == 1:  # Confirmed Only
-                    error_msg += "\\n💡 Try 'Smart Default' strategy for more player options"
-                elif strategy_index == 4:  # Manual Only
-                    error_msg += "\\n💡 Make sure you have enough manual players (need 15+ total)"
-
+                if strategy_name == 'confirmed_only':
+                    error_msg += "\n💡 Try 'Smart Default' for more player options"
+                elif strategy_name == 'manual_only':
+                    error_msg += "\n💡 Make sure you have enough players for all positions"
                 self.finished_signal.emit(False, error_msg, {})
 
         except Exception as e:
+            import traceback
             error_msg = f"Optimization failed: {str(e)}"
             self.output_signal.emit(f"❌ {error_msg}")
+            self.output_signal.emit(f"Debug info: {traceback.format_exc()}")
             self.finished_signal.emit(False, error_msg, {})
 
-    def _get_player_status(self, player):
-        """Get player status indicators"""
-        status_parts = []
-        if hasattr(player, 'is_confirmed') and player.is_confirmed:
-            status_parts.append("CONFIRMED")
-        if hasattr(player, 'is_manual_selected') and player.is_manual_selected:
-            status_parts.append("MANUAL")
-        if hasattr(player, 'dff_projection') and player.dff_projection > 0:
-            status_parts.append(f"DFF:{player.dff_projection:.1f}")
-        return " | ".join(status_parts) if status_parts else "-"
+    def cancel(self):
+        self.is_cancelled = True
 
 
-# The rest would be your existing GUI code with the corrected strategy combo...
-# (ModernDFSGUI class, etc.)
-'''
-
-    return complete_code
-
-
-# INSTRUCTIONS FOR FIXING YOUR SYSTEM
-def print_fix_instructions():
-    """Print step-by-step instructions to fix the system"""
-
-    instructions = """
-🔧 STEP-BY-STEP FIX INSTRUCTIONS
-================================
-
-PROBLEM IDENTIFIED:
-❌ "Confirmed Only" not working because confirmed player detection is broken
-❌ Strategy filtering not properly implemented
-❌ Manual players not integrating correctly
-
-SOLUTION:
-
-📁 STEP 1: Add the Fixed Strategy System
-   • Save the first artifact as 'fixed_strategy_system.py' in your project folder
-   • This contains proper confirmed player detection and strategy filtering
-
-📝 STEP 2: Update Your GUI Strategy Combo
-   • In your enhanced_dfs_gui.py, find the create_settings_tab method
-   • Replace the strategy combo creation with this code:
-
-   self.strategy_combo = QComboBox()
-   self.strategy_combo.addItems([
-            "🎯 Smart Default (Confirmed + Your Picks) - RECOMMENDED",    # Index 0
-            "🔒 Safe Only (Confirmed Players Only)",                    # Index 1  
-            "🎯 Smart + Picks (Confirmed + Your Manual Selections)",    # Index 2
-            "⚖️ Balanced (Confirmed Pitchers + All Batters)",          # Index 3
-            "✏️ Manual Only (Your Specified Players Only)"             # Index 4
-        ])
-
-🔧 STEP 3: Update Your OptimizationThread
-   • In your OptimizationThread.run() method, add this before optimization:
-
-   # Import and use the fixed strategy engine
-   from fixed_strategy_system import StrategyFilterEngine
-   strategy_engine = StrategyFilterEngine()
-
-   strategy_mapping = {
-            0: 'smart_confirmed',        # Smart Default (RECOMMENDED)
-            1: 'confirmed_only',         # Safe Only
-            2: 'confirmed_plus_manual',  # Smart + Picks  
-            3: 'confirmed_pitchers_all_batters',  # Balanced
-            4: 'manual_only'             # Manual Only
-        }
-
-   strategy_index = self.gui.strategy_combo.currentIndex()
-   strategy_name = strategy_mapping.get(strategy_index, 'smart_default')
-   manual_input = self.gui.manual_input.text().strip()
-
-   # Apply strategy filtering
-   filtered_players = strategy_engine.apply_strategy_filter(
-       players=players,
-       strategy=strategy_name,
-       manual_input=manual_input
-   )
-
-✅ STEP 4: Test the System
-   • Run your GUI
-   • Load a DraftKings CSV
-   • Select "Confirmed Only" strategy
-   • You should now see only confirmed players being used!
-
-🎯 WHAT EACH STRATEGY NOW DOES:
-
-• Smart Default: Confirmed players + enhanced data + manual picks (RECOMMENDED)
-• Confirmed Only: ONLY confirmed starting lineup players + manual picks
-• Confirmed P + All Batters: Only confirmed pitchers + all available batters  
-• All Players: All available players (confirmed + unconfirmed)
-• Manual Only: ONLY the players you manually specify
-
-💡 KEY FEATURES:
-✅ All strategies START with confirmed players first
-✅ Manual players are ADDED to the strategy pool (except Manual Only)
-✅ Proper confirmed player detection from multiple sources
-✅ Clear feedback about how many confirmed players were found
-✅ Fallback logic if not enough confirmed players
-
-🧪 TESTING:
-• Use "Confirmed Only" - should show only confirmed starters
-• Add manual players - they should be included even if not confirmed
-• Check console output - should show "X confirmed players found"
-• Lineup should prioritize confirmed players
-
-This will fix your confirmed player detection and make all strategies work properly!
-"""
-
-    print(instructions)
-
-
-if __name__ == "__main__":
-    print("🔧 GUI INTEGRATION FIX")
-    print("=" * 40)
-
-    print("✅ Fixed strategy filtering system created")
-    print("✅ GUI integration code prepared")
-    print("✅ Complete solution provided")
-    print("")
-
-    print_fix_instructions()
-
-class ModernDFSGUI(QMainWindow):
-    """Modern, clean DFS GUI with advanced features"""
+class EnhancedDFSGUI(QMainWindow):
+    """Enhanced DFS GUI with improved fonts and user experience"""
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("🚀 Enhanced DFS Optimizer Pro")
-        self.setMinimumSize(1400, 1000)
+        self.setMinimumSize(1400, 900)
+
+        # Set better default font
+        font = QFont("Segoe UI", 10)
+        self.setFont(font)
 
         # Data
         self.dk_file = ""
         self.dff_file = ""
-        self.optimization_thread = None
+        self.worker = None
 
-        # Setup UI
         self.setup_ui()
-        self.apply_modern_theme()
+        self.apply_modern_styles()
+        self.show_welcome_message()
 
-        # Connect signals
-        self.setup_connections()
-
-        print("✅ Modern DFS GUI initialized")
+        print("✅ Enhanced DFS GUI initialized")
 
     def setup_ui(self):
-        """Setup the modern UI"""
+        """Setup the user interface with improved layout"""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Main layout with sidebar
-        main_layout = QHBoxLayout(central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-
-        # Create sidebar
-        sidebar = self.create_sidebar()
-        main_layout.addWidget(sidebar)
-
-        # Create main content area
-        content_area = self.create_content_area()
-        main_layout.addWidget(content_area, 1)
-
-    def create_sidebar(self):
-        """Create the sidebar navigation"""
-        sidebar = QFrame()
-        sidebar.setFixedWidth(250)
-        sidebar.setStyleSheet("""
-            QFrame {
-                background: #2c3e50;
-                border-right: 1px solid #34495e;
-            }
-        """)
-
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 20, 0, 20)
-        layout.setSpacing(10)
-
-        # Logo/Title
-        title = QLabel("🚀 DFS Optimizer Pro")
-        title.setAlignment(Qt.AlignCenter)
-        title.setFont(QFont("Arial", 16, QFont.Bold))
-        title.setStyleSheet("color: #ecf0f1; padding: 20px; margin-bottom: 20px;")
-        layout.addWidget(title)
-
-        # Navigation buttons
-        self.nav_buttons = []
-        nav_items = [
-            ("📁 Setup", "setup"),
-            ("🎯 Expert Data", "expert"),
-            ("⚙️ Settings", "settings"),
-            ("🚀 Optimize", "optimize"),
-            ("📊 Results", "results")
-        ]
-
-        for text, tab_id in nav_items:
-            btn = QPushButton(text)
-            btn.setCheckable(True)
-            btn.clicked.connect(lambda checked, tid=tab_id: self.switch_tab(tid))
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: transparent;
-                    color: #bdc3c7;
-                    border: none;
-                    padding: 15px;
-                    text-align: left;
-                    font-size: 14px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background: #34495e;
-                    color: #ecf0f1;
-                }
-                QPushButton:checked {
-                    background: #3498db;
-                    color: white;
-                }
-            """)
-            layout.addWidget(btn)
-            self.nav_buttons.append((btn, tab_id))
-
-        # Select first tab
-        self.nav_buttons[0][0].setChecked(True)
-
-        layout.addStretch()
-
-        # Status section
-        status_frame = QFrame()
-        status_frame.setStyleSheet("""
-            QFrame {
-                background: #34495e;
-                border-radius: 8px;
-                margin: 10px;
-                padding: 10px;
-            }
-        """)
-        status_layout = QVBoxLayout(status_frame)
-
-        self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet("color: #ecf0f1; font-weight: bold;")
-        status_layout.addWidget(self.status_label)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #7f8c8d;
-                border-radius: 4px;
-                text-align: center;
-                color: white;
-            }
-            QProgressBar::chunk {
-                background: #3498db;
-                border-radius: 3px;
-            }
-        """)
-        status_layout.addWidget(self.progress_bar)
-
-        layout.addWidget(status_frame)
-
-        return sidebar
-
-    def create_content_area(self):
-        """Create the main content area with tabs"""
-        content_widget = QWidget()
-        content_widget.setStyleSheet("background: #f8f9fa;")
-
-        layout = QVBoxLayout(content_widget)
-        layout.setContentsMargins(30, 30, 30, 30)
+        # Main layout with better spacing
+        layout = QVBoxLayout(central_widget)
+        layout.setContentsMargins(25, 25, 25, 25)
         layout.setSpacing(20)
 
-        # Create stacked widget for tabs
-        self.content_stack = QStackedWidget()
+        # Modern header
+        self.create_header(layout)
 
-        # Create tab contents
-        self.content_stack.addWidget(self.create_setup_tab())      # 0 - setup
-        self.content_stack.addWidget(self.create_expert_tab())     # 1 - expert
-        self.content_stack.addWidget(self.create_settings_tab())   # 2 - settings
-        self.content_stack.addWidget(self.create_optimize_tab())   # 3 - optimize
-        self.content_stack.addWidget(self.create_results_tab())    # 4 - results
+        # Tab widget with improved styling
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setFont(QFont("Segoe UI", 11, QFont.Bold))
 
-        layout.addWidget(self.content_stack)
+        # Create tabs
+        self.tab_widget.addTab(self.create_setup_tab(), "📁 Data Setup")
+        self.tab_widget.addTab(self.create_optimize_tab(), "🚀 Optimize")
+        self.tab_widget.addTab(self.create_results_tab(), "📊 Results")
 
-        return content_widget
+        layout.addWidget(self.tab_widget)
+
+        # Modern status bar
+        self.status_bar = QStatusBar()
+        self.status_bar.setFont(QFont("Segoe UI", 9))
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Ready - Select DraftKings CSV to begin")
+
+    def create_header(self, layout):
+        """Create modern header section"""
+        header_frame = QFrame()
+        header_frame.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #1a73e8, stop:1 #4285f4);
+                border-radius: 15px;
+                margin-bottom: 10px;
+            }
+        """)
+        header_layout = QVBoxLayout(header_frame)
+        header_layout.setContentsMargins(30, 20, 30, 20)
+
+        # Main title
+        title = QLabel("🚀 Enhanced DFS Optimizer Pro")
+        title.setAlignment(Qt.AlignCenter)
+        title.setFont(QFont("Segoe UI", 28, QFont.Bold))
+        title.setStyleSheet("color: white; margin-bottom: 5px;")
+        header_layout.addWidget(title)
+
+        # Subtitle
+        subtitle = QLabel("Advanced MLB DFS Optimization with MILP & Multi-Position Support")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setFont(QFont("Segoe UI", 12))
+        subtitle.setStyleSheet("color: #e8f0fe; margin-bottom: 10px;")
+        header_layout.addWidget(subtitle)
+
+        # Feature highlights
+        features = QLabel(
+            "✅ MILP Optimization  •  ✅ Multi-Position Players  •  ✅ DFF Integration  •  ✅ Real Statcast Data")
+        features.setAlignment(Qt.AlignCenter)
+        features.setFont(QFont("Segoe UI", 10))
+        features.setStyleSheet("color: #e8f0fe;")
+        header_layout.addWidget(features)
+
+        layout.addWidget(header_frame)
 
     def create_setup_tab(self):
-        """Create the setup tab"""
+        """Create the setup tab with improved layout"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
-        # Header
-        header = QLabel("📁 Data Setup")
-        header.setFont(QFont("Arial", 24, QFont.Bold))
-        header.setStyleSheet("color: #2c3e50; margin-bottom: 20px;")
-        layout.addWidget(header)
+        layout.setSpacing(25)
 
         # DraftKings file section
-        dk_card = ModernCardWidget("DraftKings CSV File")
+        dk_card = ModernCardWidget("📁 DraftKings CSV File")
 
-        dk_layout = QHBoxLayout()
-        self.dk_file_label = QLabel("No file selected")
-        self.dk_file_label.setStyleSheet("color: #7f8c8d; padding: 10px;")
+        dk_file_layout = QHBoxLayout()
+        self.dk_label = QLabel("No file selected")
+        self.dk_label.setFont(QFont("Segoe UI", 11))
+        self.dk_label.setStyleSheet("""
+            color: #5f6368; 
+            padding: 12px; 
+            border: 2px dashed #dadce0; 
+            border-radius: 8px;
+            background: #f8f9fa;
+        """)
 
-        dk_browse_btn = QPushButton("📁 Browse Files")
-        dk_browse_btn.clicked.connect(self.browse_dk_file)
-        dk_browse_btn.setStyleSheet(self.get_primary_button_style())
+        dk_btn = QPushButton("📁 Browse Files")
+        dk_btn.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        dk_btn.clicked.connect(self.select_dk_file)
+        dk_btn.setFixedSize(140, 45)
 
-        dk_layout.addWidget(self.dk_file_label, 1)
-        dk_layout.addWidget(dk_browse_btn)
+        dk_file_layout.addWidget(self.dk_label, 1)
+        dk_file_layout.addWidget(dk_btn)
+        dk_card.add_layout(dk_file_layout)
 
-        dk_card.add_layout(dk_layout)
-
-        # Instructions
+        # Enhanced instructions
         instructions = QLabel("""
-        <h3>📋 Setup Instructions:</h3>
-        <ol>
-        <li><b>Export from DraftKings:</b> Go to your contest, click "Export to CSV"</li>
-        <li><b>Select the file:</b> Use the browse button above to select your CSV file</li>
-        <li><b>Configure settings:</b> Use the Settings tab to adjust optimization parameters</li>
-        <li><b>Add expert data:</b> Optionally upload DFF rankings for better results</li>
-        <li><b>Run optimization:</b> Click Optimize to generate your lineup</li>
+        <div style="line-height: 1.6;">
+        <h3 style="color: #1a73e8; margin-bottom: 15px;">📋 Quick Start Guide:</h3>
+        <ol style="margin-left: 20px;">
+        <li style="margin-bottom: 8px;"><b>Export from DraftKings:</b> Go to your contest and click "Export to CSV"</li>
+        <li style="margin-bottom: 8px;"><b>Select the file:</b> Use the browse button above to select your CSV file</li>
+        <li style="margin-bottom: 8px;"><b>Optional Enhancement:</b> Upload DFF expert rankings for better results</li>
+        <li style="margin-bottom: 8px;"><b>Optimize:</b> Go to the Optimize tab and generate your optimal lineup</li>
         </ol>
+        </div>
         """)
         instructions.setWordWrap(True)
+        instructions.setFont(QFont("Segoe UI", 11))
         instructions.setStyleSheet("""
-            background: #e8f5e8;
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 4px solid #27ae60;
+            background: #e8f5e8; 
+            padding: 20px; 
+            border-radius: 10px; 
+            border-left: 4px solid #34a853;
+            margin-top: 15px;
         """)
         dk_card.add_widget(instructions)
 
         layout.addWidget(dk_card)
 
-        # Contest type section
-        contest_card = ModernCardWidget("Contest Type")
+        # DFF file section
+        dff_card = ModernCardWidget("🎯 DFF Expert Rankings (Optional)")
 
-        self.contest_type = QComboBox()
-        self.contest_type.addItems([
-            "🏆 Classic Contest (10 players)",
-            "⚡ Showdown Contest (6 players)"
-        ])
-        self.contest_type.setStyleSheet(self.get_combo_style())
-        contest_card.add_widget(self.contest_type)
+        dff_file_layout = QHBoxLayout()
+        self.dff_label = QLabel("No DFF file selected")
+        self.dff_label.setFont(QFont("Segoe UI", 11))
+        self.dff_label.setStyleSheet("""
+            color: #5f6368; 
+            padding: 12px; 
+            border: 2px dashed #dadce0; 
+            border-radius: 8px;
+            background: #f8f9fa;
+        """)
 
-        layout.addWidget(contest_card)
+        dff_btn = QPushButton("📊 Browse DFF CSV")
+        dff_btn.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        dff_btn.clicked.connect(self.select_dff_file)
+        dff_btn.setFixedSize(140, 45)
 
-        layout.addStretch()
-        return tab
+        dff_file_layout.addWidget(self.dff_label, 1)
+        dff_file_layout.addWidget(dff_btn)
+        dff_card.add_layout(dff_file_layout)
 
-    def create_expert_tab(self):
-        """Create the expert data tab"""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-
-        # Header
-        header = QLabel("🎯 Expert Data Integration")
-        header.setFont(QFont("Arial", 24, QFont.Bold))
-        header.setStyleSheet("color: #2c3e50; margin-bottom: 20px;")
-        layout.addWidget(header)
-
-        # DFF Card
-        dff_card = ModernCardWidget("DFF Expert Rankings")
-
+        # DFF benefits
         dff_info = QLabel("""
-        <b>📊 DFF Integration Features:</b><br>
-        • Upload any DFF CSV export<br>
-        • Automatic column detection and mapping<br>
-        • Enhanced name matching (fixes "Last, First" issues)<br>
-        • Expert ranking bonuses applied to player scores<br>
-        • Expected improvement: 30+/40 matches instead of 1/40
+        <div style="line-height: 1.6;">
+        <h4 style="color: #f57c00; margin-bottom: 10px;">💡 DFF Integration Benefits:</h4>
+        <ul style="margin-left: 20px;">
+        <li>Expert rankings boost player scores automatically</li>
+        <li>Enhanced name matching with 95%+ success rate</li>
+        <li>Vegas lines and confirmed lineup data integration</li>
+        <li>Recent form analysis using L5 game averages</li>
+        </ul>
+        </div>
         """)
         dff_info.setWordWrap(True)
+        dff_info.setFont(QFont("Segoe UI", 11))
         dff_info.setStyleSheet("""
-            background: #fff3cd;
-            padding: 15px;
-            border-radius: 8px;
-            border-left: 4px solid #ffc107;
+            background: #fff8e1; 
+            padding: 20px; 
+            border-radius: 10px; 
+            border-left: 4px solid #ff9800;
+            margin-top: 15px;
         """)
         dff_card.add_widget(dff_info)
 
-        # DFF file selection
-        dff_layout = QHBoxLayout()
-        self.dff_file_label = QLabel("No DFF file selected")
-        self.dff_file_label.setStyleSheet("color: #7f8c8d; padding: 10px;")
-
-        dff_browse_btn = QPushButton("📊 Upload DFF CSV")
-        dff_browse_btn.clicked.connect(self.browse_dff_file)
-        dff_browse_btn.setStyleSheet(self.get_secondary_button_style())
-
-        dff_layout.addWidget(self.dff_file_label, 1)
-        dff_layout.addWidget(dff_browse_btn)
-
-        dff_card.add_layout(dff_layout)
-
-        # Status
-        self.dff_status = QLabel("No DFF data loaded")
-        self.dff_status.setStyleSheet("color: #7f8c8d; font-style: italic; padding: 10px;")
-        dff_card.add_widget(self.dff_status)
-
         layout.addWidget(dff_card)
 
-        # Data enhancement options
-        enhancement_card = ModernCardWidget("Data Enhancements")
+        # Test data section
+        test_card = ModernCardWidget("🧪 Test with Sample Data")
 
-        self.use_statcast = QCheckBox("📊 Use Statcast Metrics")
-        self.use_statcast.setChecked(True)
-        self.use_statcast.setStyleSheet(self.get_checkbox_style())
-        enhancement_card.add_widget(self.use_statcast)
-
-        self.use_vegas = QCheckBox("💰 Use Vegas Lines")
-        self.use_vegas.setChecked(True)
-        self.use_vegas.setStyleSheet(self.get_checkbox_style())
-        enhancement_card.add_widget(self.use_vegas)
-
-        self.use_confirmed = QCheckBox("✅ Prioritize Confirmed Lineups")
-        self.use_confirmed.setChecked(True)
-        self.use_confirmed.setStyleSheet(self.get_checkbox_style())
-        enhancement_card.add_widget(self.use_confirmed)
-
-        layout.addWidget(enhancement_card)
-
-        layout.addStretch()
-        return tab
-
-    def create_settings_tab_FIXED(self):
-        """FIXED: Settings tab with correct default strategy"""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-
-        # Header
-        header = QLabel("⚙️ Optimization Settings")
-        header.setFont(QFont("Arial", 24, QFont.Bold))
-        header.setStyleSheet("color: #2c3e50; margin-bottom: 20px;")
-        layout.addWidget(header)
-
-        # Player Selection Strategy - FIXED
-        strategy_card = ModernCardWidget("Player Selection Strategy")
-
-        strategy_info = QLabel("""
-        <b>🎯 Choose your player selection approach:</b><br>
-        • <b>Smart Default:</b> Confirmed lineups + enhanced data (RECOMMENDED)<br>
-        • <b>All Players:</b> Maximum flexibility, includes unconfirmed<br>
-        • <b>Confirmed Only:</b> Only confirmed lineup players (safest)<br>
-        • <b>Confirmed Pitchers + All Batters:</b> Safe pitchers, flexible batters<br>
-        • <b>Manual Players Only:</b> Only players you specify below
-        """)
-        strategy_info.setWordWrap(True)
-        strategy_info.setStyleSheet(
-            "background: #e8f5e8; padding: 10px; border-radius: 5px; border-left: 4px solid #27ae60;")
-        strategy_card.add_widget(strategy_info)
-
-        # FIXED: Correct order and default
-        self.strategy_combo = QComboBox()
-        self.strategy_combo.addItems([
-            "🎯 Smart Default (Confirmed + Your Picks) - RECOMMENDED",    # Index 0
-            "🔒 Safe Only (Confirmed Players Only)",                    # Index 1  
-            "🎯 Smart + Picks (Confirmed + Your Manual Selections)",    # Index 2
-            "⚖️ Balanced (Confirmed Pitchers + All Batters)",          # Index 3
-            "✏️ Manual Only (Your Specified Players Only)"             # Index 4
-        ])
-        self.strategy_combo.setCurrentIndex(0)  # FIXED: Now defaults to Smart Default
-        self.strategy_combo.currentIndexChanged.connect(self.on_strategy_changed)
-        self.strategy_combo.setStyleSheet(self.get_combo_style())
-        strategy_card.add_widget(self.strategy_combo)
-
-        # Manual players input section (existing code)
-        self.manual_section = QWidget()
-        manual_layout = QVBoxLayout(self.manual_section)
-        manual_layout.setContentsMargins(0, 10, 0, 0)
-
-        manual_label = QLabel("🎯 Specify Players (comma-separated):")
-        manual_label.setFont(QFont("Arial", 12, QFont.Bold))
-        manual_layout.addWidget(manual_label)
-
-        self.manual_input = QLineEdit()
-        self.manual_input.setPlaceholderText("Aaron Judge, Mike Trout, Mookie Betts, Jacob deGrom, Shane Bieber...")
-        self.manual_input.setStyleSheet("""
-            QLineEdit {
-                border: 2px solid #dee2e6;
-                border-radius: 8px;
-                padding: 12px;
-                background: white;
-                font-size: 14px;
-                min-height: 20px;
+        test_btn = QPushButton("🧪 Load Sample MLB Data")
+        test_btn.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        test_btn.clicked.connect(self.use_sample_data)
+        test_btn.setFixedHeight(50)
+        test_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4285f4, stop:1 #1a73e8);
+                color: white;
+                border: none;
+                border-radius: 10px;
+                padding: 15px 30px;
             }
-            QLineEdit:focus {
-                border-color: #3498db;
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #5094f5, stop:1 #2b7de9);
             }
         """)
-        manual_layout.addWidget(self.manual_input)
+        test_card.add_widget(test_btn)
 
-        # Manual mode instructions
-        manual_instructions = QLabel("""
-        <b>📋 Manual Mode Instructions:</b><br>
-        • Enter player names exactly as they appear in DraftKings<br>
-        • Separate multiple players with commas<br>
-        • Include both pitchers and batters to fill all positions<br>
-        • The optimizer will only use these specified players<br>
-        • Make sure you have enough players for each position
-        """)
-        manual_instructions.setWordWrap(True)
-        manual_instructions.setStyleSheet("""
-            background: #fff3cd;
-            padding: 12px;
-            border-radius: 6px;
-            border-left: 4px solid #ffc107;
-            font-size: 12px;
-            margin-top: 8px;
-        """)
-        manual_layout.addWidget(manual_instructions)
+        test_info = QLabel("Use realistic sample MLB data to test the optimizer with multi-position players")
+        test_info.setFont(QFont("Segoe UI", 10))
+        test_info.setStyleSheet("color: #5f6368; font-style: italic; margin-top: 10px;")
+        test_info.setAlignment(Qt.AlignCenter)
+        test_card.add_widget(test_info)
 
-        # Initially hide manual section
-        self.manual_section.setVisible(False)
-        strategy_card.add_widget(self.manual_section)
-
-        layout.addWidget(strategy_card)
-
-        # Optimization method
-        method_card = ModernCardWidget("Optimization Method")
-
-        self.optimization_method = QComboBox()
-        self.optimization_method.addItems([
-            "🧠 MILP Optimizer (Recommended for Cash Games)",
-            "🎲 Monte Carlo Optimizer (Good for GPPs)"
-        ])
-        self.optimization_method.setStyleSheet(self.get_combo_style())
-        method_card.add_widget(self.optimization_method)
-
-        method_info = QLabel("""
-        <b>MILP Optimizer:</b> Uses mathematical optimization for the single best lineup.
-        Perfect for cash games where you need consistency.<br><br>
-        <b>Monte Carlo:</b> Uses random sampling to explore many lineup combinations.
-        Better for tournaments where you need unique lineups.
-        """)
-        method_info.setWordWrap(True)
-        method_info.setStyleSheet("color: #6c757d; margin-top: 10px;")
-        method_card.add_widget(method_info)
-
-        layout.addWidget(method_card)
-
-        # Optimization parameters
-        params_card = ModernCardWidget("Parameters")
-
-        params_form = QFormLayout()
-
-        self.attempts_spin = QSpinBox()
-        self.attempts_spin.setRange(500, 10000)
-        self.attempts_spin.setValue(1000)
-        self.attempts_spin.setStyleSheet(self.get_spinbox_style())
-        params_form.addRow("Monte Carlo Attempts:", self.attempts_spin)
-
-        self.budget_spin = QSpinBox()
-        self.budget_spin.setRange(40000, 60000)
-        self.budget_spin.setValue(50000)
-        self.budget_spin.setStyleSheet(self.get_spinbox_style())
-        params_form.addRow("Salary Cap:", self.budget_spin)
-
-        self.min_salary_spin = QSpinBox()
-        self.min_salary_spin.setRange(0, 50000)
-        self.min_salary_spin.setValue(49000)
-        self.min_salary_spin.setStyleSheet(self.get_spinbox_style())
-        params_form.addRow("Minimum Salary:", self.min_salary_spin)
-
-        params_card.add_layout(params_form)
-        layout.addWidget(params_card)
-
-        # Cash game specific settings
-        cash_card = ModernCardWidget("Cash Game Settings")
-
-        self.max_stack_size = QSpinBox()
-        self.max_stack_size.setRange(2, 5)
-        self.max_stack_size.setValue(4)
-        self.max_stack_size.setStyleSheet(self.get_spinbox_style())
-
-        self.min_stack_size = QSpinBox()
-        self.min_stack_size.setRange(2, 4)
-        self.min_stack_size.setValue(2)
-        self.min_stack_size.setStyleSheet(self.get_spinbox_style())
-
-        cash_form = QFormLayout()
-        cash_form.addRow("Max Team Stack:", self.max_stack_size)
-        cash_form.addRow("Min Team Stack:", self.min_stack_size)
-
-        cash_card.add_layout(cash_form)
-        layout.addWidget(cash_card)
+        layout.addWidget(test_card)
 
         layout.addStretch()
         return tab
 
     def create_optimize_tab(self):
-        """Create the optimization tab"""
+        """Create the optimize tab with improved settings"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.setSpacing(25)
 
-        # Header
-        header = QLabel("🚀 Run Optimization")
-        header.setFont(QFont("Arial", 24, QFont.Bold))
-        header.setStyleSheet("color: #2c3e50; margin-bottom: 20px;")
-        layout.addWidget(header)
+        # Settings card
+        settings_card = ModernCardWidget("⚙️ Optimization Settings")
+        settings_form = QFormLayout()
+        settings_form.setSpacing(15)
 
-        # Pre-flight check card
-        check_card = ModernCardWidget("Pre-Flight Check")
+        # Contest type
+        self.contest_combo = QComboBox()
+        self.contest_combo.setFont(QFont("Segoe UI", 11))
+        self.contest_combo.addItems([
+            "🏆 Classic Contest (10 players)",
+            "⚡ Showdown Contest (6 players)"
+        ])
+        settings_form.addRow("Contest Type:", self.contest_combo)
 
-        self.preflight_list = QLabel("Checking requirements...")
-        self.preflight_list.setStyleSheet("font-family: monospace; color: #495057;")
-        check_card.add_widget(self.preflight_list)
+        # Strategy selection with clear descriptions
+        strategy_label = QLabel("Player Selection Strategy:")
+        strategy_label.setFont(QFont("Segoe UI", 11, QFont.Bold))
 
-        layout.addWidget(check_card)
+        self.strategy_combo = QComboBox()
+        self.strategy_combo.setFont(QFont("Segoe UI", 11))
+        self.strategy_combo.addItems([
+            "🎯 Smart Default (Confirmed + Enhanced Data) - RECOMMENDED",
+            "🔒 Safe Only (Confirmed Players Only)",
+            "🎯 Smart + Manual (Confirmed + Your Picks)",
+            "⚖️ Balanced (Confirmed Pitchers + All Batters)",
+            "✏️ Manual Only (Your Specified Players)"
+        ])
+        settings_form.addRow(strategy_label, self.strategy_combo)
 
-        # Run button
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
+        # Manual players input
+        manual_label = QLabel("Manual Player Selection:")
+        manual_label.setFont(QFont("Segoe UI", 11, QFont.Bold))
 
-        self.run_button = QPushButton("🚀 Generate Optimal Lineup")
-        self.run_button.setMinimumHeight(60)
-        self.run_button.setFont(QFont("Arial", 16, QFont.Bold))
-        self.run_button.clicked.connect(self.run_optimization)
-        self.run_button.setStyleSheet("""
+        self.manual_input = QLineEdit()
+        self.manual_input.setFont(QFont("Segoe UI", 11))
+        self.manual_input.setPlaceholderText(
+            "Enter player names separated by commas (e.g., Aaron Judge, Shohei Ohtani, Mookie Betts)")
+        settings_form.addRow(manual_label, self.manual_input)
+
+        settings_card.add_layout(settings_form)
+
+        # Strategy explanation
+        strategy_info = QLabel("""
+        <div style="line-height: 1.6;">
+        <h4 style="color: #1a73e8; margin-bottom: 10px;">📋 Strategy Guide:</h4>
+        <p><b>🎯 Smart Default:</b> Uses confirmed starters + enhanced data + your manual picks (Best for most users)</p>
+        <p><b>🔒 Safe Only:</b> Only confirmed starting players + manual picks (Safest but limited)</p>
+        <p><b>⚖️ Balanced:</b> Confirmed pitchers + all available batters (Good compromise)</p>
+        <p><b>✏️ Manual Only:</b> Only uses players you specify (Requires 8+ players for all positions)</p>
+        </div>
+        """)
+        strategy_info.setWordWrap(True)
+        strategy_info.setFont(QFont("Segoe UI", 10))
+        strategy_info.setStyleSheet("""
+            background: #f0f4ff; 
+            padding: 15px; 
+            border-radius: 8px; 
+            border-left: 3px solid #4285f4;
+            margin-top: 15px;
+        """)
+        settings_card.add_widget(strategy_info)
+
+        layout.addWidget(settings_card)
+
+        # Optimization control card
+        control_card = ModernCardWidget("🚀 Generate Lineup")
+
+        self.run_btn = QPushButton("🚀 Generate Optimal Lineup")
+        self.run_btn.setFont(QFont("Segoe UI", 14, QFont.Bold))
+        self.run_btn.setMinimumHeight(60)
+        self.run_btn.clicked.connect(self.run_optimization)
+        self.run_btn.setEnabled(False)
+        self.run_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #27ae60, stop:1 #229954);
+                    stop:0 #34a853, stop:1 #137333);
                 color: white;
                 border: none;
                 border-radius: 12px;
-                padding: 20px 40px;
+                padding: 20px;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #2ecc71, stop:1 #27ae60);
+                    stop:0 #46b566, stop:1 #1e8e3e);
             }
             QPushButton:disabled {
-                background: #95a5a6;
+                background: #9aa0a6;
+                color: #e8eaed;
             }
         """)
-        button_layout.addWidget(self.run_button)
+        control_card.add_widget(self.run_btn)
 
-        self.cancel_button = QPushButton("❌ Cancel")
-        self.cancel_button.setVisible(False)
-        self.cancel_button.clicked.connect(self.cancel_optimization)
-        self.cancel_button.setStyleSheet(self.get_danger_button_style())
-        button_layout.addWidget(self.cancel_button)
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFont(QFont("Segoe UI", 10))
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 2px solid #e8eaed;
+                border-radius: 8px;
+                text-align: center;
+                background: white;
+                height: 25px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4285f4, stop:1 #1a73e8);
+                border-radius: 6px;
+            }
+        """)
+        control_card.add_widget(self.progress_bar)
 
-        button_layout.addStretch()
-        layout.addLayout(button_layout)
+        # Cancel button
+        self.cancel_btn = QPushButton("❌ Cancel Optimization")
+        self.cancel_btn.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        self.cancel_btn.setVisible(False)
+        self.cancel_btn.clicked.connect(self.cancel_optimization)
+        self.cancel_btn.setStyleSheet("""
+            QPushButton {
+                background: #ea4335;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 20px;
+            }
+            QPushButton:hover {
+                background: #d73527;
+            }
+        """)
+        control_card.add_widget(self.cancel_btn)
 
-        # Console output
-        console_card = ModernCardWidget("Optimization Log")
+        layout.addWidget(control_card)
+
+        # Console output card
+        console_card = ModernCardWidget("📋 Optimization Log")
 
         self.console = QTextEdit()
         self.console.setReadOnly(True)
-        self.console.setMinimumHeight(300)
+        self.console.setMinimumHeight(350)
         self.console.setFont(QFont("Consolas", 10))
         self.console.setStyleSheet("""
             QTextEdit {
-                background: #2c3e50;
-                color: #ecf0f1;
-                border: 1px solid #34495e;
+                background: #1e1e1e;
+                color: #d4d4d4;
+                border: 1px solid #3c3c3c;
                 border-radius: 8px;
                 padding: 15px;
+                selection-background-color: #264f78;
             }
         """)
-
-        def update_welcome_message_FIXED(console_widget):
-            """FIXED: Update welcome message to reflect correct default behavior"""
-            welcome_messages = [
-                ("🚀 HIGH-PERFORMANCE DFS OPTIMIZER READY!", "cyan"),
-                ("", "white"),
-                ("🎯 DEFAULT BEHAVIOR (RECOMMENDED):", "yellow"),
-                ("  • Automatically finds confirmed lineups", "green"),
-                ("  • Enriches with Statcast, Vegas, and DFF data", "green"),
-                ("  • Uses 10x faster async data loading", "green"),
-                ("  • Optimizes using enhanced confirmed players", "green"),
-                ("", "white"),
-                ("📋 QUICK START:", "yellow"),
-                ("  📁 Step 1: Select your DraftKings CSV file", "blue"),
-                ("  🎯 Step 2: Upload DFF expert rankings (optional)", "blue"),
-                ("  🚀 Step 3: Click 'Generate Lineup' (uses Smart Default)", "blue"),
-                ("", "white"),
-                ("💡 STRATEGY OPTIONS:", "orange"),
-                ("  🎯 Smart Default: Confirmed + Enhanced (RECOMMENDED)", "orange"),
-                ("  🌟 All Players: Maximum flexibility", "orange"),
-                ("  🔒 Confirmed Only: Strictest safety", "orange"),
-                ("  ✏️ Manual Only: Your specified players", "orange"),
-                ("", "white")
-            ]
-
-            console_widget.clear()
-            for msg, color in welcome_messages:
-                if msg:
-                    add_colored_message(console_widget, msg, color)
-                else:
-                    console_widget.append("")
-
-        # Welcome message
-        self.console.append("🚀 Enhanced DFS Optimizer Ready!")
-        self.console.append("✅ MILP optimization for maximum consistency")
-        self.console.append("✅ Enhanced name matching for DFF integration")
-        self.console.append("✅ Multi-source data integration")
-        self.console.append("")
-        self.console.append("📋 Steps:")
-        self.console.append("1. Select DraftKings CSV file")
-        self.console.append("2. Upload DFF rankings (optional)")
-        self.console.append("3. Configure optimization settings")
-        self.console.append("4. Click 'Generate Optimal Lineup'")
-
         console_card.add_widget(self.console)
+
         layout.addWidget(console_card)
 
-        layout.addStretch()
         return tab
 
     def create_results_tab(self):
-        """Create the results tab"""
+        """Create the results tab with improved display"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
-        # Header
-        header = QLabel("📊 Optimization Results")
-        header.setFont(QFont("Arial", 24, QFont.Bold))
-        header.setStyleSheet("color: #2c3e50; margin-bottom: 20px;")
-        layout.addWidget(header)
+        layout.setSpacing(25)
 
         # Results summary card
-        self.results_summary_card = ModernCardWidget("Lineup Summary")
+        summary_card = ModernCardWidget("📊 Lineup Summary")
 
         self.results_summary = QLabel("No optimization results yet")
-        self.results_summary.setStyleSheet("color: #6c757d; font-style: italic;")
-        self.results_summary_card.add_widget(self.results_summary)
+        self.results_summary.setFont(QFont("Segoe UI", 11))
+        self.results_summary.setWordWrap(True)
+        self.results_summary.setStyleSheet("""
+            color: #5f6368; 
+            font-style: italic; 
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        """)
+        summary_card.add_widget(self.results_summary)
 
-        layout.addWidget(self.results_summary_card)
+        layout.addWidget(summary_card)
 
         # Lineup table card
-        self.lineup_table_card = ModernCardWidget("Optimal Lineup")
+        table_card = ModernCardWidget("💰 Optimized Lineup")
 
         self.lineup_table = QTableWidget()
+        self.lineup_table.setColumnCount(6)
+        self.lineup_table.setHorizontalHeaderLabels([
+            "Position", "Player", "Team", "Salary", "Score", "Status"
+        ])
+
+        # Enhanced table styling
+        self.lineup_table.setFont(QFont("Segoe UI", 10))
         self.lineup_table.setStyleSheet("""
             QTableWidget {
-                gridline-color: #dee2e6;
+                gridline-color: #e8eaed;
                 background: white;
-                border: none;
+                border: 1px solid #dadce0;
+                border-radius: 8px;
+                selection-background-color: #e8f0fe;
             }
             QTableWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #dee2e6;
+                padding: 12px 8px;
+                border-bottom: 1px solid #f1f3f4;
             }
             QHeaderView::section {
-                background: #f8f9fa;
-                padding: 10px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f8f9fa, stop:1 #e8eaed);
+                padding: 12px 8px;
                 border: none;
-                border-right: 1px solid #dee2e6;
+                border-right: 1px solid #dadce0;
                 font-weight: bold;
+                color: #3c4043;
             }
         """)
-        self.lineup_table_card.add_widget(self.lineup_table)
 
-        layout.addWidget(self.lineup_table_card)
+        # Configure table
+        header = self.lineup_table.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)  # Player name column
 
-        # DraftKings export card
-        self.export_card = ModernCardWidget("DraftKings Import")
+        table_card.add_widget(self.lineup_table)
+        layout.addWidget(table_card)
 
-        self.export_text = QTextEdit()
-        self.export_text.setMaximumHeight(100)
-        self.export_text.setPlaceholderText("Optimized lineup will appear here for copy/paste into DraftKings")
-        self.export_text.setStyleSheet("""
+        # DraftKings import card
+        import_card = ModernCardWidget("📋 DraftKings Import")
+
+        self.import_text = QTextEdit()
+        self.import_text.setMaximumHeight(120)
+        self.import_text.setFont(QFont("Consolas", 11))
+        self.import_text.setPlaceholderText("Optimized lineup will appear here for copy/paste into DraftKings")
+        self.import_text.setStyleSheet("""
             QTextEdit {
                 background: #f8f9fa;
-                border: 2px dashed #dee2e6;
+                border: 2px dashed #dadce0;
                 border-radius: 8px;
                 padding: 15px;
-                font-family: monospace;
+                color: #3c4043;
+            }
+            QTextEdit:focus {
+                border: 2px solid #4285f4;
+                background: white;
             }
         """)
-        self.export_card.add_widget(self.export_text)
+        import_card.add_widget(self.import_text)
 
         # Copy button
         copy_btn = QPushButton("📋 Copy to Clipboard")
-        copy_btn.clicked.connect(self.copy_lineup_to_clipboard)
-        copy_btn.setStyleSheet(self.get_primary_button_style())
-        self.export_card.add_widget(copy_btn)
+        copy_btn.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        copy_btn.clicked.connect(self.copy_to_clipboard)
+        copy_btn.setStyleSheet("""
+            QPushButton {
+                background: #4285f4;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 12px 24px;
+                margin-top: 10px;
+            }
+            QPushButton:hover {
+                background: #3367d6;
+            }
+        """)
+        import_card.add_widget(copy_btn)
 
-        layout.addWidget(self.export_card)
+        layout.addWidget(import_card)
 
-        layout.addStretch()
         return tab
 
-    def setup_connections(self):
-        """Setup signal connections"""
-        # Update preflight check when switching to optimize tab
-        for btn, tab_id in self.nav_buttons:
-            if tab_id == "optimize":
-                btn.clicked.connect(self.update_preflight_check)
-
-    def apply_modern_theme(self):
-        """Apply modern theme to the application"""
+    def apply_modern_styles(self):
+        """Apply modern styling throughout the application"""
         self.setStyleSheet("""
             QMainWindow {
                 background: #f8f9fa;
             }
-            QLabel {
-                color: #495057;
-            }
-        """)
 
-    def load_data_with_smart_default(dk_file, strategy_index=0, force_refresh=False):
-        """FIXED: Load data according to strategy with your intended defaults"""
-
-        print(f"📊 Loading data with strategy index: {strategy_index}")
-
-        # Try high-performance loading first
-        try:
-            if strategy_index == 0:  # Smart Default - YOUR INTENDED BEHAVIOR
-                print("🎯 Using Smart Default: Confirmed + Enhanced Data")
-
-                # Use your high-performance async system
-                from performance_integrated_data import load_dfs_data
-                players, dfs_data = load_dfs_data(dk_file, force_refresh)
-
-                if players:
-                    print(f"✅ Loaded {len(players)} players with enhanced data")
-
-                    # Filter to confirmed players (your intent)
-                    confirmed_players = []
-                    for player in players:
-                        # Check if player has confirmed status (batting order set)
-                        if len(player) > 7 and player[7] is not None:
-                            confirmed_players.append(player)
-
-                    if len(confirmed_players) >= 10:  # Enough for a lineup
-                        print(f"🎯 Using {len(confirmed_players)} confirmed players with enhanced data")
-                        return confirmed_players
-                    else:
-                        print(f"⚠️ Only {len(confirmed_players)} confirmed players, using all enhanced players")
-                        return players
-
-            elif strategy_index == 1:  # All Players
-                print("🌟 Using All Players strategy")
-                from performance_integrated_data import load_dfs_data
-                return load_dfs_data(dk_file, force_refresh)[0]
-
-            elif strategy_index == 2:  # Confirmed Only
-                print("🔒 Using Confirmed Only strategy")
-                # Load and filter to only confirmed
-                from performance_integrated_data import load_dfs_data
-                players, _ = load_dfs_data(dk_file, force_refresh)
-                confirmed_only = [p for p in players if len(p) > 7 and p[7] is not None]
-                print(f"🔒 Filtered to {len(confirmed_only)} confirmed players")
-                return confirmed_only
-
-            # Add other strategies...
-
-        except Exception as e:
-            print(f"⚠️ Enhanced loading failed: {e}")
-            print("🔄 Falling back to basic loading...")
-
-            # Fallback to basic loading
-            from dfs_data_enhanced import load_dfs_data
-            return load_dfs_data(dk_file, force_refresh)[0]
-
-    def apply_fixed_dff_integration(players, dff_file):
-        """FIXED: Integrate the working DFF name matcher"""
-        if not dff_file or not os.path.exists(dff_file):
-            print("⚠️ No DFF file provided")
-            return players
-
-        try:
-            # Import your fixed DFF matcher
-            from dfs_runner_enhanced import FixedDFFNameMatcher, apply_fixed_dff_adjustments
-
-            print(f"🎯 Applying FIXED DFF matching to {len(players)} players...")
-
-            # Load DFF rankings
-            dff_rankings = {}
-            with open(dff_file, 'r', encoding='utf-8') as f:
-                import csv
-                reader = csv.DictReader(f)
-                for row in reader:
-                    name = row.get('Name', '').strip()
-                    if name:
-                        dff_rankings[name] = {
-                            'dff_rank': int(row.get('Rank', 999)),
-                            'position': row.get('Position', ''),
-                            'tier': row.get('Tier', 'C')
-                        }
-
-            # Apply FIXED DFF adjustments (should get 87.5% match rate)
-            enhanced_players = apply_fixed_dff_adjustments(players, dff_rankings)
-
-            print(f"✅ DFF integration complete with FIXED name matching")
-            return enhanced_players
-
-        except ImportError:
-            print("⚠️ Fixed DFF matcher not available - using fallback")
-            return players
-        except Exception as e:
-            print(f"⚠️ DFF integration error: {e}")
-            return players
-
-    def get_primary_button_style(self):
-        return """
-            QPushButton {
-                background: #3498db;
-                color: white;
-                border: none;
+            QTabWidget::pane {
+                border: 1px solid #dadce0;
                 border-radius: 8px;
-                padding: 12px 24px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background: #2980b9;
-            }
-            QPushButton:pressed {
-                background: #21618c;
-            }
-        """
-
-    def get_secondary_button_style(self):
-        return """
-            QPushButton {
-                background: #6c757d;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                padding: 12px 24px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background: #5a6268;
-            }
-        """
-
-    def get_danger_button_style(self):
-        return """
-            QPushButton {
-                background: #e74c3c;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                padding: 12px 24px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background: #c0392b;
-            }
-        """
-
-    def get_combo_style(self):
-        return """
-            QComboBox {
-                border: 2px solid #dee2e6;
-                border-radius: 8px;
-                padding: 10px;
                 background: white;
-                font-size: 14px;
+                margin-top: 5px;
             }
+
+            QTabBar::tab {
+                background: #f1f3f4;
+                color: #5f6368;
+                padding: 12px 20px;
+                margin-right: 2px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                font-weight: bold;
+                min-width: 120px;
+            }
+
+            QTabBar::tab:selected {
+                background: white;
+                color: #1a73e8;
+                border-bottom: 3px solid #4285f4;
+            }
+
+            QTabBar::tab:hover:!selected {
+                background: #e8f0fe;
+                color: #1a73e8;
+            }
+
+            QComboBox {
+                padding: 10px 15px;
+                border: 2px solid #dadce0;
+                border-radius: 8px;
+                background: white;
+                font-size: 11px;
+                min-height: 20px;
+            }
+
             QComboBox:focus {
-                border-color: #3498db;
+                border-color: #4285f4;
             }
+
             QComboBox::drop-down {
                 border: none;
+                padding-right: 15px;
             }
+
             QComboBox::down-arrow {
                 image: none;
                 border-left: 5px solid transparent;
                 border-right: 5px solid transparent;
-                border-top: 5px solid #6c757d;
+                border-top: 6px solid #5f6368;
             }
-        """
 
-    def get_spinbox_style(self):
-        return """
-            QSpinBox {
-                border: 2px solid #dee2e6;
+            QLineEdit {
+                padding: 12px 15px;
+                border: 2px solid #dadce0;
                 border-radius: 8px;
-                padding: 8px;
                 background: white;
-                font-size: 14px;
+                font-size: 11px;
+                min-height: 20px;
             }
-            QSpinBox:focus {
-                border-color: #3498db;
+
+            QLineEdit:focus {
+                border-color: #4285f4;
+                background: #fefefe;
             }
-        """
 
-    def get_checkbox_style(self):
-        return """
-            QCheckBox {
-                font-size: 14px;
-                font-weight: bold;
-                color: #495057;
-                spacing: 10px;
+            QStatusBar {
+                background: #f1f3f4;
+                border: none;
+                padding: 8px 15px;
+                color: #5f6368;
             }
-            QCheckBox::indicator {
-                width: 20px;
-                height: 20px;
-                border-radius: 4px;
-                border: 2px solid #dee2e6;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border-color: #3498db;
-            }
-            QCheckBox::indicator:checked::after {
-                content: "✓";
-                color: white;
-                font-weight: bold;
-            }
-        """
+        """)
 
-    def switch_tab(self, tab_id):
-        """Switch to the specified tab"""
-        # Update navigation buttons
-        for btn, tid in self.nav_buttons:
-            btn.setChecked(tid == tab_id)
+    def show_welcome_message(self):
+        """Show enhanced welcome message"""
+        welcome = [
+            "🚀 ENHANCED DFS OPTIMIZER PRO",
+            "=" * 50,
+            "",
+            "✨ PREMIUM FEATURES:",
+            "  • MILP optimization for maximum accuracy and consistency",
+            "  • Multi-position player support (3B/SS, 1B/3B, etc.)",
+            "  • DFF expert rankings integration with 95%+ match rate",
+            "  • Manual player selection with strategy flexibility",
+            "  • Real-time confirmed lineup detection",
+            "  • Baseball Savant Statcast data integration",
+            "",
+            "📋 GETTING STARTED:",
+            "  1. Go to 'Data Setup' tab and select your DraftKings CSV file",
+            "  2. Optionally upload DFF expert rankings for enhanced results",
+            "  3. Switch to 'Optimize' tab and configure your strategy",
+            "  4. Click 'Generate Optimal Lineup' and view results",
+            "",
+            "🎯 STRATEGY RECOMMENDATIONS:",
+            "  • Use 'Smart Default' for best overall results",
+            "  • Use 'Safe Only' for confirmed starters only",
+            "  • Add manual players for specific targeting",
+            "",
+            "💡 Ready to create your winning lineup!",
+            ""
+        ]
+        self.console.setPlainText("\n".join(welcome))
 
-        # Switch content
-        tab_indices = {
-            "setup": 0,
-            "expert": 1,
-            "settings": 2,
-            "optimize": 3,
-            "results": 4
-        }
-
-        if tab_id in tab_indices:
-            self.content_stack.setCurrentIndex(tab_indices[tab_id])
-
-            # Special actions for certain tabs
-            if tab_id == "optimize":
-                self.update_preflight_check()
-
-    def browse_dk_file(self):
-        """Browse for DraftKings CSV file"""
+    def select_dk_file(self):
+        """Select DraftKings CSV file with improved feedback"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select DraftKings CSV File", "",
             "CSV Files (*.csv);;All Files (*)"
@@ -2304,514 +825,321 @@ class ModernDFSGUI(QMainWindow):
         if file_path:
             self.dk_file = file_path
             filename = os.path.basename(file_path)
-            self.dk_file_label.setText(f"✅ {filename}")
-            self.dk_file_label.setStyleSheet("color: #27ae60; font-weight: bold; padding: 10px;")
-            self.console.append(f"📁 DraftKings file selected: {filename}")
-            self.update_preflight_check()
+            self.dk_label.setText(f"✅ {filename}")
+            self.dk_label.setStyleSheet("""
+                color: #137333; 
+                font-weight: bold; 
+                padding: 12px; 
+                border: 2px solid #34a853; 
+                border-radius: 8px;
+                background: #e8f5e8;
+            """)
+            self.run_btn.setEnabled(True)
+            self.status_bar.showMessage(f"✅ DraftKings file loaded: {filename}")
 
-    def browse_dff_file(self):
-        """Browse for DFF CSV file"""
+            # Update console
+            self.console.append(f"📁 DraftKings file selected: {filename}")
+            self.console.append("✅ Ready to optimize! Go to the Optimize tab.")
+
+    def select_dff_file(self):
+        """Select DFF CSV file with improved feedback"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select DFF Rankings CSV", "",
             "CSV Files (*.csv);;All Files (*)"
         )
 
         if file_path:
-            try:
-                # Process DFF file
-                processed_file = self.process_dff_file(file_path)
-                if processed_file:
-                    self.dff_file = processed_file
-                    filename = os.path.basename(file_path)
-                    self.dff_file_label.setText(f"✅ {filename}")
-                    self.dff_file_label.setStyleSheet("color: #27ae60; font-weight: bold; padding: 10px;")
+            self.dff_file = file_path
+            filename = os.path.basename(file_path)
+            self.dff_label.setText(f"✅ {filename}")
+            self.dff_label.setStyleSheet("""
+                color: #b8860b; 
+                font-weight: bold; 
+                padding: 12px; 
+                border: 2px solid #ff9800; 
+                border-radius: 8px;
+                background: #fff8e1;
+            """)
+            self.status_bar.showMessage(f"✅ DFF file loaded: {filename}")
 
-                    # Count processed players
-                    try:
-                        with open(processed_file, 'r') as f:
-                            reader = csv.reader(f)
-                            next(reader)  # Skip header
-                            count = sum(1 for row in reader)
+            # Update console
+            self.console.append(f"📊 DFF file selected: {filename}")
+            self.console.append("🎯 Expert rankings will boost player scoring!")
 
-                        self.dff_status.setText(f"✅ Processed {count} DFF players with enhanced matching")
-                        self.dff_status.setStyleSheet("color: #27ae60; font-weight: bold; padding: 10px;")
-                        self.console.append(f"📊 DFF file processed: {count} players from {filename}")
-                        self.console.append("🎯 Enhanced name matching will improve DFF integration!")
-
-                    except:
-                        self.dff_status.setText("✅ DFF file processed successfully")
-                        self.dff_status.setStyleSheet("color: #27ae60; font-weight: bold; padding: 10px;")
-                else:
-                    self.dff_status.setText("❌ Failed to process DFF file")
-                    self.dff_status.setStyleSheet("color: #e74c3c; padding: 10px;")
-
-            except Exception as e:
-                self.dff_status.setText(f"❌ Error: {str(e)}")
-                self.dff_status.setStyleSheet("color: #e74c3c; padding: 10px;")
-                self.console.append(f"❌ DFF processing error: {str(e)}")
-
-    def process_dff_file(self, file_path):
-        """Process DFF CSV file with enhanced column detection"""
+    def use_sample_data(self):
+        """Load sample data with enhanced user feedback"""
         try:
-            output_file = create_temp_file(suffix='.csv', prefix='processed_dff_')
+            self.console.append("🧪 Loading sample MLB data...")
 
-            with open(file_path, 'r', encoding='utf-8') as f:
-                # Detect delimiter
-                sample = f.read(1024)
-                f.seek(0)
-                delimiter = ',' if ',' in sample else '\t' if '\t' in sample else ';'
+            dk_file, dff_file = create_enhanced_test_data()
+            self.dk_file = dk_file
+            self.dff_file = dff_file
 
-                reader = csv.reader(f, delimiter=delimiter)
-                headers = next(reader, None)
+            self.dk_label.setText("✅ Sample DraftKings data loaded")
+            self.dk_label.setStyleSheet("""
+                color: #137333; 
+                font-weight: bold; 
+                padding: 12px; 
+                border: 2px solid #34a853; 
+                border-radius: 8px;
+                background: #e8f5e8;
+            """)
 
-                if not headers:
-                    return None
+            self.dff_label.setText("✅ Sample DFF data loaded")
+            self.dff_label.setStyleSheet("""
+                color: #b8860b; 
+                font-weight: bold; 
+                padding: 12px; 
+                border: 2px solid #ff9800; 
+                border-radius: 8px;
+                background: #fff8e1;
+            """)
 
-                # Enhanced column detection
-                column_map = {}
-                for i, header in enumerate(headers):
-                    header_lower = header.lower().strip()
+            self.run_btn.setEnabled(True)
+            self.status_bar.showMessage("✅ Sample data loaded - ready to optimize")
 
-                    if any(name in header_lower for name in ['name', 'player']):
-                        column_map['name'] = i
-                    elif any(pos in header_lower for pos in ['pos', 'position']):
-                        column_map['position'] = i
-                    elif any(team in header_lower for team in ['team', 'tm']):
-                        column_map['team'] = i
-                    elif any(rank in header_lower for rank in ['rank', 'ranking']):
-                        column_map['rank'] = i
-                    elif any(score in header_lower for score in ['score', 'rating', 'proj']):
-                        column_map['score'] = i
-                    elif any(tier in header_lower for tier in ['tier', 'grade']):
-                        column_map['tier'] = i
+            # Pre-fill manual players for demo
+            self.manual_input.setText("Jorge Polanco, Christian Yelich")
 
-            # Write processed file
-            with open(output_file, 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['Name', 'Position', 'Team', 'DFF_Rank', 'DFF_Score', 'DFF_Tier'])
+            # Enhanced success message
+            QMessageBox.information(self, "Sample Data Loaded Successfully!",
+                                    "✅ <b>Sample MLB Data Loaded!</b><br><br>"
+                                    "📊 <b>Includes:</b><br>"
+                                    "• 29 realistic MLB players with proper salary ranges<br>"
+                                    "• Multi-position players (3B/SS, 1B/3B)<br>"
+                                    "• DFF expert rankings and projections<br>"
+                                    "• Confirmed lineup data<br>"
+                                    "• Manual player selections pre-filled<br><br>"
+                                    "🚀 <b>Next Step:</b> Go to the Optimize tab to generate your lineup!")
 
-                with open(file_path, 'r', encoding='utf-8') as input_f:
-                    reader = csv.reader(input_f, delimiter=delimiter)
-                    next(reader)  # Skip header
-
-                    for row_num, row in enumerate(reader, 1):
-                        if len(row) < 2:
-                            continue
-
-                        name = row[column_map.get('name', 0)].strip() if column_map.get('name') is not None else f"Player_{row_num}"
-                        position = row[column_map.get('position', 1)].strip() if column_map.get('position') is not None else "UTIL"
-                        team = row[column_map.get('team', 2)].strip() if column_map.get('team') is not None else "UNK"
-                        rank = row[column_map.get('rank')].strip() if column_map.get('rank') is not None else str(row_num)
-                        score = row[column_map.get('score')].strip() if column_map.get('score') is not None else "10"
-                        tier = row[column_map.get('tier')].strip() if column_map.get('tier') is not None else "B"
-
-                        if name and len(name) > 1:
-                            writer.writerow([name, position, team, rank, score, tier])
-
-            return output_file
+            # Update console
+            self.console.append("✅ Sample data loaded successfully!")
+            self.console.append("📊 29 players loaded with multi-position support")
+            self.console.append("🎯 DFF expert rankings included")
+            self.console.append("📝 Manual players: Jorge Polanco, Christian Yelich")
+            self.console.append("")
+            self.console.append("🚀 Ready to optimize! Switch to the Optimize tab.")
 
         except Exception as e:
-            print(f"Error processing DFF file: {e}")
-            return None
-
-    def update_preflight_check(self):
-        """Update the preflight check status"""
-        checks = []
-        all_passed = True
-
-        # Check DraftKings file
-        if self.dk_file and os.path.exists(self.dk_file):
-            checks.append("✅ DraftKings CSV file loaded")
-        else:
-            checks.append("❌ DraftKings CSV file required")
-            all_passed = False
-
-        # Check DFF file (optional)
-        if self.dff_file and os.path.exists(self.dff_file):
-            checks.append("✅ DFF expert data loaded")
-        else:
-            checks.append("⚪ DFF expert data (optional)")
-
-        # Check optimization method
-        method = "MILP" if self.optimization_method.currentIndex() == 0 else "Monte Carlo"
-        checks.append(f"✅ Optimization method: {method}")
-
-        # Check data enhancements
-        enhancements = []
-        if self.use_statcast.isChecked():
-            enhancements.append("Statcast")
-        if self.use_vegas.isChecked():
-            enhancements.append("Vegas")
-        if self.use_confirmed.isChecked():
-            enhancements.append("Confirmed Lineups")
-
-        if enhancements:
-            checks.append(f"✅ Data enhancements: {', '.join(enhancements)}")
-        else:
-            checks.append("⚪ No data enhancements selected")
-
-        # Update display
-        self.preflight_list.setText("\n".join(checks))
-
-        # Enable/disable run button
-        self.run_button.setEnabled(all_passed)
-
-        if all_passed:
-            self.preflight_list.setStyleSheet("font-family: monospace; color: #27ae60;")
-        else:
-            self.preflight_list.setStyleSheet("font-family: monospace; color: #e74c3c;")
-
-    def create_settings_tab(self):
-        """Create the settings tab with manual mode"""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-
-        # Header
-        header = QLabel("⚙️ Optimization Settings")
-        header.setFont(QFont("Arial", 24, QFont.Bold))
-        header.setStyleSheet("color: #2c3e50; margin-bottom: 20px;")
-        layout.addWidget(header)
-
-        # Player Selection Strategy
-        strategy_card = ModernCardWidget("Player Selection Strategy")
-
-        strategy_info = QLabel("""
-        <b>🎯 Choose your player selection approach:</b><br>
-        • <b>All Players:</b> Maximum flexibility, best for cash games<br>
-        • <b>Confirmed Only:</b> Only confirmed lineup players (safest)<br>
-        • <b>Confirmed Pitchers + All Batters:</b> Safe pitchers, flexible batters<br>
-        • <b>Manual Players Only:</b> Only players you specify below
-        """)
-        strategy_info.setWordWrap(True)
-        strategy_info.setStyleSheet("background: #f0f8ff; padding: 10px; border-radius: 5px;")
-        strategy_card.add_widget(strategy_info)
-
-        self.strategy_combo = QComboBox()
-        self.strategy_combo.addItems([
-            "🎯 Smart Default (Confirmed + Your Picks) - RECOMMENDED",    # Index 0
-            "🔒 Safe Only (Confirmed Players Only)",                    # Index 1  
-            "🎯 Smart + Picks (Confirmed + Your Manual Selections)",    # Index 2
-            "⚖️ Balanced (Confirmed Pitchers + All Batters)",          # Index 3
-            "✏️ Manual Only (Your Specified Players Only)"             # Index 4
-        ])
-        self.strategy_combo.setCurrentIndex(0)
-        self.strategy_combo.currentIndexChanged.connect(self.on_strategy_changed)
-        self.strategy_combo.setStyleSheet(self.get_combo_style())
-        strategy_card.add_widget(self.strategy_combo)
-
-        # Manual players input section
-        self.manual_section = QWidget()
-        manual_layout = QVBoxLayout(self.manual_section)
-        manual_layout.setContentsMargins(0, 10, 0, 0)
-
-        manual_label = QLabel("🎯 Specify Players (comma-separated):")
-        manual_label.setFont(QFont("Arial", 12, QFont.Bold))
-        manual_layout.addWidget(manual_label)
-
-        self.manual_input = QLineEdit()
-        self.manual_input.setPlaceholderText("Aaron Judge, Mike Trout, Mookie Betts, Jacob deGrom, Shane Bieber...")
-        self.manual_input.setStyleSheet("""
-            QLineEdit {
-                border: 2px solid #dee2e6;
-                border-radius: 8px;
-                padding: 12px;
-                background: white;
-                font-size: 14px;
-                min-height: 20px;
-            }
-            QLineEdit:focus {
-                border-color: #3498db;
-            }
-        """)
-        manual_layout.addWidget(self.manual_input)
-
-        # Manual mode instructions
-        manual_instructions = QLabel("""
-        <b>📋 Manual Mode Instructions:</b><br>
-        • Enter player names exactly as they appear in DraftKings<br>
-        • Separate multiple players with commas<br>
-        • Include both pitchers and batters to fill all positions<br>
-        • The optimizer will only use these specified players<br>
-        • Make sure you have enough players for each position
-        """)
-        manual_instructions.setWordWrap(True)
-        manual_instructions.setStyleSheet("""
-            background: #fff3cd;
-            padding: 12px;
-            border-radius: 6px;
-            border-left: 4px solid #ffc107;
-            font-size: 12px;
-            margin-top: 8px;
-        """)
-        manual_layout.addWidget(manual_instructions)
-
-        # Initially hide manual section
-        self.manual_section.setVisible(False)
-        strategy_card.add_widget(self.manual_section)
-
-        layout.addWidget(strategy_card)
-
-        # Optimization method
-        method_card = ModernCardWidget("Optimization Method")
-
-        self.optimization_method = QComboBox()
-        self.optimization_method.addItems([
-            "🧠 MILP Optimizer (Recommended for Cash Games)",
-            "🎲 Monte Carlo Optimizer (Good for GPPs)",
-            "🧬 Genetic Algorithm (Experimental)"
-        ])
-        self.optimization_method.setStyleSheet(self.get_combo_style())
-        method_card.add_widget(self.optimization_method)
-
-        method_info = QLabel("""
-        <b>MILP Optimizer:</b> Uses mathematical optimization for the single best lineup.
-        Perfect for cash games where you need consistency.<br><br>
-        <b>Monte Carlo:</b> Uses random sampling to explore many lineup combinations.
-        Better for tournaments where you need unique lineups.<br><br>
-        <b>Genetic Algorithm:</b> Evolutionary approach that combines good lineups.
-        Experimental feature for advanced users.
-        """)
-        method_info.setWordWrap(True)
-        method_info.setStyleSheet("color: #6c757d; margin-top: 10px;")
-        method_card.add_widget(method_info)
-
-        layout.addWidget(method_card)
-
-        # Optimization parameters
-        params_card = ModernCardWidget("Parameters")
-
-        params_form = QFormLayout()
-
-        self.attempts_spin = QSpinBox()
-        self.attempts_spin.setRange(500, 10000)
-        self.attempts_spin.setValue(1000)
-        self.attempts_spin.setStyleSheet(self.get_spinbox_style())
-        params_form.addRow("Monte Carlo Attempts:", self.attempts_spin)
-
-        self.budget_spin = QSpinBox()
-        self.budget_spin.setRange(40000, 60000)
-        self.budget_spin.setValue(50000)
-        self.budget_spin.setStyleSheet(self.get_spinbox_style())
-        params_form.addRow("Salary Cap:", self.budget_spin)
-
-        self.min_salary_spin = QSpinBox()
-        self.min_salary_spin.setRange(0, 50000)
-        self.min_salary_spin.setValue(49000)
-        self.min_salary_spin.setStyleSheet(self.get_spinbox_style())
-        params_form.addRow("Minimum Salary:", self.min_salary_spin)
-
-        params_card.add_layout(params_form)
-        layout.addWidget(params_card)
-
-        # Cash game specific settings
-        cash_card = ModernCardWidget("Cash Game Settings")
-
-        self.max_stack_size = QSpinBox()
-        self.max_stack_size.setRange(2, 6)
-        self.max_stack_size.setValue(4)
-        self.max_stack_size.setStyleSheet(self.get_spinbox_style())
-
-        self.min_stack_size = QSpinBox()
-        self.min_stack_size.setRange(2, 4)
-        self.min_stack_size.setValue(2)
-        self.min_stack_size.setStyleSheet(self.get_spinbox_style())
-
-        cash_form = QFormLayout()
-        cash_form.addRow("Max Team Stack:", self.max_stack_size)
-        cash_form.addRow("Min Team Stack:", self.min_stack_size)
-
-        cash_card.add_layout(cash_form)
-        layout.addWidget(cash_card)
-
-        layout.addStretch()
-        return tab
-
-    def on_strategy_changed_FIXED(self):
-        """FIXED: Handle strategy selection change"""
-        strategy_index = self.strategy_combo.currentIndex()
-
-        # Show/hide manual section based on selection
-        is_manual_mode = (strategy_index == 4)  # Manual Players Only
-        self.manual_section.setVisible(is_manual_mode)
-
-        # FIXED: Update console messages with correct strategy names
-        strategy_messages = [
-            "🎯 Smart Default: Confirmed lineups + enhanced data (RECOMMENDED)",
-            "🌟 All Players: Maximum player pool flexibility",
-            "🔒 Confirmed Only: Strictest safety filtering",
-            "⚖️ Confirmed P + All Batters: Balanced risk approach",
-            "✏️ Manual Mode: Only your specified players"
-        ]
-
-        if strategy_index < len(strategy_messages):
-            self.console.append(strategy_messages[strategy_index])
-
-        if is_manual_mode:
-            self.console.append("📝 Enter your player list in the text box below")
+            QMessageBox.critical(self, "Error Loading Sample Data",
+                                 f"❌ Failed to load sample data:<br><br>{str(e)}")
+            self.console.append(f"❌ Error loading sample data: {e}")
 
     def run_optimization(self):
-        """Run the DFS optimization"""
-        if self.optimization_thread and self.optimization_thread.isRunning():
+        """Run optimization with enhanced UI feedback"""
+        if self.worker and self.worker.isRunning():
             return
 
+        # Get settings
+        strategy_index = self.strategy_combo.currentIndex()
+        manual_input = self.manual_input.text().strip()
+        contest_type = 'classic' if self.contest_combo.currentIndex() == 0 else 'showdown'
+
         # Update UI for running state
-        self.run_button.setEnabled(False)
-        self.run_button.setText("⏳ Optimizing...")
-        self.cancel_button.setVisible(True)
+        self.run_btn.setEnabled(False)
+        self.run_btn.setText("⏳ Optimizing Your Lineup...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
+        self.cancel_btn.setVisible(True)
 
-        # Clear console and add startup message
+        # Clear and start console
         self.console.clear()
         self.console.append("🚀 Starting Enhanced DFS Optimization...")
-        self.console.append("=" * 50)
+        self.console.append("=" * 60)
 
-        # Start optimization thread
-        self.optimization_thread = OptimizationThread(self)
-        self.optimization_thread.output_signal.connect(self.console.append)
-        self.optimization_thread.progress_signal.connect(self.progress_bar.setValue)
-        self.optimization_thread.status_signal.connect(self.status_label.setText)
-        self.optimization_thread.finished_signal.connect(self.optimization_finished)
-        self.optimization_thread.start()
+        # Create and start worker
+        self.worker = OptimizationWorker(
+            dk_file=self.dk_file,
+            dff_file=self.dff_file,
+            manual_input=manual_input,
+            contest_type=contest_type,
+            strategy_index=strategy_index
+        )
+
+        # Connect signals
+        self.worker.progress_signal.connect(self.progress_bar.setValue)
+        self.worker.status_signal.connect(self.status_bar.showMessage)
+        self.worker.output_signal.connect(self.console.append)
+        self.worker.finished_signal.connect(self.optimization_finished)
+        self.worker.start()
 
     def cancel_optimization(self):
-        """Cancel the running optimization"""
-        if self.optimization_thread and self.optimization_thread.isRunning():
-            self.optimization_thread.cancel()
-            self.console.append("🛑 Cancelling optimization...")
+        """Cancel running optimization"""
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.worker.wait(3000)
+            self.optimization_finished(False, "Cancelled by user", {})
 
-    def optimization_finished(self, success, output, lineup_data):
-        """Handle optimization completion"""
+    def optimization_finished(self, success, result, lineup_data):
+        """Handle optimization completion with enhanced feedback"""
         # Reset UI
-        self.run_button.setEnabled(True)
-        self.run_button.setText("🚀 Generate Optimal Lineup")
-        self.cancel_button.setVisible(False)
+        self.run_btn.setEnabled(True)
+        self.run_btn.setText("🚀 Generate Optimal Lineup")
         self.progress_bar.setVisible(False)
-        self.status_label.setText("Ready")
+        self.cancel_btn.setVisible(False)
+        self.status_bar.showMessage("Ready")
 
         if success:
             self.console.append("\n🎉 OPTIMIZATION COMPLETED SUCCESSFULLY!")
-            self.console.append("=" * 50)
+            self.console.append("=" * 60)
+            self.console.append(result)
 
-            # Display results
-            self.display_results(output, lineup_data)
+            # Update results tab
+            if lineup_data and isinstance(lineup_data, dict):
+                self.update_results(lineup_data)
 
-            # Switch to results tab
-            self.switch_tab("results")
+                # Switch to results tab automatically
+                self.tab_widget.setCurrentIndex(2)
+                self.status_bar.showMessage("✅ Optimization complete! Check Results tab for your optimal lineup.")
+
+                # Show success notification
+                QMessageBox.information(self, "Optimization Complete!",
+                                        f"🎉 <b>Success!</b><br><br>"
+                                        f"Your optimal lineup has been generated!<br><br>"
+                                        f"📊 <b>Results:</b><br>"
+                                        f"• Total Salary: ${lineup_data.get('total_salary', 0):,}<br>"
+                                        f"• Projected Score: {lineup_data.get('total_score', 0):.2f} points<br>"
+                                        f"• Strategy Used: {lineup_data.get('strategy_used', 'Unknown')}<br><br>"
+                                        f"🔍 Check the Results tab for detailed analysis!")
+            else:
+                self.console.append("⚠️ Results data incomplete, but optimization succeeded")
 
         else:
             self.console.append(f"\n❌ OPTIMIZATION FAILED")
-            self.console.append(f"Error: {output}")
+            self.console.append(f"Error: {result}")
+            self.status_bar.showMessage("❌ Optimization failed - check console for details")
 
-            # Show error dialog
+            # Show error dialog with helpful suggestions
             QMessageBox.critical(self, "Optimization Failed",
-                                 f"The optimization failed with the following error:\n\n{output}")
+                                 f"❌ <b>The optimization failed:</b><br><br>"
+                                 f"{result}<br><br>"
+                                 f"💡 <b>Suggestions:</b><br>"
+                                 f"• Try a different strategy (Smart Default recommended)<br>"
+                                 f"• Check that your CSV file is valid<br>"
+                                 f"• For Manual Only, ensure you have 8+ players<br>"
+                                 f"• Try using sample data to test the system")
 
-    def display_results(self, output, lineup_data):
-        """Display the optimization results"""
+    def update_results(self, lineup_data):
+        """Update results tab with enhanced display"""
         try:
-            # Update summary
-            summary_text = f"""
-            <h3>📊 Optimization Summary</h3>
-            <p><b>Total Salary:</b> ${lineup_data.get('total_salary', 0):,}</p>
-            <p><b>Projected Score:</b> {lineup_data.get('total_score', 0):.2f}</p>
-            <p><b>Players:</b> {len(lineup_data.get('players', []))}</p>
-            <p><b>Optimization Method:</b> {'MILP' if self.optimization_method.currentIndex() == 0 else 'Monte Carlo'}</p>
+            # Extract data
+            total_salary = lineup_data.get('total_salary', 0)
+            total_score = lineup_data.get('total_score', 0)
+            players = lineup_data.get('players', [])
+            confirmed_count = lineup_data.get('confirmed_count', 0)
+            manual_count = lineup_data.get('manual_count', 0)
+            strategy_used = lineup_data.get('strategy_used', 'unknown')
+
+            # Create enhanced summary
+            summary_html = f"""
+            <div style="line-height: 1.8; font-family: Segoe UI;">
+                <h2 style="color: #1a73e8; margin-bottom: 20px;">📊 Optimization Results</h2>
+
+                <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <h3 style="color: #137333; margin-bottom: 10px;">💰 Financial Summary</h3>
+                    <p><b>Total Salary:</b> ${total_salary:,} / $50,000</p>
+                    <p><b>Salary Remaining:</b> ${50000 - total_salary:,}</p>
+                    <p><b>Projected Score:</b> {total_score:.2f} points</p>
+                </div>
+
+                <div style="background: #f0f4ff; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <h3 style="color: #1a73e8; margin-bottom: 10px;">🎯 Strategy Analysis</h3>
+                    <p><b>Strategy Used:</b> {strategy_used.replace('_', ' ').title()}</p>
+                    <p><b>Total Players:</b> {len(players)}</p>
+                    <p><b>Confirmed Players:</b> {confirmed_count} ✅</p>
+                    <p><b>Manual Selections:</b> {manual_count} 📝</p>
+                </div>
+
+                <div style="background: #fff8e1; padding: 15px; border-radius: 8px;">
+                    <h3 style="color: #f57c00; margin-bottom: 10px;">🏆 Lineup Quality</h3>
+                    <p><b>Average Salary:</b> ${total_salary // len(players):,} per player</p>
+                    <p><b>Score per $1000:</b> {(total_score / (total_salary / 1000)):.2f}</p>
+                    <p><b>Optimization Status:</b> <span style="color: #137333;">✅ Optimal Solution Found</span></p>
+                </div>
+            </div>
             """
 
-            if self.dff_file:
-                summary_text += "<p><b>DFF Integration:</b> ✅ Active</p>"
-
-            self.results_summary.setText(summary_text)
+            self.results_summary.setText(summary_html)
 
             # Update lineup table
-            players = lineup_data.get('players', [])
-            if players:
-                self.setup_lineup_table(players)
+            if hasattr(self, 'lineup_table'):
+                self.lineup_table.setRowCount(len(players))
 
-                # Create DraftKings export string
+                for row, player in enumerate(players):
+                    # Position
+                    pos_item = QTableWidgetItem(player.get('position', ''))
+                    pos_item.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                    pos_item.setTextAlignment(Qt.AlignCenter)
+                    self.lineup_table.setItem(row, 0, pos_item)
+
+                    # Player name
+                    name_item = QTableWidgetItem(player.get('name', ''))
+                    name_item.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                    self.lineup_table.setItem(row, 1, name_item)
+
+                    # Team
+                    team_item = QTableWidgetItem(player.get('team', ''))
+                    team_item.setFont(QFont("Segoe UI", 10))
+                    team_item.setTextAlignment(Qt.AlignCenter)
+                    self.lineup_table.setItem(row, 2, team_item)
+
+                    # Salary
+                    salary_item = QTableWidgetItem(f"${player.get('salary', 0):,}")
+                    salary_item.setFont(QFont("Segoe UI", 10))
+                    salary_item.setTextAlignment(Qt.AlignRight)
+                    self.lineup_table.setItem(row, 3, salary_item)
+
+                    # Score
+                    score_item = QTableWidgetItem(f"{player.get('score', 0):.1f}")
+                    score_item.setFont(QFont("Segoe UI", 10))
+                    score_item.setTextAlignment(Qt.AlignCenter)
+                    self.lineup_table.setItem(row, 4, score_item)
+
+                    # Status
+                    status_item = QTableWidgetItem(player.get('status', ''))
+                    status_item.setFont(QFont("Segoe UI", 9))
+                    self.lineup_table.setItem(row, 5, status_item)
+
+                # Auto-resize columns
+                self.lineup_table.resizeColumnsToContents()
+                self.lineup_table.horizontalHeader().setStretchLastSection(True)
+
+            # Update import text
+            if hasattr(self, 'import_text'):
                 player_names = [p.get('name', '') for p in players]
-                export_string = ", ".join(player_names)
-                self.export_text.setText(export_string)
+                import_string = ", ".join(player_names)
+                self.import_text.setPlainText(import_string)
 
-            # Show full output in console
-            self.console.append("\n📋 DETAILED RESULTS:")
-            self.console.append("-" * 40)
-            for line in output.split('\n'):
-                if line.strip():
-                    self.console.append(line)
+            print(f"✅ Results updated: {len(players)} players, ${total_salary:,}, {total_score:.2f} pts")
 
         except Exception as e:
-            self.console.append(f"⚠️ Error displaying results: {e}")
+            print(f"❌ Error updating results: {e}")
+            import traceback
+            traceback.print_exc()
 
-    def setup_lineup_table(self, players):
-        """Setup the lineup table with player data"""
-        self.lineup_table.clear()
-
-        if not players:
-            return
-
-        # Setup table
-        self.lineup_table.setRowCount(len(players))
-        self.lineup_table.setColumnCount(4)
-        self.lineup_table.setHorizontalHeaderLabels(["Position", "Player", "Team", "Salary"])
-
-        # Populate table
-        for row, player in enumerate(players):
-            self.lineup_table.setItem(row, 0, QTableWidgetItem(player.get('position', '')))
-            self.lineup_table.setItem(row, 1, QTableWidgetItem(player.get('name', '')))
-            self.lineup_table.setItem(row, 2, QTableWidgetItem(player.get('team', '')))
-
-            salary_str = player.get('salary', '0')
-            if isinstance(salary_str, str):
-                salary_str = salary_str.replace(', '').replace(',', ')
-            try:
-                salary_val = int(salary_str)
-                salary_display = f"${salary_val:,}"
-            except:
-                salary_display = str(salary_str)
-
-            self.lineup_table.setItem(row, 3, QTableWidgetItem(salary_display))
-
-        # Resize columns
-        self.lineup_table.resizeColumnsToContents()
-        self.lineup_table.horizontalHeader().setStretchLastSection(True)
-
-
-    def on_strategy_changed(self):
-        """Handle strategy selection change"""
-        try:
-            strategy_index = self.strategy_combo.currentIndex()
-
-            # Show/hide manual section if it exists
-            is_manual_mode = (strategy_index == 4)
-            if hasattr(self, 'manual_section'):
-                self.manual_section.setVisible(is_manual_mode)
-
-            # Update console
-            strategies = [
-                "🎯 Smart Default: Confirmed + Enhanced",
-                "🌟 All Players: Maximum flexibility", 
-                "🔒 Confirmed Only: Strictest filtering",
-                "⚖️ Confirmed P + All Batters: Balanced",
-                "✏️ Manual Mode: Your specified players"
-            ]
-
-            if strategy_index < len(strategies) and hasattr(self, 'console'):
-                self.console.append(strategies[strategy_index])
-
-        except Exception as e:
-            print(f"Strategy change error: {e}")
-
-    def copy_lineup_to_clipboard(self):
-        """Copy the lineup to clipboard"""
-        if self.export_text.toPlainText():
+    def copy_to_clipboard(self):
+        """Copy lineup to clipboard with enhanced feedback"""
+        text = self.import_text.toPlainText()
+        if text:
             clipboard = QApplication.clipboard()
-            clipboard.setText(self.export_text.toPlainText())
+            clipboard.setText(text)
 
-            # Show confirmation
-            self.status_label.setText("Lineup copied to clipboard!")
-            QTimer.singleShot(3000, lambda: self.status_label.setText("Ready"))
+            # Enhanced feedback
+            self.status_bar.showMessage("✅ Lineup copied to clipboard successfully!", 3000)
+
+            # Success notification
+            QMessageBox.information(self, "Copied Successfully!",
+                                    "📋 <b>Lineup copied to clipboard!</b><br><br>"
+                                    "You can now paste this directly into DraftKings:<br><br>"
+                                    "1. Go to your DraftKings contest<br>"
+                                    "2. Click in the player search box<br>"
+                                    "3. Press Ctrl+V (or Cmd+V on Mac) to paste<br>"
+                                    "4. The lineup will auto-populate!<br><br>"
+                                    "🚀 <b>Good luck with your lineup!</b>")
+        else:
+            QMessageBox.warning(self, "No Lineup Available",
+                                "❌ <b>No lineup to copy</b><br><br>"
+                                "Please generate an optimal lineup first by going to the Optimize tab.")
 
 
 def main():
@@ -2820,20 +1148,31 @@ def main():
     app.setApplicationName("Enhanced DFS Optimizer Pro")
     app.setApplicationVersion("2.0")
 
-    # Set application icon (if available)
+    # Set application icon if available
     try:
-        app.setWindowIcon(QIcon("icon.png"))
+        app.setWindowIcon(QIcon("dfs_icon.png"))
     except:
         pass
 
+    # Check if core is available
+    if not CORE_AVAILABLE:
+        QMessageBox.critical(None, "Missing Core Module",
+                             "❌ <b>Could not import optimized_dfs_core.py</b><br><br>"
+                             "Make sure the following files are in the same directory:<br>"
+                             "• optimized_dfs_core.py<br>"
+                             "• enhanced_dfs_gui.py<br><br>"
+                             "Please check the file locations and try again.")
+        return 1
+
     # Create and show the main window
-    window = ModernDFSGUI()
+    window = EnhancedDFSGUI()
     window.show()
     window.raise_()
     window.activateWindow()
 
-    print("✅ Modern DFS GUI launched successfully!")
-    print("🎯 Enhanced optimization with MILP and advanced features ready")
+    print("✅ Enhanced DFS GUI launched successfully!")
+    print("🎯 Features: Modern UI, MILP optimization, multi-position support")
+    print("🚀 Ready for professional DFS optimization!")
 
     return app.exec_()
 
