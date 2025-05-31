@@ -5,8 +5,6 @@ Optimized entry point that properly detects dependencies and integrates all comp
 """
 
 import sys
-import os
-import subprocess
 import importlib
 from pathlib import Path
 import traceback
@@ -253,7 +251,7 @@ class EnhancedDFSLauncher:
         try:
             # Dynamic import based on available core
             if core_file == 'working_dfs_core_final.py':
-                from working_dfs_core_final import test_system
+                from cleanup_backup_20250531_105034.working_dfs_core_final import test_system
                 print("✅ Working DFS Core loaded")
 
             elif core_file == 'streamlined_dfs_core_OPTIMIZED.py':

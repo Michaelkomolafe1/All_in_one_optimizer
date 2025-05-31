@@ -5,7 +5,7 @@ Verifies that real Statcast data is working
 """
 
 import os
-import sys
+
 
 def test_real_statcast():
     """Test real Baseball Savant data integration"""
@@ -14,7 +14,7 @@ def test_real_statcast():
     print("=" * 50)
 
     try:
-        from working_dfs_core_final import OptimizedDFSCore, load_and_optimize_complete_pipeline
+        from cleanup_backup_20250531_105034.working_dfs_core_final import OptimizedDFSCore, load_and_optimize_complete_pipeline
         print("✅ Core imported successfully")
     except ImportError as e:
         print(f"❌ Could not import core: {e}")

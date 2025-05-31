@@ -5,7 +5,6 @@ Step-by-step integration + what happens when Statcast data isn't found
 """
 
 import os
-import sys
 from pathlib import Path
 
 
@@ -226,7 +225,7 @@ def test_integration():
         print("   ✅ Statcast integration instance created")
 
         # Test with working core
-        from working_dfs_core_final import OptimizedDFSCore
+        from cleanup_backup_20250531_105034.working_dfs_core_final import OptimizedDFSCore
         core = OptimizedDFSCore()
         print("   ✅ Core optimizer instance created")
 

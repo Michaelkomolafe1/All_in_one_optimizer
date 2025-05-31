@@ -5,10 +5,9 @@ Comprehensive Integration Test - Validates the unified system
 
 import os
 import sys
-import asyncio
 import tempfile
 import csv
-from pathlib import Path
+
 
 def create_test_data():
     """Create test DraftKings and DFF data"""
@@ -124,7 +123,7 @@ def test_integration():
 
     try:
         # Test enhanced pipeline
-        from working_dfs_core_final import load_and_optimize_complete_pipeline_enhanced
+        from cleanup_backup_20250531_105034.working_dfs_core_final import load_and_optimize_complete_pipeline_enhanced
 
         print("  🧪 Testing enhanced pipeline...")
 
@@ -231,7 +230,7 @@ def test_strategies():
 
     for strategy in strategies_to_test:
         try:
-            from working_dfs_core_final import load_and_optimize_complete_pipeline_enhanced
+            from cleanup_backup_20250531_105034.working_dfs_core_final import load_and_optimize_complete_pipeline_enhanced
 
             manual_input = "Jorge Polanco, Christian Yelich, Hunter Brown, Kyle Tucker, Vladimir Guerrero Jr., Francisco Lindor, Jose Ramirez, William Contreras, Jarren Duran, Byron Buxton" if strategy == 'manual_only' else "Jorge Polanco, Christian Yelich"
 

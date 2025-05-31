@@ -3,7 +3,6 @@
 Quick Integration Test - Verify everything is working
 """
 
-import sys
 from pathlib import Path
 
 def quick_integration_test():
@@ -28,7 +27,7 @@ def quick_integration_test():
         from advanced_dfs_algorithm import AdvancedDFSAlgorithm, RealStatcastIntegration
         print("   ✅ Advanced algorithm imports")
 
-        from working_dfs_core_final import OptimizedDFSCore, apply_advanced_algorithm_upgrade
+        from cleanup_backup_20250531_105034.working_dfs_core_final import OptimizedDFSCore, apply_advanced_algorithm_upgrade
         print("   ✅ Core with advanced integration imports")
 
     except ImportError as e:
@@ -54,7 +53,7 @@ def quick_integration_test():
     # Test 4: Test with sample data
     print("\n📊 Testing with sample data...")
     try:
-        from working_dfs_core_final import create_enhanced_test_data
+        from cleanup_backup_20250531_105034.working_dfs_core_final import create_enhanced_test_data
 
         dk_file, dff_file = create_enhanced_test_data()
 

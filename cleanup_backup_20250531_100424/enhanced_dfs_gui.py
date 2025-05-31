@@ -8,13 +8,8 @@ import sys
 import os
 import subprocess
 import tempfile
-import json
 import csv
-import traceback
 import atexit
-import shutil
-from datetime import datetime
-from pathlib import Path
 
 # Temporary file management
 TEMP_FILES = []
@@ -45,7 +40,7 @@ try:
     
 # UNIFIED SYSTEM INTEGRATION - Added by integration bot
 try:
-    from working_dfs_core_final import load_and_optimize_complete_pipeline_enhanced
+    from cleanup_backup_20250531_105034.working_dfs_core_final import load_and_optimize_complete_pipeline_enhanced
     ENHANCED_PIPELINE_AVAILABLE = True
 except ImportError:
     ENHANCED_PIPELINE_AVAILABLE = False
