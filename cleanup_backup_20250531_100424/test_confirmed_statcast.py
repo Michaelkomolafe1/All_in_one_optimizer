@@ -5,7 +5,7 @@ Verifies that confirmed players get real Baseball Savant data
 """
 
 import os
-import sys
+
 
 def test_confirmed_real_data():
     """Test that confirmed players get real Baseball Savant data"""
@@ -14,7 +14,7 @@ def test_confirmed_real_data():
     print("=" * 60)
 
     try:
-        from working_dfs_core_final import load_and_optimize_complete_pipeline
+        from cleanup_backup_20250531_105034.working_dfs_core_final import load_and_optimize_complete_pipeline
         print("✅ Core imported successfully")
     except ImportError as e:
         print(f"❌ Could not import core: {e}")

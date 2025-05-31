@@ -4,9 +4,7 @@ FIXED Strategy Filtering System
 Properly implements confirmed player detection and strategy filtering
 """
 
-import os
-import sys
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict
 
 
 class ConfirmedLineupDetector:
@@ -437,7 +435,7 @@ def test_strategy_filtering():
 
     # Import test data
     try:
-        from working_dfs_core_final import create_enhanced_test_data, OptimizedDFSCore
+        from cleanup_backup_20250531_105034.working_dfs_core_final import create_enhanced_test_data, OptimizedDFSCore
 
         # Create test data
         dk_file, dff_file = create_enhanced_test_data()

@@ -461,7 +461,7 @@ Your DFS system is now clean, organized, and optimized!
                 print(f"   🧪 {test_file} → tests/")
 
         print("\n🗑️ FILES TO BE DELETED:")
-        redundant_file = 'working_dfs_core_final.py.backup_timing'
+        redundant_file = '../working_dfs_core_final.py.backup_timing'
         if (self.current_dir / redundant_file).exists():
             print(f"   🗑️ {redundant_file} (redundant backup)")
         else:

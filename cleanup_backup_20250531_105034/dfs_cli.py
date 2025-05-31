@@ -3,7 +3,6 @@
 DFS Optimizer CLI - Command line interface for the unified system
 """
 
-import asyncio
 import argparse
 import sys
 from pathlib import Path
@@ -40,7 +39,7 @@ def main():
 
     try:
         # Use unified pipeline
-        from working_dfs_core_final import load_and_optimize_complete_pipeline_enhanced
+        from cleanup_backup_20250531_105034.working_dfs_core_final import load_and_optimize_complete_pipeline_enhanced
 
         lineup, score, summary = load_and_optimize_complete_pipeline_enhanced(
             dk_file=args.dk,
