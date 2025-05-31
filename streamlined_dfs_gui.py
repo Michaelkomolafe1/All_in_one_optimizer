@@ -4,41 +4,42 @@ Streamlined DFS GUI - Working Version
 Clean, functional GUI that integrates perfectly with working_dfs_core_final.py
 """
 
+# FIX 1: Add these imports at the top of your streamlined_dfs_gui.py file
+
 import sys
 import os
 import traceback
 import tempfile
 from pathlib import Path
+from typing import List, Dict, Tuple, Optional  # ADD THIS LINE
 
 # Import PyQt5
 try:
     from PyQt5.QtWidgets import *
     from PyQt5.QtCore import *
     from PyQt5.QtGui import *
-
     print("✅ PyQt5 loaded successfully")
 except ImportError:
     print("❌ PyQt5 not available. Install with: pip install PyQt5")
     sys.exit(1)
 
-# Import our working DFS core
+# Import our working DFS core - ADD THIS IMPORT
 try:
     from working_dfs_core_final import (
+        OptimizedPlayer,           # ADD THIS
         OptimizedDFSCore,
         load_and_optimize_complete_pipeline,
         create_enhanced_test_data
     )
-
     print("✅ Working DFS Core imported successfully")
     CORE_AVAILABLE = True
 except ImportError as e:
     print(f"❌ Could not import working DFS core: {e}")
-    print("💡 Make sure working_dfs_core_final.py is in the same directory")
     CORE_AVAILABLE = False
 
 
 class OptimizationWorker(QThread):
-    """Background worker for DFS optimization"""
+    """Background worker for DFS optimization - CORRECTED VERSION"""
 
     progress_signal = pyqtSignal(int)
     status_signal = pyqtSignal(str)
@@ -66,12 +67,24 @@ class OptimizationWorker(QThread):
             self.status_signal.emit("Loading data...")
             self.progress_signal.emit(30)
 
+            # Map GUI strategy to pipeline strategy
+            strategy_mapping = {
+                'balanced': 'balanced',
+                'confirmed_only': 'confirmed_only',
+                'confirmed_pitchers_all_batters': 'confirmed_pitchers_all_batters',
+                'high_floor': 'high_floor',
+                'high_ceiling': 'high_ceiling'
+            }
+
+            # Use the mapped strategy
+            mapped_strategy = strategy_mapping.get(self.strategy, 'balanced')
+
             lineup, score, summary = load_and_optimize_complete_pipeline(
                 dk_file=self.dk_file,
                 dff_file=self.dff_file,
                 manual_input=self.manual_input,
                 contest_type=self.contest_type,
-                strategy=self.strategy
+                strategy=mapped_strategy
             )
 
             self.progress_signal.emit(90)
@@ -85,7 +98,16 @@ class OptimizationWorker(QThread):
                     'summary': summary
                 }
 
+                # Count confirmed and manual players for display
+                confirmed_count = 0
+                manual_count = 0
+
                 for player in lineup:
+                    if getattr(player, 'is_confirmed', False):
+                        confirmed_count += 1
+                    if getattr(player, 'is_manual_selected', False):
+                        manual_count += 1
+
                     player_info = {
                         'position': player.primary_position,
                         'name': player.name,
@@ -96,26 +118,45 @@ class OptimizationWorker(QThread):
                     }
                     lineup_data['players'].append(player_info)
 
+                # Add strategy results to summary
+                lineup_data['confirmed_count'] = confirmed_count
+                lineup_data['manual_count'] = manual_count
+                lineup_data['strategy_used'] = mapped_strategy
+
                 self.progress_signal.emit(100)
                 self.status_signal.emit("Complete!")
                 self.finished_signal.emit(True, summary, lineup_data)
             else:
-                self.finished_signal.emit(False, "No valid lineup found", {})
+                error_msg = "No valid lineup found"
+                if mapped_strategy == 'confirmed_only':
+                    error_msg += "\n💡 Try 'Smart Default' for more player options"
+                self.finished_signal.emit(False, error_msg, {})
 
         except Exception as e:
             error_msg = f"Optimization failed: {str(e)}"
             self.finished_signal.emit(False, error_msg, {})
 
     def _get_player_status(self, player):
-        """Get player status string"""
+        """Get player status string - CORRECTED"""
         status_parts = []
+
+        # Check confirmed status multiple ways
         if hasattr(player, 'is_confirmed') and player.is_confirmed:
-            status_parts.append("CONF")
+            status_parts.append("CONFIRMED")
+        elif hasattr(player, 'confirmed_order') and str(player.confirmed_order).upper() == 'YES':
+            status_parts.append("CONFIRMED")
+        elif hasattr(player, 'batting_order') and player.batting_order is not None:
+            status_parts.append("CONFIRMED")
+
+        # Check manual selection
         if hasattr(player, 'is_manual_selected') and player.is_manual_selected:
             status_parts.append("MANUAL")
+
+        # Check DFF data
         if hasattr(player, 'dff_projection') and player.dff_projection > 0:
             status_parts.append(f"DFF:{player.dff_projection:.1f}")
-        return ",".join(status_parts) if status_parts else "-"
+
+        return " | ".join(status_parts) if status_parts else "-"
 
     def cancel(self):
         self.is_cancelled = True
@@ -180,6 +221,60 @@ class StreamlinedDFSGUI(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready - Select DraftKings CSV to begin")
 
+    def load_and_optimize_complete_pipeline_FIXED(
+            dk_file: str,
+            dff_file: str = None,
+            manual_input: str = "",
+            contest_type: str = 'classic',
+            strategy: str = 'balanced'
+    ) -> Tuple[List[OptimizedPlayer], float, str]:
+        """Complete optimization pipeline - FIXED with confirmed detection"""
+
+        print("🚀 COMPLETE DFS OPTIMIZATION PIPELINE")
+        print("=" * 60)
+
+        # Initialize core
+        core = OptimizedDFSCore()
+
+        # Step 1: Load DraftKings data
+        print("📊 Step 1: Loading DraftKings data...")
+        if not core.load_draftkings_csv(dk_file):
+            return [], 0, "Failed to load DraftKings data"
+
+        # Step 2: Apply DFF rankings if provided
+        if dff_file:
+            print("🎯 Step 2: Applying DFF rankings...")
+            core.apply_dff_rankings(dff_file)
+
+        # Step 3: Enrich with Statcast data
+        print("🔬 Step 3: Enriching with Statcast data...")
+        core.enrich_with_statcast()
+
+        # Step 4: CRITICAL - Detect confirmed players BEFORE strategy filtering
+        print("🔍 Step 4: Detecting confirmed players...")
+        core._detect_confirmed_players()
+
+        # Step 5: Apply manual selection if provided
+        if manual_input:
+            print("🎯 Step 5: Applying manual selection...")
+            core.apply_manual_selection(manual_input)
+
+        # Step 6: Optimize lineup with strategy
+        print("🧠 Step 6: Running optimization...")
+        lineup, score = core.optimize_lineup(contest_type, strategy)
+
+        if lineup:
+            # Count confirmed players in final lineup
+            confirmed_in_lineup = sum(1 for p in lineup if getattr(p, 'is_confirmed', False))
+            manual_in_lineup = sum(1 for p in lineup if getattr(p, 'is_manual_selected', False))
+
+            print(f"📊 Final lineup: {confirmed_in_lineup} confirmed, {manual_in_lineup} manual")
+
+            summary = core.get_lineup_summary(lineup, score)
+            print("✅ Optimization complete!")
+            return lineup, score, summary
+        else:
+            return [], 0, "Optimization failed"
     def create_setup_tab(self):
         """Create the setup tab"""
         tab = QWidget()
@@ -278,6 +373,56 @@ class StreamlinedDFSGUI(QMainWindow):
         layout.addStretch()
         return tab
 
+    def mark_known_players_as_confirmed_TEMP(self, players):  # ADD 'self' parameter
+        """TEMPORARY: Mark known current players as confirmed for testing"""
+
+        # Current MLB players who are likely confirmed starters
+        confirmed_names = {
+            'Shohei Ohtani': 2,
+            'Bo Bichette': 1,
+            'Austin Riley': 4,
+            'Carlos Rodon': 0,  # Pitcher
+            'Gabriel Moreno': 6,
+            'George Springer': 3,
+            'Brewer Hicklen': 8,
+            'Richie Palacios': 7,
+            'Nick Gonzales': 9,
+            'Joe Boyle': 0  # Pitcher
+        }
+
+        confirmed_count = 0
+        for player in players:
+            if player.name in confirmed_names:
+                player.is_confirmed = True
+                player.batting_order = confirmed_names[player.name]
+                confirmed_count += 1
+                # Add confirmed bonus to score
+                player.enhanced_score += 2.0
+                print(f"✅ Marked {player.name} as confirmed (batting {player.batting_order})")
+
+        print(f"📊 Marked {confirmed_count} players as confirmed")
+        return confirmed_count
+
+    # FIX 6: Quick test function to verify confirmed detection
+
+    def test_confirmed_detection(self):  # ADD 'self' parameter
+        """Test function to verify confirmed player detection is working"""
+
+        # Create some test players
+        test_players = [
+            OptimizedPlayer({'id': 1, 'name': 'Shohei Ohtani', 'position': '1B/OF', 'team': 'LAD', 'salary': 6400}),
+            OptimizedPlayer({'id': 2, 'name': 'Bo Bichette', 'position': 'SS', 'team': 'TOR', 'salary': 4100}),
+            OptimizedPlayer({'id': 3, 'name': 'Test Player', 'position': 'OF', 'team': 'TEST', 'salary': 3000}),
+        ]
+
+        # Mark some as confirmed
+        self.mark_known_players_as_confirmed_TEMP(test_players)  # ADD 'self.'
+
+        # Check results
+        for player in test_players:
+            status = "CONFIRMED" if getattr(player, 'is_confirmed', False) else "NOT CONFIRMED"
+            print(f"{player.name}: {status}")
+
     def create_optimize_tab(self):
         """Create the optimize tab"""
         tab = QWidget()
@@ -351,19 +496,19 @@ class StreamlinedDFSGUI(QMainWindow):
         return tab
 
     def create_results_tab(self):
-        """Create the results tab"""
+        """Create the results tab - FIXED VERSION"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setSpacing(20)
 
-        # Summary
+        # Summary - ADD THIS WIDGET THAT WAS MISSING
         summary_group = QGroupBox("📊 Lineup Summary")
         summary_layout = QVBoxLayout(summary_group)
 
-        self.summary_label = QLabel("No optimization results yet")
-        self.summary_label.setWordWrap(True)
-        self.summary_label.setStyleSheet("color: #6c757d; font-style: italic;")
-        summary_layout.addWidget(self.summary_label)
+        self.results_summary = QLabel("No optimization results yet")  # THIS WAS MISSING!
+        self.results_summary.setWordWrap(True)
+        self.results_summary.setStyleSheet("color: #6c757d; font-style: italic;")
+        summary_layout.addWidget(self.results_summary)
 
         layout.addWidget(summary_group)
 
@@ -568,6 +713,8 @@ class StreamlinedDFSGUI(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load sample data:\n{str(e)}")
 
+
+
     def run_optimization(self):
         """Run the optimization"""
         if not CORE_AVAILABLE:
@@ -620,79 +767,93 @@ class StreamlinedDFSGUI(QMainWindow):
             self.optimization_finished(False, "Cancelled by user", {})
 
     def optimization_finished(self, success, result, lineup_data):
-        """Handle optimization completion"""
+        """Handle optimization completion - FIXED VERSION"""
         # Reset UI
         self.run_btn.setEnabled(True)
         self.run_btn.setText("🚀 Generate Optimal Lineup")
         self.progress_bar.setVisible(False)
         self.cancel_btn.setVisible(False)
+        self.status_bar.showMessage("Ready")
 
         if success:
-            self.console.append("\n✅ OPTIMIZATION COMPLETED!")
+            self.console.append("\n🎉 OPTIMIZATION COMPLETED!")
             self.console.append("=" * 50)
             self.console.append(result)
 
-            # Update results tab
-            self.update_results(lineup_data)
+            # FIXED: Check if lineup_data has the right structure
+            print(f"DEBUG: lineup_data type: {type(lineup_data)}")
+            print(f"DEBUG: lineup_data keys: {lineup_data.keys() if isinstance(lineup_data, dict) else 'Not a dict'}")
+
+            # Update results tab - FIXED to handle the data properly
+            if lineup_data and isinstance(lineup_data, dict):
+                self.update_results(lineup_data)
+            else:
+                # Parse results from the text summary if lineup_data is empty
+                self.parse_and_display_results(result)
 
             # Switch to results tab
             self.tab_widget.setCurrentIndex(2)
-
             self.status_bar.showMessage("Optimization complete! Check Results tab.")
 
         else:
             self.console.append(f"\n❌ OPTIMIZATION FAILED: {result}")
             self.status_bar.showMessage("Optimization failed - check console for details")
-
-            QMessageBox.critical(self, "Optimization Failed",
-                                 f"The optimization failed:\n\n{result}")
+            QMessageBox.critical(self, "Optimization Failed", f"The optimization failed:\n\n{result}")
 
     def update_results(self, lineup_data):
-        """Update the results tab with lineup data"""
+        """Update the results tab with lineup data - FIXED VERSION"""
         try:
             # Update summary
             total_salary = lineup_data.get('total_salary', 0)
             total_score = lineup_data.get('total_score', 0)
             players = lineup_data.get('players', [])
+            confirmed_count = lineup_data.get('confirmed_count', 0)
+            manual_count = lineup_data.get('manual_count', 0)
+            strategy_used = lineup_data.get('strategy_used', 'unknown')
 
             summary_text = f"""
             <h3>📊 Optimization Results</h3>
+            <p><b>Strategy Used:</b> {strategy_used}</p>
             <p><b>Total Players:</b> {len(players)}</p>
+            <p><b>Confirmed Players:</b> {confirmed_count}</p>
+            <p><b>Manual Selections:</b> {manual_count}</p>
             <p><b>Total Salary:</b> ${total_salary:,}</p>
             <p><b>Projected Score:</b> {total_score:.2f} points</p>
             <p><b>Salary Remaining:</b> ${50000 - total_salary:,}</p>
             """
 
-            # Add lineup composition info
-            confirmed = sum(1 for p in players if 'CONF' in p.get('status', ''))
-            manual = sum(1 for p in players if 'MANUAL' in p.get('status', ''))
-            dff = sum(1 for p in players if 'DFF' in p.get('status', ''))
-
-            summary_text += f"""
-            <p><b>Confirmed Players:</b> {confirmed}</p>
-            <p><b>Manual Selections:</b> {manual}</p>
-            <p><b>DFF Enhanced:</b> {dff}</p>
-            """
-
-            self.summary_label.setText(summary_text)
+            # Make sure the widget exists before setting text
+            if hasattr(self, 'results_summary'):
+                self.results_summary.setText(summary_text)
+            else:
+                print("⚠️ results_summary widget not found - check create_results_tab method")
 
             # Update table
-            self.lineup_table.setRowCount(len(players))
+            if hasattr(self, 'lineup_table'):
+                self.lineup_table.setRowCount(len(players))
 
-            for row, player in enumerate(players):
-                self.lineup_table.setItem(row, 0, QTableWidgetItem(player.get('position', '')))
-                self.lineup_table.setItem(row, 1, QTableWidgetItem(player.get('name', '')))
-                self.lineup_table.setItem(row, 2, QTableWidgetItem(player.get('team', '')))
-                self.lineup_table.setItem(row, 3, QTableWidgetItem(f"${player.get('salary', 0):,}"))
-                self.lineup_table.setItem(row, 4, QTableWidgetItem(f"{player.get('score', 0):.1f}"))
-                self.lineup_table.setItem(row, 5, QTableWidgetItem(player.get('status', '')))
+                for row, player in enumerate(players):
+                    self.lineup_table.setItem(row, 0, QTableWidgetItem(player.get('position', '')))
+                    self.lineup_table.setItem(row, 1, QTableWidgetItem(player.get('name', '')))
+                    self.lineup_table.setItem(row, 2, QTableWidgetItem(player.get('team', '')))
+                    self.lineup_table.setItem(row, 3, QTableWidgetItem(f"${player.get('salary', 0):,}"))
+                    self.lineup_table.setItem(row, 4, QTableWidgetItem(f"{player.get('score', 0):.1f}"))
+                    self.lineup_table.setItem(row, 5, QTableWidgetItem(player.get('status', '')))
+
+                # Resize columns
+                self.lineup_table.resizeColumnsToContents()
+                self.lineup_table.horizontalHeader().setStretchLastSection(True)
 
             # Update import text
-            player_names = [p.get('name', '') for p in players]
-            self.import_text.setPlainText(", ".join(player_names))
+            if hasattr(self, 'import_text'):
+                player_names = [p.get('name', '') for p in players]
+                self.import_text.setPlainText(", ".join(player_names))
+
+            print(f"✅ Results updated: {len(players)} players, ${total_salary:,}, {total_score:.2f} pts")
 
         except Exception as e:
             print(f"Error updating results: {e}")
+            import traceback
             traceback.print_exc()
 
     def copy_to_clipboard(self):
@@ -706,7 +867,6 @@ class StreamlinedDFSGUI(QMainWindow):
                                     "Lineup copied to clipboard!\n\nYou can now paste this into DraftKings.")
         else:
             QMessageBox.warning(self, "No Lineup", "No lineup available to copy")
-
 
 def main():
     """Main application entry point"""

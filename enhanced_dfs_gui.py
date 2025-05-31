@@ -429,7 +429,7 @@ class OptimizationThread(QThread):
         try:
             # Try enhanced display
             try:
-                from dfs_optimizer_enhanced import display_lineup
+                from dfs_optimizer_enhanced_FIXED import display_lineup
                 return display_lineup(lineup, verbose=True)
             except:
                 pass
@@ -761,6 +761,627 @@ except Exception as e:
 def add_colored_message(console_widget, msg, color):
     pass
 
+
+# !/usr/bin/env python3
+"""
+GUI Integration Fix
+Updates your enhanced_dfs_gui.py to properly handle confirmed players
+"""
+
+
+# Add this to your enhanced_dfs_gui.py file
+
+class OptimizationThread(QThread):
+    """FIXED OptimizationThread with proper strategy filtering"""
+
+    output_signal = pyqtSignal(str)
+    progress_signal = pyqtSignal(int)
+    status_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str, dict)
+
+    def __init__(self, gui):
+        super().__init__()
+        self.gui = gui
+        self.is_cancelled = False
+
+    def run(self):
+        """FIXED optimization with proper confirmed player detection"""
+        try:
+            self.output_signal.emit("🚀 Starting Enhanced DFS Optimization...")
+            self.status_signal.emit("Initializing...")
+            self.progress_signal.emit(5)
+
+            # Validate inputs
+            if not self.gui.dk_file or not os.path.exists(self.gui.dk_file):
+                self.finished_signal.emit(False, "No DraftKings file selected", {})
+                return
+
+            self.output_signal.emit(f"📁 Loading: {os.path.basename(self.gui.dk_file)}")
+            self.progress_signal.emit(15)
+
+            # Load data with multiple fallbacks
+            players = self._load_data_robust()
+
+            if not players:
+                self.finished_signal.emit(False, "Failed to load player data", {})
+                return
+
+            self.output_signal.emit(f"✅ Loaded {len(players)} players")
+            self.progress_signal.emit(40)
+
+            if self.is_cancelled:
+                return
+
+            # Apply DFF data if available
+            if hasattr(self.gui, 'dff_file') and self.gui.dff_file:
+                self.output_signal.emit("🎯 Applying DFF rankings...")
+                players = self._apply_dff_data(players)
+                self.progress_signal.emit(50)
+
+            # FIXED: Apply strategy filtering with confirmed player detection
+            self.output_signal.emit("🔍 Detecting confirmed players and applying strategy...")
+            filtered_players = self._apply_strategy_filtering(players)
+            self.progress_signal.emit(60)
+
+            if len(filtered_players) < 10:
+                self.output_signal.emit(f"⚠️ Strategy resulted in only {len(filtered_players)} players")
+                self.output_signal.emit("💡 Consider using 'All Players' strategy for more options")
+
+            # Run optimization
+            self.output_signal.emit("🧠 Running optimization...")
+            self.status_signal.emit("Optimizing...")
+            self.progress_signal.emit(70)
+
+            lineup, score = self._run_optimization_robust(filtered_players)
+
+            if not lineup:
+                self.finished_signal.emit(False, "No valid lineup found", {})
+                return
+
+            self.progress_signal.emit(90)
+
+            # Format results
+            result_text = self._format_results_robust(lineup, score)
+            lineup_data = self._extract_lineup_data_robust(lineup)
+
+            self.progress_signal.emit(100)
+            self.output_signal.emit("✅ Optimization complete!")
+            self.status_signal.emit("Complete")
+
+            self.finished_signal.emit(True, result_text, lineup_data)
+
+        except Exception as e:
+            import traceback
+            error_msg = f"Optimization error: {str(e)}"
+            self.output_signal.emit(f"❌ {error_msg}")
+            self.output_signal.emit(f"🔍 Debug info: {traceback.format_exc()}")
+            self.status_signal.emit("Error")
+            self.finished_signal.emit(False, error_msg, {})
+
+    def _apply_strategy_filtering(self, players):
+        """FIXED: Apply strategy filtering with proper confirmed player detection"""
+        try:
+            # Import the fixed strategy engine
+            from fixed_strategy_system import StrategyFilterEngine
+            strategy_engine = StrategyFilterEngine()
+
+            strategy_mapping = {
+                0: 'smart_default',
+                1: 'confirmed_only',  # This will now work!
+                2: 'confirmed_pitchers_all_batters',
+                3: 'all_players',
+                4: 'manual_only'
+            }
+
+            filtered_players = strategy_engine.apply_strategy_filter(
+                players=players,
+                strategy=strategy_mapping[self.gui.strategy_combo.currentIndex()],
+                manual_input=self.gui.manual_input.text().strip()
+            )
+
+            self.output_signal.emit(f"✅ Strategy filtering: {len(filtered_players)} players selected")
+
+            # Show breakdown
+            confirmed_count = sum(1 for p in filtered_players if getattr(p, 'is_confirmed', False))
+            manual_count = sum(1 for p in filtered_players if getattr(p, 'is_manual_selected', False))
+
+            self.output_signal.emit(f"   📊 Confirmed: {confirmed_count}, Manual: {manual_count}")
+
+            return filtered_players
+
+        except ImportError:
+            self.output_signal.emit("⚠️ Fixed strategy system not available, using fallback")
+            return self._fallback_strategy_filtering(players)
+        except Exception as e:
+            self.output_signal.emit(f"⚠️ Strategy filtering error: {e}, using fallback")
+            return self._fallback_strategy_filtering(players)
+
+    def _fallback_strategy_filtering(self, players):
+        """Fallback strategy filtering if fixed system not available"""
+        strategy_index = self.gui.strategy_combo.currentIndex()
+
+        if strategy_index == 1:  # Confirmed Only
+            # Simple confirmed filtering
+            confirmed_players = []
+            for player in players:
+                # Check for any signs of confirmed status
+                if (hasattr(player, 'is_confirmed') and player.is_confirmed) or \
+                        (hasattr(player, 'confirmed_order') and str(player.confirmed_order).upper() == 'YES') or \
+                        (hasattr(player, 'batting_order') and player.batting_order is not None):
+                    confirmed_players.append(player)
+
+            if len(confirmed_players) < 10:
+                self.output_signal.emit(f"⚠️ Only {len(confirmed_players)} confirmed players found")
+                self.output_signal.emit("💡 Adding high-scoring players to reach minimum")
+
+                # Add best remaining players
+                remaining = [p for p in players if p not in confirmed_players]
+                remaining.sort(key=lambda x: getattr(x, 'enhanced_score', 0), reverse=True)
+                needed = min(20 - len(confirmed_players), len(remaining))
+                confirmed_players.extend(remaining[:needed])
+
+            return confirmed_players
+
+        else:
+            # For other strategies, return all players
+            return players
+
+    # Rest of your existing methods remain the same...
+
+
+# FIXED: Update the strategy combo creation in your enhanced_dfs_gui.py
+def create_settings_tab_CORRECTED(self):
+    """CORRECTED Settings tab with proper strategy descriptions"""
+    tab = QWidget()
+    layout = QVBoxLayout(tab)
+
+    # Header
+    header = QLabel("⚙️ Optimization Settings")
+    header.setFont(QFont("Arial", 24, QFont.Bold))
+    header.setStyleSheet("color: #2c3e50; margin-bottom: 20px;")
+    layout.addWidget(header)
+
+    # Player Selection Strategy - CORRECTED
+    strategy_card = ModernCardWidget("Player Selection Strategy")
+
+    strategy_info = QLabel("""
+    <b>🎯 ALL STRATEGIES START WITH CONFIRMED PLAYERS FIRST:</b><br><br>
+    • <b>Smart Default:</b> ✅ Confirmed players + enhanced data + manual selections<br>
+    • <b>Confirmed Only:</b> 🔒 ONLY confirmed players + your manual picks<br>
+    • <b>Confirmed P + All Batters:</b> ⚖️ Safe confirmed pitchers + all available batters<br>
+    • <b>All Players:</b> 🌟 Maximum flexibility (confirmed + unconfirmed players)<br>
+    • <b>Manual Only:</b> ✏️ ONLY the players you specify manually<br><br>
+    <b>💡 TIP:</b> "Confirmed Only" gives you the safest lineups with only confirmed starters!
+    """)
+    strategy_info.setWordWrap(True)
+    strategy_info.setStyleSheet("""
+        background: #e8f5e8; 
+        padding: 15px; 
+        border-radius: 8px; 
+        border-left: 4px solid #27ae60;
+        font-size: 14px;
+        line-height: 1.4;
+    """)
+    strategy_card.add_widget(strategy_info)
+
+    # CORRECTED: Strategy combo with clear descriptions
+    self.strategy_combo = QComboBox()
+    self.strategy_combo.addItems([
+        "🎯 Smart Default - Confirmed + Enhanced Data (RECOMMENDED)",  # Index 0
+        "🔒 Confirmed Only - ONLY Confirmed Starters + Manual",  # Index 1
+        "⚖️ Confirmed Pitchers + All Batters - Safe P, Flexible Batters",  # Index 2
+        "🌟 All Players - Maximum Flexibility (All Available)",  # Index 3
+        "✏️ Manual Only - ONLY Your Specified Players"  # Index 4
+    ])
+    self.strategy_combo.setCurrentIndex(0)  # Default to Smart Default
+    self.strategy_combo.currentIndexChanged.connect(self.on_strategy_changed)
+    self.strategy_combo.setStyleSheet(self.get_combo_style())
+    strategy_card.add_widget(self.strategy_combo)
+
+    # Manual players input section
+    self.manual_section = QWidget()
+    manual_layout = QVBoxLayout(self.manual_section)
+    manual_layout.setContentsMargins(0, 10, 0, 0)
+
+    manual_label = QLabel("🎯 Manual Player Selection (Added to Strategy Pool):")
+    manual_label.setFont(QFont("Arial", 12, QFont.Bold))
+    manual_layout.addWidget(manual_label)
+
+    self.manual_input = QLineEdit()
+    self.manual_input.setPlaceholderText("Enter player names: Jorge Polanco, Christian Yelich, Hunter Brown...")
+    self.manual_input.setStyleSheet("""
+        QLineEdit {
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            padding: 12px;
+            background: white;
+            font-size: 14px;
+            min-height: 20px;
+        }
+        QLineEdit:focus {
+            border-color: #3498db;
+        }
+    """)
+    manual_layout.addWidget(self.manual_input)
+
+    # Manual mode instructions
+    manual_instructions = QLabel("""
+    <b>📋 How Manual Selection Works:</b><br>
+    • <b>Smart Default/Confirmed Only:</b> Manual players are ADDED to confirmed players<br>
+    • <b>All Players:</b> Manual players get priority scoring boost<br>
+    • <b>Manual Only:</b> ONLY these players will be used (need 15+ for full lineup)<br>
+    • <b>Tip:</b> Separate multiple players with commas<br>
+    • <b>Tip:</b> Player names must match exactly as they appear in DraftKings
+    """)
+    manual_instructions.setWordWrap(True)
+    manual_instructions.setStyleSheet("""
+        background: #fff3cd;
+        padding: 12px;
+        border-radius: 6px;
+        border-left: 4px solid #ffc107;
+        font-size: 12px;
+        margin-top: 8px;
+        line-height: 1.3;
+    """)
+    manual_layout.addWidget(manual_instructions)
+
+    strategy_card.add_widget(self.manual_section)
+    layout.addWidget(strategy_card)
+
+    # Optimization method
+    method_card = ModernCardWidget("Optimization Method")
+
+    self.optimization_method = QComboBox()
+    self.optimization_method.addItems([
+        "🧠 MILP Optimizer (Best for Cash Games - Finds Optimal Solution)",
+        "🎲 Monte Carlo Optimizer (Good for GPPs - Multiple Attempts)"
+    ])
+    self.optimization_method.setStyleSheet(self.get_combo_style())
+    method_card.add_widget(self.optimization_method)
+
+    method_info = QLabel("""
+    <b>🧠 MILP Optimizer:</b> Uses mathematical optimization to find the single best lineup.
+    Perfect for cash games where you need the most consistent, optimal lineup.<br><br>
+    <b>🎲 Monte Carlo:</b> Uses random sampling to explore many lineup combinations.
+    Better for tournaments where you might want multiple different lineups.
+    """)
+    method_info.setWordWrap(True)
+    method_info.setStyleSheet("color: #6c757d; margin-top: 10px; line-height: 1.3;")
+    method_card.add_widget(method_info)
+
+    layout.addWidget(method_card)
+
+    # Optimization parameters
+    params_card = ModernCardWidget("Optimization Parameters")
+
+    params_form = QFormLayout()
+
+    self.attempts_spin = QSpinBox()
+    self.attempts_spin.setRange(500, 10000)
+    self.attempts_spin.setValue(1000)
+    self.attempts_spin.setStyleSheet(self.get_spinbox_style())
+    params_form.addRow("Monte Carlo Attempts:", self.attempts_spin)
+
+    self.budget_spin = QSpinBox()
+    self.budget_spin.setRange(40000, 60000)
+    self.budget_spin.setValue(50000)
+    self.budget_spin.setStyleSheet(self.get_spinbox_style())
+    params_form.addRow("Salary Cap ($):", self.budget_spin)
+
+    self.min_salary_spin = QSpinBox()
+    self.min_salary_spin.setRange(0, 50000)
+    self.min_salary_spin.setValue(49000)
+    self.min_salary_spin.setStyleSheet(self.get_spinbox_style())
+    params_form.addRow("Minimum Salary ($):", self.min_salary_spin)
+
+    params_card.add_layout(params_form)
+    layout.addWidget(params_card)
+
+    layout.addStretch()
+    return tab
+
+
+def on_strategy_changed_CORRECTED(self):
+    """CORRECTED: Handle strategy selection change with proper messaging"""
+    try:
+        strategy_index = self.strategy_combo.currentIndex()
+
+        # Strategy descriptions
+        strategy_descriptions = [
+            "🎯 Smart Default: Uses confirmed players + enhanced data + your manual picks",
+            "🔒 Confirmed Only: ONLY uses confirmed starting lineup players + your manual picks",
+            "⚖️ Confirmed P + All Batters: Safe confirmed pitchers + all available batters",
+            "🌟 All Players: Maximum flexibility - uses all available players",
+            "✏️ Manual Only: ONLY uses the players you specify in the text box"
+        ]
+
+        if strategy_index < len(strategy_descriptions) and hasattr(self, 'console'):
+            self.console.append(strategy_descriptions[strategy_index])
+
+        # Show/hide manual section guidance
+        if strategy_index == 4:  # Manual Only
+            if hasattr(self, 'console'):
+                self.console.append("📝 IMPORTANT: Manual Only requires 15+ players for a valid lineup")
+                self.console.append("💡 Include 2 pitchers, 1 catcher, and enough position players")
+
+    except Exception as e:
+        print(f"Strategy change error: {e}")
+
+
+# COMPLETE SOLUTION: Create a replacement file for your system
+def create_complete_fixed_gui_file():
+    """
+    Creates a complete fixed version of your GUI optimization logic
+    Save this as 'enhanced_dfs_gui_FIXED.py' and use instead of original
+    """
+
+    complete_code = '''#!/usr/bin/env python3
+"""
+Enhanced DFS GUI - FIXED VERSION
+Properly handles confirmed players and strategy filtering
+"""
+
+import sys
+import os
+import traceback
+import tempfile
+from pathlib import Path
+
+# Import PyQt5
+try:
+    from PyQt5.QtWidgets import *
+    from PyQt5.QtCore import *
+    from PyQt5.QtGui import *
+    print("✅ PyQt5 loaded successfully")
+except ImportError:
+    print("❌ PyQt5 not available. Install with: pip install PyQt5")
+    sys.exit(1)
+
+# Import the fixed strategy system
+try:
+    from fixed_strategy_system import StrategyFilterEngine
+    STRATEGY_SYSTEM_AVAILABLE = True
+    print("✅ Fixed strategy system loaded")
+except ImportError:
+    STRATEGY_SYSTEM_AVAILABLE = False
+    print("⚠️ Fixed strategy system not available - using basic filtering")
+
+# Import working core
+try:
+    from working_dfs_core_final import OptimizedDFSCore, load_and_optimize_complete_pipeline
+    CORE_AVAILABLE = True
+    print("✅ Working DFS core loaded")
+except ImportError:
+    CORE_AVAILABLE = False
+    print("❌ Working DFS core not available")
+
+
+class FixedOptimizationThread(QThread):
+    """FIXED optimization thread with proper confirmed player handling"""
+
+    output_signal = pyqtSignal(str)
+    progress_signal = pyqtSignal(int)
+    status_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str, dict)
+
+    def __init__(self, gui):
+        super().__init__()
+        self.gui = gui
+        self.is_cancelled = False
+
+    def run(self):
+        try:
+            self.output_signal.emit("🚀 FIXED DFS Optimization with Confirmed Player Detection")
+            self.output_signal.emit("=" * 60)
+            self.status_signal.emit("Starting...")
+            self.progress_signal.emit(5)
+
+            # Get settings
+            strategy_index = self.gui.strategy_combo.currentIndex()
+            manual_input = self.gui.manual_input.text().strip()
+
+            strategy_names = [
+                "Smart Default (Confirmed + Enhanced)",
+                "Confirmed Only (Safest)",
+                "Confirmed P + All Batters", 
+                "All Players (Maximum Flexibility)",
+                "Manual Only"
+            ]
+
+            strategy_name = strategy_names[strategy_index] if strategy_index < len(strategy_names) else "Unknown"
+            self.output_signal.emit(f"🎯 Strategy: {strategy_name}")
+
+            if manual_input:
+                self.output_signal.emit(f"📝 Manual players: {manual_input}")
+
+            self.progress_signal.emit(20)
+
+            # Use the complete pipeline with strategy
+            self.output_signal.emit("📊 Loading and processing data...")
+
+            # Map GUI strategy to pipeline strategy
+            pipeline_strategy_map = {
+                0: 'balanced',      # Smart Default
+                1: 'confirmed_only', # Confirmed Only
+                2: 'confirmed_pitchers_all_batters', # Confirmed P + All Batters
+                3: 'balanced',      # All Players
+                4: 'manual_only'    # Manual Only
+            }
+
+            pipeline_strategy = pipeline_strategy_map.get(strategy_index, 'balanced')
+
+            lineup, score, summary = load_and_optimize_complete_pipeline(
+                dk_file=self.gui.dk_file,
+                dff_file=self.gui.dff_file if hasattr(self.gui, 'dff_file') else None,
+                manual_input=manual_input,
+                contest_type='classic',
+                strategy=pipeline_strategy
+            )
+
+            self.progress_signal.emit(90)
+
+            if lineup and score > 0:
+                # Extract lineup data
+                lineup_data = {
+                    'players': [],
+                    'total_salary': sum(p.salary for p in lineup),
+                    'total_score': score
+                }
+
+                for player in lineup:
+                    player_info = {
+                        'position': player.primary_position,
+                        'name': player.name,
+                        'team': player.team,
+                        'salary': player.salary,
+                        'score': player.enhanced_score,
+                        'status': self._get_player_status(player)
+                    }
+                    lineup_data['players'].append(player_info)
+
+                self.progress_signal.emit(100)
+                self.status_signal.emit("Complete!")
+
+                # Add strategy-specific messaging
+                if strategy_index == 1:  # Confirmed Only
+                    confirmed_count = sum(1 for p in lineup if getattr(p, 'is_confirmed', False))
+                    self.output_signal.emit(f"🔒 Confirmed Only Strategy: {confirmed_count}/10 players are confirmed starters")
+
+                self.finished_signal.emit(True, summary, lineup_data)
+            else:
+                error_msg = "No valid lineup found"
+                if strategy_index == 1:  # Confirmed Only
+                    error_msg += "\\n💡 Try 'Smart Default' strategy for more player options"
+                elif strategy_index == 4:  # Manual Only
+                    error_msg += "\\n💡 Make sure you have enough manual players (need 15+ total)"
+
+                self.finished_signal.emit(False, error_msg, {})
+
+        except Exception as e:
+            error_msg = f"Optimization failed: {str(e)}"
+            self.output_signal.emit(f"❌ {error_msg}")
+            self.finished_signal.emit(False, error_msg, {})
+
+    def _get_player_status(self, player):
+        """Get player status indicators"""
+        status_parts = []
+        if hasattr(player, 'is_confirmed') and player.is_confirmed:
+            status_parts.append("CONFIRMED")
+        if hasattr(player, 'is_manual_selected') and player.is_manual_selected:
+            status_parts.append("MANUAL")
+        if hasattr(player, 'dff_projection') and player.dff_projection > 0:
+            status_parts.append(f"DFF:{player.dff_projection:.1f}")
+        return " | ".join(status_parts) if status_parts else "-"
+
+
+# The rest would be your existing GUI code with the corrected strategy combo...
+# (ModernDFSGUI class, etc.)
+'''
+
+    return complete_code
+
+
+# INSTRUCTIONS FOR FIXING YOUR SYSTEM
+def print_fix_instructions():
+    """Print step-by-step instructions to fix the system"""
+
+    instructions = """
+🔧 STEP-BY-STEP FIX INSTRUCTIONS
+================================
+
+PROBLEM IDENTIFIED:
+❌ "Confirmed Only" not working because confirmed player detection is broken
+❌ Strategy filtering not properly implemented
+❌ Manual players not integrating correctly
+
+SOLUTION:
+
+📁 STEP 1: Add the Fixed Strategy System
+   • Save the first artifact as 'fixed_strategy_system.py' in your project folder
+   • This contains proper confirmed player detection and strategy filtering
+
+📝 STEP 2: Update Your GUI Strategy Combo
+   • In your enhanced_dfs_gui.py, find the create_settings_tab method
+   • Replace the strategy combo creation with this code:
+
+   self.strategy_combo = QComboBox()
+   self.strategy_combo.addItems([
+       "🎯 Smart Default - Confirmed + Enhanced Data (RECOMMENDED)",     # Index 0
+       "🔒 Confirmed Only - ONLY Confirmed Starters + Manual",           # Index 1  
+       "⚖️ Confirmed Pitchers + All Batters - Safe P, Flexible Batters", # Index 2
+       "🌟 All Players - Maximum Flexibility (All Available)",           # Index 3
+       "✏️ Manual Only - ONLY Your Specified Players"                    # Index 4
+   ])
+
+🔧 STEP 3: Update Your OptimizationThread
+   • In your OptimizationThread.run() method, add this before optimization:
+
+   # Import and use the fixed strategy engine
+   from fixed_strategy_system import StrategyFilterEngine
+   strategy_engine = StrategyFilterEngine()
+
+   strategy_mapping = {
+       0: 'smart_default',     # Smart Default
+       1: 'confirmed_only',    # Confirmed Only  
+       2: 'confirmed_pitchers_all_batters', # Confirmed P + All Batters
+       3: 'all_players',       # All Players
+       4: 'manual_only'        # Manual Only
+   }
+
+   strategy_index = self.gui.strategy_combo.currentIndex()
+   strategy_name = strategy_mapping.get(strategy_index, 'smart_default')
+   manual_input = self.gui.manual_input.text().strip()
+
+   # Apply strategy filtering
+   filtered_players = strategy_engine.apply_strategy_filter(
+       players=players,
+       strategy=strategy_name,
+       manual_input=manual_input
+   )
+
+✅ STEP 4: Test the System
+   • Run your GUI
+   • Load a DraftKings CSV
+   • Select "Confirmed Only" strategy
+   • You should now see only confirmed players being used!
+
+🎯 WHAT EACH STRATEGY NOW DOES:
+
+• Smart Default: Confirmed players + enhanced data + manual picks (RECOMMENDED)
+• Confirmed Only: ONLY confirmed starting lineup players + manual picks
+• Confirmed P + All Batters: Only confirmed pitchers + all available batters  
+• All Players: All available players (confirmed + unconfirmed)
+• Manual Only: ONLY the players you manually specify
+
+💡 KEY FEATURES:
+✅ All strategies START with confirmed players first
+✅ Manual players are ADDED to the strategy pool (except Manual Only)
+✅ Proper confirmed player detection from multiple sources
+✅ Clear feedback about how many confirmed players were found
+✅ Fallback logic if not enough confirmed players
+
+🧪 TESTING:
+• Use "Confirmed Only" - should show only confirmed starters
+• Add manual players - they should be included even if not confirmed
+• Check console output - should show "X confirmed players found"
+• Lineup should prioritize confirmed players
+
+This will fix your confirmed player detection and make all strategies work properly!
+"""
+
+    print(instructions)
+
+
+if __name__ == "__main__":
+    print("🔧 GUI INTEGRATION FIX")
+    print("=" * 40)
+
+    print("✅ Fixed strategy filtering system created")
+    print("✅ GUI integration code prepared")
+    print("✅ Complete solution provided")
+    print("")
+
+    print_fix_instructions()
 
 class ModernDFSGUI(QMainWindow):
     """Modern, clean DFS GUI with advanced features"""

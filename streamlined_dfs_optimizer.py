@@ -308,7 +308,7 @@ class DFSOptimizer:
                     selected = np.random.choice(available_players, size=required_count,
                                                 replace=False, p=weights / sum(weights)).tolist()
                 else:  # balanced
-                    selected = sorted(available_players, key=lambda x: x.score / p.salary * 1000, reverse=True)[
+                    selected = sorted(available_players, key=lambda x: x.score / x.salary * 1000, reverse=True)[
                                :required_count]
 
                 for player in selected:

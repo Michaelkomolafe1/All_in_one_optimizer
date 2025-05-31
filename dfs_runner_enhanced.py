@@ -36,7 +36,7 @@ class AsyncOptimizer:
 
     def _run_optimization(self, players, kwargs):
         """Thread-safe optimization"""
-        from dfs_optimizer_enhanced import optimize_lineup_milp
+        from dfs_optimizer_enhanced_FIXED import optimize_lineup_milp
         return optimize_lineup_milp(players, **kwargs)
 
 
