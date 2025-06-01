@@ -51,6 +51,18 @@ except ImportError:
     ENHANCED_AVAILABLE = False
     print("⚠️ Enhanced core not available")
 
+# Enhanced import with fallbacks (fixed by import fixer)
+try:
+    from enhanced_dfs_core import (
+        load_and_optimize_with_enhanced_features as enhanced_pipeline,
+        StackingConfig
+    )
+    ENHANCED_AVAILABLE = True
+    print("✅ Enhanced DFS core loaded")
+except ImportError:
+    ENHANCED_AVAILABLE = False
+    print("⚠️ Enhanced core not available")
+
 try:
     from optimized_dfs_core_with_statcast import (
         OptimizedPlayer,
