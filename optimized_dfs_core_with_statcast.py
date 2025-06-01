@@ -996,7 +996,7 @@ class OptimizedDFSCore:
 
     
     def _apply_strategy_filter(self, strategy: str) -> List[OptimizedPlayer]:
-        """IMPROVED: Confirmed-first strategy filtering"""
+        """IMPROVED: Strategy filtering with minimum viable pool guarantee"""
 
         # Always start by detecting confirmed players
         confirmed_players = [p for p in self.players if getattr(p, 'is_confirmed', False)]
@@ -1005,100 +1005,116 @@ class OptimizedDFSCore:
         print(f"🔍 Strategy '{strategy}': {len(confirmed_players)} confirmed, {len(manual_players)} manual")
 
         if strategy == 'smart_confirmed':
-            # CUSTOM: Only confirmed players + manual picks (no unconfirmed noise)
-            print("🎯 Smart Default: Confirmed players + your manual picks (NO unconfirmed)")
+            print("🎯 Smart Default: Confirmed players + manual picks + minimum viable pool")
 
-            # Get confirmed and manual players
-            confirmed_players = [p for p in self.players if getattr(p, 'is_confirmed', False)]
-            manual_players = [p for p in self.players if getattr(p, 'is_manual_selected', False)]
-
-            # Combine confirmed and manual (avoid duplicates)
+            # Start with confirmed and manual
             selected_players = list(confirmed_players)
-
-            added_manual = 0
             for manual in manual_players:
                 if manual not in selected_players:
                     selected_players.append(manual)
-                    added_manual += 1
-                    print(f"   📝 Added manual pick: {manual.name} (enhanced score: {manual.enhanced_score:.1f})")
 
-            # Enhanced data is ALREADY applied to all players during loading!
-            # Your manual picks get DFF, Statcast, Vegas data automatically
+            # IMPROVED: Ensure minimum viable pool size
+            min_viable_pool = 25  # Minimum for reliable optimization
 
-            print(f"📊 Smart pool: {len(confirmed_players)} confirmed + {added_manual} manual = {len(selected_players)} total")
-            print(f"✅ NO unconfirmed players added (clean pool)")
+            if len(selected_players) < min_viable_pool:
+                print(f"⚠️ Pool too small ({len(selected_players)}), expanding to minimum viable size...")
 
-            # Verify we have enough for optimization
-            if len(selected_players) < 15:
-                print("⚠️ Pool might be small for optimization")
-                print("💡 Add more manual players if needed")
+                # Add high-value players from remaining pool
+                remaining_players = [p for p in self.players if p not in selected_players]
 
+                # Sort by enhanced score and add top players
+                remaining_players.sort(key=lambda x: x.enhanced_score, reverse=True)
+                needed = min_viable_pool - len(selected_players)
+                additional_players = remaining_players[:needed]
+                selected_players.extend(additional_players)
+
+                print(f"✅ Expanded pool: {len(selected_players)} total players")
+
+            # CRITICAL: Verify position coverage
+            position_counts = {}
+            for player in selected_players:
+                for pos in player.positions:
+                    position_counts[pos] = position_counts.get(pos, 0) + 1
+
+            # Required positions for classic
+            required_positions = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+
+            for pos, required in required_positions.items():
+                available = position_counts.get(pos, 0)
+                if available < required + 1:  # Need at least 1 extra for flexibility
+                    print(f"⚠️ Insufficient {pos} players: {available} available, {required} needed")
+
+                    # Find additional players for this position
+                    additional_pos_players = [p for p in self.players 
+                                            if p not in selected_players 
+                                            and p.can_play_position(pos)]
+
+                    if additional_pos_players:
+                        # Add top players for this position
+                        additional_pos_players.sort(key=lambda x: x.enhanced_score, reverse=True)
+                        needed_extra = max(2, required + 2 - available)  # Ensure good coverage
+                        selected_players.extend(additional_pos_players[:needed_extra])
+                        print(f"✅ Added {len(additional_pos_players[:needed_extra])} additional {pos} players")
+
+            print(f"📊 Final smart pool: {len(selected_players)} players with position coverage")
             return selected_players
 
         elif strategy == 'confirmed_only':
-            # SAFEST: Only confirmed + manual players
-            print("🔒 Safe Only: Maximum safety with confirmed players")
-
+            # Enhanced confirmed-only strategy
             selected_players = list(confirmed_players)
-
-            # Add manual players
             for manual in manual_players:
                 if manual not in selected_players:
                     selected_players.append(manual)
 
-            # If not enough players, add high-DFF players as backup
+            # Ensure minimum pool size
             if len(selected_players) < 20:
                 print("⚠️ Adding high-DFF players to reach minimum viable pool")
                 high_dff = [p for p in self.players 
                            if p not in selected_players
-                           and getattr(p, 'dff_projection', 0) >= 6.0]
+                           and getattr(p, 'dff_projection', 0) >= 5.0]  # Lowered threshold
                 high_dff.sort(key=lambda x: x.dff_projection, reverse=True)
-                needed = min(30 - len(selected_players), len(high_dff))
+                needed = 25 - len(selected_players)
                 selected_players.extend(high_dff[:needed])
 
-            print(f"📊 Safe pool: {len(selected_players)} players")
+            print(f"📊 Enhanced safe pool: {len(selected_players)} players")
             return selected_players
 
         elif strategy == 'confirmed_plus_manual':
-            # ENHANCED: Confirmed + Manual (perfect hybrid)
-            print("🎯 Smart + Picks: Confirmed players + your manual selections")
-
+            # This strategy already works well
             selected_players = list(confirmed_players)
-
-            # Add all manual players
             for manual in manual_players:
                 if manual not in selected_players:
                     selected_players.append(manual)
 
-            print(f"📊 Hybrid pool: {len(confirmed_players)} confirmed + {len(manual_players)} manual = {len(selected_players)} total")
+            print(f"📊 Hybrid pool: {len(selected_players)} players")
             return selected_players
 
         elif strategy == 'confirmed_pitchers_all_batters':
-            # BALANCED: Safe pitchers, flexible batters
-            print("⚖️ Balanced: Confirmed pitchers + all batters")
-
+            # Safe pitchers, all batters
             confirmed_pitchers = [p for p in confirmed_players if p.primary_position == 'P']
             all_batters = [p for p in self.players if p.primary_position != 'P']
-
             selected_players = confirmed_pitchers + all_batters
 
-            # Add manual players if they're pitchers
             for manual in manual_players:
                 if manual.primary_position == 'P' and manual not in selected_players:
                     selected_players.append(manual)
 
-            print(f"📊 Balanced pool: {len(confirmed_pitchers)} confirmed P + {len(all_batters)} all batters = {len(selected_players)} total")
+            print(f"📊 Balanced pool: {len(selected_players)} players")
             return selected_players
 
         elif strategy == 'manual_only':
-            # EXPERT: Only manual selections
-            print("✏️ Manual Only: Using only your specified players")
+            if len(manual_players) < 15:  # Lowered minimum
+                print(f"⚠️ Manual Only needs 15+ players for reliability, you have {len(manual_players)}")
+                print("💡 Adding confirmed players to supplement manual selection")
 
-            if len(manual_players) < 10:
-                print(f"⚠️ Manual Only needs 10+ players, you have {len(manual_players)}")
-                print("💡 Add more players or use Smart Default strategy")
+                # Supplement with confirmed players
+                supplemented = list(manual_players)
+                for confirmed in confirmed_players:
+                    if confirmed not in supplemented:
+                        supplemented.append(confirmed)
 
-            print(f"📊 Manual pool: {len(manual_players)} specified players")
+                return supplemented[:30]  # Cap at reasonable size
+
             return manual_players
 
         else:
@@ -1124,9 +1140,19 @@ class OptimizedDFSCore:
         print(f"✅ Emergency: Marked {confirmed_count} current players as confirmed")
         return confirmed_count
     def _optimize_milp(self, players: List[OptimizedPlayer]) -> Tuple[List[OptimizedPlayer], float]:
-        """WORKING MILP optimization with proper multi-position handling"""
+        """ENHANCED MILP optimization with better error handling"""
         try:
             print(f"🔬 MILP: Optimizing {len(players)} players")
+
+            # Pre-check: Ensure we have enough players per position
+            position_requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+
+            for position, required_count in position_requirements.items():
+                eligible_players = [p for p in players if p.can_play_position(position)]
+                if len(eligible_players) < required_count:
+                    print(f"❌ MILP Pre-check failed: {position} has {len(eligible_players)} players, needs {required_count}")
+                    print("🔄 Falling back to greedy with expanded pool...")
+                    return self._optimize_greedy_with_expansion(players)
 
             # Create problem
             prob = pulp.LpProblem("DFS_Lineup", pulp.LpMaximize)
@@ -1153,13 +1179,7 @@ class OptimizedDFSCore:
                 ]) <= 1
 
             # Constraint 2: Exact position requirements
-            if self.contest_type == 'classic':
-                position_requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
-                total_players = 10
-            else:  # showdown
-                position_requirements = {}
-                total_players = 6
-
+            total_players = 10
             for position, required_count in position_requirements.items():
                 eligible_vars = [
                     player_position_vars[(i, position)]
@@ -1169,6 +1189,9 @@ class OptimizedDFSCore:
                 if eligible_vars:
                     prob += pulp.lpSum(eligible_vars) == required_count
                     print(f"🔬 {position}: exactly {required_count} (from {len(eligible_vars)} options)")
+                else:
+                    print(f"❌ No players available for {position}")
+                    return self._optimize_greedy_with_expansion(players)
 
             # Constraint 3: Total roster size
             all_position_vars = [
@@ -1178,7 +1201,7 @@ class OptimizedDFSCore:
             ]
             prob += pulp.lpSum(all_position_vars) == total_players
 
-            # Constraint 4: Salary constraint (only maximum)
+            # Constraint 4: Salary constraint
             salary_sum = pulp.lpSum([
                 player_position_vars[(i, pos)] * players[i].salary
                 for i, player in enumerate(players)
@@ -1186,9 +1209,10 @@ class OptimizedDFSCore:
             ])
             prob += salary_sum <= self.salary_cap
 
-            # Solve
-            print("🔬 Solving MILP with proper multi-position constraints...")
-            prob.solve(pulp.PULP_CBC_CMD(msg=0))
+            # Solve with timeout
+            print("🔬 Solving MILP (30 second timeout)...")
+            solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=30)
+            prob.solve(solver)
 
             if prob.status == pulp.LpStatusOptimal:
                 # Extract solution
@@ -1205,30 +1229,52 @@ class OptimizedDFSCore:
                             total_salary += player.salary
                             total_score += player.enhanced_score
                             print(f"🔬 Selected: {player.name} at {position}")
-                            break  # Player can only be selected once
+                            break
 
-                print(f"🔬 Solution: {len(lineup)} players, ${total_salary:,}, {total_score:.2f} pts")
-                print(f"🔬 Positions: {lineup_positions}")
+                print(f"🔬 MILP Solution: {len(lineup)} players, ${total_salary:,}, {total_score:.2f} pts")
+                print(f"🔬 Positions filled: {lineup_positions}")
 
                 if len(lineup) == total_players:
-                    print(f"✅ MILP success: {len(lineup)} players, {total_score:.2f} score, ${total_salary:,}")
+                    print(f"✅ MILP success!")
                     return lineup, total_score
                 else:
                     print(f"❌ Invalid lineup size: {len(lineup)} (expected {total_players})")
-                    return [], 0
+                    return self._optimize_greedy_with_expansion(players)
 
             else:
                 print(f"❌ MILP failed: {pulp.LpStatus[prob.status]}")
-                print("🔄 Falling back to greedy optimization...")
-                return self._optimize_greedy(players)
+                print("🔄 Falling back to enhanced greedy...")
+                return self._optimize_greedy_with_expansion(players)
 
         except Exception as e:
             print(f"❌ MILP error: {e}")
-            print("🔄 Falling back to greedy optimization...")
-            return self._optimize_greedy(players)
+            print("🔄 Falling back to enhanced greedy...")
+            return self._optimize_greedy_with_expansion(players)
 
+    def _optimize_greedy_with_expansion(self, players: List[OptimizedPlayer]) -> Tuple[List[OptimizedPlayer], float]:
+        """Greedy with automatic player pool expansion"""
+        print("🔧 Enhanced greedy with pool expansion...")
+
+        # Try normal greedy first
+        result = self._optimize_greedy(players)
+        if result[0]:  # If successful
+            return result
+
+        # If failed, expand pool and try again
+        print("🔄 Expanding player pool for greedy optimization...")
+
+        # Add more players from the full roster
+        expanded_players = list(players)
+        remaining_players = [p for p in self.players if p not in expanded_players]
+
+        # Add top scoring remaining players
+        remaining_players.sort(key=lambda x: x.enhanced_score, reverse=True)
+        expanded_players.extend(remaining_players[:20])  # Add top 20 remaining
+
+        print(f"🔧 Expanded pool: {len(expanded_players)} players")
+        return self._optimize_greedy(expanded_players)
     def _optimize_greedy(self, players: List[OptimizedPlayer]) -> Tuple[List[OptimizedPlayer], float]:
-        """Greedy optimization fallback"""
+        """IMPROVED Greedy optimization with better player selection"""
         try:
             print(f"🔧 Greedy: Optimizing {len(players)} players")
 
@@ -1255,51 +1301,116 @@ class OptimizedDFSCore:
                     print(f"❌ Greedy showdown failed: only {len(lineup)} players")
                     return [], 0
 
-            # For classic contest
-            lineup = []
-            total_salary = 0
-            used_players = set()
-
-            # Group players by position for easier selection
+            # IMPROVED: Check if we have enough players for each position
             players_by_position = {}
             for pos in position_requirements.keys():
-                players_by_position[pos] = [
-                    p for p in players if p.can_play_position(pos)
-                ]
+                eligible_players = [p for p in players if p.can_play_position(pos)]
+                players_by_position[pos] = eligible_players
+                required_count = position_requirements[pos]
+
+                print(f"🔧 {pos}: {len(eligible_players)} available, {required_count} needed")
+
+                if len(eligible_players) < required_count:
+                    print(f"❌ INSUFFICIENT {pos} PLAYERS: Need {required_count}, have {len(eligible_players)}")
+
+                    # FALLBACK: Expand player pool if position is short
+                    if pos == 'OF' and len(eligible_players) < 3:
+                        print(f"🔄 Expanding OF pool by adding similar players...")
+                        # Add any remaining players who could potentially play OF
+                        all_remaining = [p for p in self.players if p not in players and p.primary_position in ['OF', 'UTIL']]
+                        if all_remaining:
+                            # Add top scoring remaining OF players
+                            all_remaining.sort(key=lambda x: x.enhanced_score, reverse=True)
+                            additional_needed = required_count - len(eligible_players)
+                            additional_players = all_remaining[:additional_needed * 2]  # Add extra buffer
+                            players.extend(additional_players)
+                            eligible_players.extend(additional_players)
+                            players_by_position[pos] = eligible_players
+                            print(f"✅ Added {len(additional_players)} additional OF candidates")
+
                 # Sort by value (score per $1000 salary)
                 players_by_position[pos].sort(
                     key=lambda x: x.enhanced_score / (x.salary / 1000.0), reverse=True
                 )
 
-            # Fill positions greedily
-            for position, required_count in position_requirements.items():
-                available_players = [
-                    p for p in players_by_position[position]
-                    if p not in used_players
-                ]
+            # IMPROVED: Multi-pass selection with flexibility
+            lineup = []
+            total_salary = 0
+            used_players = set()
+
+            # Phase 1: Fill scarce positions first (usually C, then P)
+            position_scarcity = [(pos, len(players_by_position[pos]) / position_requirements[pos]) 
+                                for pos in position_requirements.keys()]
+            position_scarcity.sort(key=lambda x: x[1])  # Least available first
+
+            for position, scarcity_ratio in position_scarcity:
+                required_count = position_requirements[position]
+                available_players = [p for p in players_by_position[position] if p not in used_players]
+
+                print(f"🔧 Filling {position} (scarcity: {scarcity_ratio:.1f})...")
 
                 if len(available_players) < required_count:
-                    print(f"❌ Not enough {position} players: need {required_count}, have {len(available_players)}")
-                    return [], 0
+                    print(f"❌ Cannot fill {position}: {len(available_players)} available, {required_count} needed")
 
-                # Select best players for this position
+                    # LAST RESORT: Use multi-position players
+                    if position != 'P':  # Don't compromise on pitchers
+                        multi_pos_candidates = [p for p in players 
+                                              if p not in used_players 
+                                              and p.can_play_position(position) 
+                                              and p.is_multi_position()]
+                        if multi_pos_candidates:
+                            print(f"🔄 Using multi-position players for {position}")
+                            available_players.extend(multi_pos_candidates)
+
+                # Select best available players for this position
                 selected_count = 0
                 for player in available_players:
-                    if (selected_count < required_count and
-                            total_salary + player.salary <= self.salary_cap):
+                    if (selected_count < required_count and 
+                        total_salary + player.salary <= self.salary_cap):
                         lineup.append(player)
                         used_players.add(player)
                         total_salary += player.salary
                         selected_count += 1
-                        print(f"🔧 Selected: {player.name} for {position} (${player.salary:,})")
+                        print(f"🔧 Selected: {player.name} for {position} (${player.salary:,}, score: {player.enhanced_score:.1f})")
 
                 if selected_count < required_count:
-                    print(f"❌ Couldn't fill {position}: selected {selected_count}/{required_count}")
-                    return [], 0
+                    print(f"❌ CRITICAL: Only filled {selected_count}/{required_count} {position} positions")
 
+                    # EMERGENCY: Lower salary requirements
+                    remaining_budget = self.salary_cap - total_salary
+                    print(f"💰 Emergency budget: ${remaining_budget:,} remaining")
+
+                    remaining_players = [p for p in available_players 
+                                       if p not in used_players and p.salary <= remaining_budget]
+
+                    if remaining_players:
+                        # Take cheapest available
+                        remaining_players.sort(key=lambda x: x.salary)
+                        emergency_needed = required_count - selected_count
+                        for emergency_player in remaining_players[:emergency_needed]:
+                            if total_salary + emergency_player.salary <= self.salary_cap:
+                                lineup.append(emergency_player)
+                                used_players.add(emergency_player)
+                                total_salary += emergency_player.salary
+                                selected_count += 1
+                                print(f"🚨 Emergency: {emergency_player.name} for {position}")
+
+                    if selected_count < required_count:
+                        print(f"❌ FAILED: Cannot fill {position} positions")
+                        return [], 0
+
+            # Validation
             if len(lineup) == total_players:
                 total_score = sum(p.enhanced_score for p in lineup)
                 print(f"✅ Greedy success: {len(lineup)} players, {total_score:.2f} score, ${total_salary:,}")
+
+                # Verify position requirements
+                position_counts = {}
+                for player in lineup:
+                    pos = player.primary_position
+                    position_counts[pos] = position_counts.get(pos, 0) + 1
+
+                print(f"🔧 Final positions: {position_counts}")
                 return lineup, total_score
             else:
                 print(f"❌ Greedy failed: {len(lineup)} players (expected {total_players})")
@@ -1307,8 +1418,9 @@ class OptimizedDFSCore:
 
         except Exception as e:
             print(f"❌ Greedy error: {e}")
+            import traceback
+            traceback.print_exc()
             return [], 0
-
     def get_lineup_summary(self, lineup: List[OptimizedPlayer], score: float) -> str:
         """Generate lineup summary"""
         if not lineup:
