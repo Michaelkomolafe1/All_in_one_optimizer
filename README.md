@@ -1,51 +1,55 @@
-# DFS Optimizer - Organized and Optimized
+# 🚀 Enhanced DFS Optimizer
 
-## 🎯 YOUR WORKING SYSTEM
+## Quick Start (3 commands)
 
-### Essential Files (Root Directory):
-- `optimized_dfs_core.py` - Main optimization engine (ALL features preserved)
-- `enhanced_dfs_gui.py` - Complete GUI interface  
-- `launch_optimized_dfs.py` - Simple launcher script
-
-### Original Files (Preserved):
-- `working_dfs_core_final.py` - Your original working core (kept as backup)
-- `unified_*.py` - Advanced components (preserved for future use)
-
-## 🚀 HOW TO USE
-
-### Launch the System:
 ```bash
-python launch_optimized_dfs.py        # Launch GUI
-python launch_optimized_dfs.py test   # Test system
+# 1. Test the system
+python launch_enhanced_dfs.py test
+
+# 2. Launch GUI  
+python launch_enhanced_dfs.py
+
+# 3. Edit settings (optional)
+# Edit dfs_settings.py to customize
 ```
 
-### What's Preserved:
-✅ Online confirmed lineup fetching
-✅ Enhanced DFF logic and matching
-✅ Multi-position MILP optimization
-✅ Real Statcast data integration
-✅ Manual player selection
-✅ All original strategies and features
+## New Features Added ✨
 
-## 📁 ORGANIZATION
+✅ **Vegas Lines Integration** - Real sportsbook data for team context  
+✅ **Team Stacking** - Smart 2-4 player stacks for cash games  
+✅ **Enhanced Statcast** - Percentile-based analysis vs raw stats  
+✅ **Multi-Position MILP** - Handles Jorge Polanco (3B/SS) correctly  
+✅ **Manual Selection Priority** - Your picks get priority scoring  
 
-### archives/
-- `old_guis/` - Previous GUI versions
-- `old_launchers/` - Previous launcher scripts  
-- `documentation/` - Deployment and integration reports
-- Other old/redundant files preserved for reference
+## Settings
 
-### Backup:
-- `old_files_backup_[timestamp]/` - Complete backup of all files before cleanup
+### Cash Games (Recommended)
+- Strategy: "Smart Default"
+- Stacking: 2-3 players max  
+- Focus: Consistent, high-floor players
 
-## ✅ WHAT'S DIFFERENT
+### Tournaments
+- Strategy: "Smart Default" or "All Players"
+- Stacking: 3-4 players max
+- Focus: Upside and contrarian plays
 
-- Fixed import issues (optimized_dfs_core.py now exists)
-- All functionality preserved exactly as it was
-- Better file organization
-- Redundant files removed/archived
-- Clean working directory
+## Files Created
+- `launch_enhanced_dfs.py` - Main launcher
+- `dfs_settings.py` - Configuration  
+- `README.md` - This guide
 
-## 🎉 READY TO USE
+## Troubleshooting
 
-Your system is now optimized and organized while preserving ALL functionality!
+**Import Errors**: Run `pip install pandas numpy pulp requests PyQt5`
+
+**No Vegas Data**: Check internet connection (updates every 2 hours)
+
+**No Stacks**: Normal behavior - diversification is often optimal
+
+## Support
+- Test mode: `python launch_enhanced_dfs.py test`
+- All original features preserved
+- Backwards compatible with existing workflows
+
+---
+*Enhanced DFS System - Auto-configured*
