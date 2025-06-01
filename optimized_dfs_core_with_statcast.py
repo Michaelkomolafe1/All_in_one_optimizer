@@ -152,19 +152,32 @@ class OptimizedPlayer:
             elif recent_form_diff <= -1.5:
                 score -= 1.0
 
-        # Confirmed Status
-        if self.confirmed_order and self.confirmed_order.upper() == 'YES':
-            self.is_confirmed = True
-            score += 2.5
-            if self.batting_order and isinstance(self.batting_order, (int, float)):
-                if 1 <= self.batting_order <= 3:
-                    score += 2.0
-                elif 4 <= self.batting_order <= 6:
-                    score += 1.0
+        # Confirmed Status handled above with manual selection
 
-        # Manual Selection Bonus
-        if self.is_manual_selected:
-            score += 3.5
+        # UPDATED: Manual Selection = Confirmed Status
+        # Manual selections treated as "user confirmed starters"
+        # They get same bonus as confirmed players, not artificial inflation
+
+        # Confirmed Status (Official OR Manual)
+        is_confirmed_starter = False
+
+        # Method 1: Official confirmed lineup
+        if self.confirmed_order and self.confirmed_order.upper() == 'YES':
+            is_confirmed_starter = True
+            self.is_confirmed = True
+
+        # Method 2: Manual selection = User confirmed starter  
+        elif self.is_manual_selected:
+            is_confirmed_starter = True
+            self.is_confirmed = True  # Treat as confirmed
+
+        # Method 3: Already marked as confirmed by system
+        elif getattr(self, 'is_confirmed', False):
+            is_confirmed_starter = True
+
+        # Apply SAME bonus for all confirmed starters (manual or official)
+        if is_confirmed_starter:
+            score += 2.5  # Confirmed starter bonus (same for all)
 
         # Vegas Context
         if self.implied_team_score > 0:
