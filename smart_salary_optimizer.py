@@ -22,61 +22,27 @@ class SmartSalaryOptimizer:
             position_counts[pos] = position_counts.get(pos, 0) + 1
 
         pitcher_count = position_counts.get('P', 0)
-        estimated_games = max(1, pitcher_count // 10)  # ~10-12 pitchers per game average
 
-        # Determine slate type and optimal salary targets
-        if estimated_games <= 2:
-            slate_type = "Tiny"
-            min_salary_pct = 98
-            target_salary_pct = 99
-            strategy = "Must pay up - very limited options"
-        elif estimated_games <= 4:
-            slate_type = "Small"
-            min_salary_pct = 96
-            target_salary_pct = 98
-            strategy = "Pay up for quality - fewer value plays available"
-        elif estimated_games <= 7:
-            slate_type = "Medium"
-            min_salary_pct = 94
-            target_salary_pct = 97
-            strategy = "Balanced approach - some value available"
-        elif estimated_games <= 12:
-            slate_type = "Large"
-            min_salary_pct = 92
-            target_salary_pct = 96
-            strategy = "Can find value - don't overpay"
+        # FIXED: Smart slate estimation for DFS
+        # For DFS optimization pools (not full CSV):
+        # - Pool typically contains ~2 starting pitchers per game
+        # - Plus maybe 1-2 relief pitchers per game
+        # - So ~3-4 pitchers per game in optimization pool
+
+        if pitcher_count <= 6:
+            # Small pool, likely cherry-picked starters
+            estimated_games = max(1, pitcher_count // 2)  # 2 starters per game
+        elif pitcher_count <= 30:
+            # Medium pool, mostly starters + some relievers  
+            estimated_games = max(1, pitcher_count // 3)  # ~3 pitchers per game
         else:
-            slate_type = "Massive"
-            min_salary_pct = 90
-            target_salary_pct = 95
-            strategy = "Lots of value available - target efficient builds"
+            # Large pool, includes many relievers
+            estimated_games = max(1, pitcher_count // 4)  # ~4 pitchers per game
 
-        min_salary = int(budget * min_salary_pct / 100)
-        target_salary = int(budget * target_salary_pct / 100)
-
-        self.slate_info = {
-            'type': slate_type,
-            'estimated_games': estimated_games,
-            'total_players': total_players,
-            'pitcher_count': pitcher_count,
-            'min_salary': min_salary,
-            'target_salary': target_salary,
-            'min_salary_pct': min_salary_pct,
-            'target_salary_pct': target_salary_pct,
-            'strategy': strategy
-        }
-
-        print(f"\n📊 SMART SALARY ANALYSIS:")
-        print(f"   Slate Type: {slate_type} ({estimated_games} games estimated)")
-        print(f"   Strategy: {strategy}")
-        print(f"   Optimal Salary Range: ${min_salary:,} - ${target_salary:,} ({min_salary_pct}%-{target_salary_pct}%)")
-
-        # If lineup salary provided, evaluate it
-        if lineup_salary is not None:
-            self._evaluate_lineup_salary(lineup_salary, budget)
-
-        return self.slate_info
-
+        print(f"🎯 SLATE CALCULATION DEBUG:")
+        print(f"   Total players in analysis: {total_players}")
+        print(f"   Pitchers in pool: {pitcher_count}")
+        print(f"   Estimated games: {estimated_games}")
     def _evaluate_lineup_salary(self, lineup_salary, budget):
         """Evaluate lineup salary usage"""
 

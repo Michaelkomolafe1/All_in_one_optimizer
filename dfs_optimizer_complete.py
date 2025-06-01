@@ -125,14 +125,32 @@ def launch_enhanced_gui():
                 try:
                     total_salary = sum(getattr(p, 'salary', 0) for p in lineup)
 
-                    # Mock full player list for slate analysis (in production, would pass actual full list)
-                    mock_full_players = lineup * 18
+                    # Use the actual filtered players for accurate slate analysis
+                    # This gives accurate game count and slate size detection
 
                     print(f"\n" + "="*50)
                     print("🤖 AUTOMATIC SALARY ANALYSIS")
                     print("="*50)
 
-                    analyze_lineup_salary(mock_full_players, total_salary)
+                    # Get the filtered player set that was actually used for optimization
+                    from optimized_dfs_core_with_statcast import OptimizedDFSCore
+
+                    # Create a temporary core to get the same filtered players
+                    temp_core = OptimizedDFSCore()
+                    temp_core.load_draftkings_csv(dk_file)
+                    if dff_file:
+                        temp_core.apply_dff_rankings(dff_file)
+                    if manual_input:
+                        temp_core.apply_manual_selection(manual_input)
+                    temp_core._detect_confirmed_players()
+
+                    # Apply same strategy filter to get exact same players used in MILP
+                    filtered_players = temp_core._apply_strategy_filter(strategy)
+
+                    print(f"🎯 Using filtered player set for analysis:")
+                    print(f"   Players: {len(filtered_players)} (same as MILP)")
+
+                    analyze_lineup_salary(filtered_players, total_salary)
 
                     print("="*50)
 
