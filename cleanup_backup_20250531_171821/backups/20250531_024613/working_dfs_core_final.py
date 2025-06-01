@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
 """
-Optimized DFS Core - REAL Working Version (Fixed Import)
-✅ ALL functionality copied from working_dfs_core_final.py
-✅ Complete 10-player lineup generation
-✅ Over 1000 player support
-✅ All confirmed lineup detection
-✅ Full MILP optimization
-✅ All strategies working
-"""
-
-# REAL WORKING FUNCTIONALITY COPIED FROM working_dfs_core_final.py
-"""
 Working DFS Core - Complete & Final Version
 ✅ MILP optimization with proper multi-position handling
 ✅ No minimum salary constraints (causing infeasibility)
@@ -264,21 +253,6 @@ class OptimizedPlayer:
         return f"Player({self.name}, {pos_str}, ${self.salary}, {self.enhanced_score:.1f}{status_str})"
 
 
-
-    def get_status_string(self) -> str:
-        """Get formatted status string for display"""
-        status_parts = []
-        if self.is_confirmed:
-            status_parts.append("CONFIRMED")
-        if self.is_manual_selected:
-            status_parts.append("MANUAL")
-        if self.dff_projection > 0:
-            status_parts.append(f"DFF:{self.dff_projection:.1f}")
-        if 'Baseball Savant' in self.statcast_data.get('data_source', ''):
-            status_parts.append("STATCAST")
-        return " | ".join(status_parts) if status_parts else "-"
-
-
 class EnhancedDFFMatcher:
     """Enhanced DFF name matching"""
 
@@ -370,42 +344,55 @@ class StatcastDataService:
         """Enrich players with real or simulated Statcast data"""
 
         if self.use_real_data:
-            return self._enrich_with_real_statcast_fixed(players)
+            return self._enrich_with_real_statcast(players)
         else:
             return self._enrich_with_simulated_statcast(players)
 
-    def _enrich_with_real_statcast_original(self, players: List[OptimizedPlayer]) -> List[OptimizedPlayer]:
-        """Enrich with REAL Baseball Savant data"""
+    
+    def _enrich_with_real_statcast(self, players: List[OptimizedPlayer]) -> List[OptimizedPlayer]:
+        """Enrich with REAL Baseball Savant data - PRIORITIZING confirmed + manual"""
 
-        print("🌐 Fetching REAL Baseball Savant data for players...")
+        # Separate players by priority
+        priority_players = [p for p in players if 
+                           getattr(p, 'is_confirmed', False) or 
+                           getattr(p, 'is_manual_selected', False)]
+        other_players = [p for p in players if p not in priority_players]
+
+        print(f"🌐 Fetching REAL Baseball Savant data for players...")
+        print(f"🎯 PRIORITY: {len(priority_players)} confirmed + manual players")
+        print(f"⚡ SIMULATED: {len(other_players)} other players")
         print("⏳ This will take 2-5 minutes for fresh data...")
 
-        # Focus on confirmed players first for faster processing
-        confirmed_players = [p for p in players if getattr(p, 'is_confirmed', False)]
-        unconfirmed_players = [p for p in players if not getattr(p, 'is_confirmed', False)]
+        # Process priority players with REAL data
+        if priority_players:
+            print(f"🌐 Fetching real data for {len(priority_players)} priority players...")
+            priority_enhanced = self.statcast_integration.enrich_player_data(priority_players, force_refresh=False)
+        else:
+            priority_enhanced = []
 
-        print(f"🎯 Prioritizing {len(confirmed_players)} confirmed players for real data")
-
-        # Process confirmed players with real data
-        confirmed_enhanced = self.statcast_integration.enrich_player_data(confirmed_players, force_refresh=False)
-
-        # For unconfirmed players, use simulated data (faster)
-        print(f"⚡ Using simulated data for {len(unconfirmed_players)} unconfirmed players")
-        unconfirmed_enhanced = self._enrich_with_simulated_statcast(unconfirmed_players)
+        # For other players, use simulated data (much faster)
+        if other_players:
+            print(f"⚡ Using simulated data for {len(other_players)} other players...")
+            other_enhanced = self._enrich_with_simulated_statcast(other_players)
+        else:
+            other_enhanced = []
 
         # Combine results
-        all_enhanced = confirmed_enhanced + unconfirmed_enhanced
+        all_enhanced = priority_enhanced + other_enhanced
 
-        # Count real vs simulated
-        real_data_count = sum(1 for p in confirmed_enhanced 
-                             if len(p.statcast_data) > 0 and 
-                             p.statcast_data.get('data_source', '').startswith('Baseball Savant'))
+        # Count real vs simulated data
+        real_data_count = 0
+        for player in priority_enhanced:
+            if (hasattr(player, 'statcast_data') and 
+                player.statcast_data and 
+                'Baseball Savant' in player.statcast_data.get('data_source', '')):
+                real_data_count += 1
 
-        print(f"✅ Real Baseball Savant data: {real_data_count}/{len(confirmed_players)} confirmed players")
-        print(f"⚡ Simulated data: {len(unconfirmed_players)} unconfirmed players")
+        print(f"✅ REAL Baseball Savant data: {real_data_count}/{len(priority_players)} priority players")
+        print(f"⚡ Simulated data: {len(other_players)} other players")
+        print(f"🎯 Total enhanced: {len(all_enhanced)} players")
 
         return all_enhanced
-
     def _enrich_with_simulated_statcast(self, players: List[OptimizedPlayer]) -> List[OptimizedPlayer]:
         """Fallback simulated Statcast data"""
 
@@ -430,198 +417,6 @@ class StatcastDataService:
 
         return players
 
-
-    def _get_priority_players_fixed(self, players: List[OptimizedPlayer]) -> List[OptimizedPlayer]:
-        """Get priority players using EXACT same logic as main optimization"""
-
-        priority_players = []
-
-        for player in players:
-            is_priority = False
-            priority_reason = None
-
-            # Method 1: Manual selection (explicit user picks)
-            if getattr(player, 'is_manual_selected', False):
-                is_priority = True
-                priority_reason = "manual_selected"
-
-            # Method 2: Already marked as confirmed by main optimization
-            elif getattr(player, 'is_confirmed', False):
-                is_priority = True
-                priority_reason = "confirmed_by_main_optimization"
-
-            # Method 3: DFF confirmed order (same as main optimization)
-            elif (hasattr(player, 'confirmed_order') and 
-                  str(getattr(player, 'confirmed_order', '')).upper() == 'YES'):
-                is_priority = True
-                priority_reason = "dff_confirmed_order"
-                player.is_confirmed = True  # Mark for consistency
-
-            # Method 4: Has batting order (same as main optimization)
-            elif (hasattr(player, 'batting_order') and 
-                  getattr(player, 'batting_order') is not None and
-                  isinstance(getattr(player, 'batting_order'), (int, float))):
-                is_priority = True
-                priority_reason = "has_batting_order"
-                player.is_confirmed = True
-
-            # Method 5: High DFF projection (same threshold as main optimization)
-            elif (hasattr(player, 'dff_projection') and 
-                  getattr(player, 'dff_projection', 0) >= 6.0):
-                is_priority = True
-                priority_reason = "high_dff_projection"
-                player.is_confirmed = True
-
-            if is_priority:
-                priority_players.append(player)
-                print(f"   🎯 Priority: {player.name} ({priority_reason})")
-
-        return priority_players
-
-    def _enrich_with_real_statcast_fixed(self, players: List[OptimizedPlayer]) -> List[OptimizedPlayer]:
-        """FIXED: Enrich with real Statcast data using proper priority detection"""
-
-        print("🌐 Fetching REAL Baseball Savant data...")
-
-        # Use the fixed priority detection
-        priority_players = self._get_priority_players_fixed(players)
-
-        print(f"📊 PRIORITY PLAYERS IDENTIFIED: {len(priority_players)}")
-
-        if len(priority_players) == 0:
-            print("⚠️ No priority players found!")
-            print("💡 This means either:")
-            print("   - No confirmed players detected by main optimization")
-            print("   - No manual selections provided")
-            print("   - Detection logic mismatch (should be fixed now)")
-
-        # Fetch real data for priority players
-        if len(priority_players) > 0:
-            print(f"🔬 Fetching real Statcast data for {len(priority_players)} priority players...")
-            try:
-                priority_enhanced = self.statcast_integration.enrich_player_data(priority_players, force_refresh=False)
-            except:
-                print("⚠️ Real Statcast fetch failed, using enhanced simulation")
-                priority_enhanced = self._enrich_with_simulated_statcast(priority_players)
-        else:
-            priority_enhanced = []
-
-        # Enhanced simulation for non-priority players
-        non_priority_players = [p for p in players if p not in priority_players]
-        if non_priority_players:
-            non_priority_enhanced = self._enrich_with_simulated_statcast(non_priority_players)
-        else:
-            non_priority_enhanced = []
-
-        # Combine results
-        all_enhanced = priority_enhanced + non_priority_enhanced
-
-        # Count real vs simulated
-        real_data_count = sum(1 for p in priority_enhanced 
-                             if hasattr(p, 'statcast_data') and p.statcast_data and 
-                             'Baseball Savant' in str(p.statcast_data.get('data_source', '')))
-
-        print(f"✅ STATCAST ENRICHMENT RESULTS:")
-        print(f"   🌐 Real Baseball Savant data: {real_data_count}/{len(priority_players)} priority players")
-        print(f"   ⚡ Enhanced simulation: {len(non_priority_enhanced)} non-priority players")
-
-        return all_enhanced
-
-    def _get_priority_players_fixed(self, players: List[OptimizedPlayer]) -> List[OptimizedPlayer]:
-        """Get priority players using EXACT same logic as main optimization"""
-
-        priority_players = []
-
-        for player in players:
-            is_priority = False
-            priority_reason = None
-
-            # Method 1: Manual selection (explicit user picks)
-            if getattr(player, 'is_manual_selected', False):
-                is_priority = True
-                priority_reason = "manual_selected"
-
-            # Method 2: Already marked as confirmed by main optimization
-            elif getattr(player, 'is_confirmed', False):
-                is_priority = True
-                priority_reason = "confirmed_by_main_optimization"
-
-            # Method 3: DFF confirmed order (same as main optimization)
-            elif (hasattr(player, 'confirmed_order') and 
-                  str(getattr(player, 'confirmed_order', '')).upper() == 'YES'):
-                is_priority = True
-                priority_reason = "dff_confirmed_order"
-                player.is_confirmed = True  # Mark for consistency
-
-            # Method 4: Has batting order (same as main optimization)
-            elif (hasattr(player, 'batting_order') and 
-                  getattr(player, 'batting_order') is not None and
-                  isinstance(getattr(player, 'batting_order'), (int, float))):
-                is_priority = True
-                priority_reason = "has_batting_order"
-                player.is_confirmed = True
-
-            # Method 5: High DFF projection (same threshold as main optimization)
-            elif (hasattr(player, 'dff_projection') and 
-                  getattr(player, 'dff_projection', 0) >= 6.0):
-                is_priority = True
-                priority_reason = "high_dff_projection"
-                player.is_confirmed = True
-
-            if is_priority:
-                priority_players.append(player)
-                print(f"   🎯 Priority: {player.name} ({priority_reason})")
-
-        return priority_players
-
-    def _enrich_with_real_statcast_fixed(self, players: List[OptimizedPlayer]) -> List[OptimizedPlayer]:
-        """FIXED: Enrich with real Statcast data using proper priority detection"""
-
-        print("🌐 Fetching REAL Baseball Savant data...")
-
-        # Use the fixed priority detection
-        priority_players = self._get_priority_players_fixed(players)
-
-        print(f"📊 PRIORITY PLAYERS IDENTIFIED: {len(priority_players)}")
-
-        if len(priority_players) == 0:
-            print("⚠️ No priority players found!")
-            print("💡 This means either:")
-            print("   - No confirmed players detected by main optimization")
-            print("   - No manual selections provided")
-            print("   - Detection logic mismatch (should be fixed now)")
-
-        # Fetch real data for priority players
-        if len(priority_players) > 0:
-            print(f"🔬 Fetching real Statcast data for {len(priority_players)} priority players...")
-            try:
-                priority_enhanced = self.statcast_integration.enrich_player_data(priority_players, force_refresh=False)
-            except:
-                print("⚠️ Real Statcast fetch failed, using enhanced simulation")
-                priority_enhanced = self._enrich_with_simulated_statcast(priority_players)
-        else:
-            priority_enhanced = []
-
-        # Enhanced simulation for non-priority players
-        non_priority_players = [p for p in players if p not in priority_players]
-        if non_priority_players:
-            non_priority_enhanced = self._enrich_with_simulated_statcast(non_priority_players)
-        else:
-            non_priority_enhanced = []
-
-        # Combine results
-        all_enhanced = priority_enhanced + non_priority_enhanced
-
-        # Count real vs simulated
-        real_data_count = sum(1 for p in priority_enhanced 
-                             if hasattr(p, 'statcast_data') and p.statcast_data and 
-                             'Baseball Savant' in str(p.statcast_data.get('data_source', '')))
-
-        print(f"✅ STATCAST ENRICHMENT RESULTS:")
-        print(f"   🌐 Real Baseball Savant data: {real_data_count}/{len(priority_players)} priority players")
-        print(f"   ⚡ Enhanced simulation: {len(non_priority_enhanced)} non-priority players")
-
-        return all_enhanced
 
 class EnhancedDFFProcessor:
     """Process DFF cheat sheet data"""
@@ -1455,53 +1250,40 @@ def create_enhanced_test_data() -> Tuple[str, str]:
     return dk_file.name, dff_file.name
 
 
-def load_and_optimize_complete_pipeline(
+# In working_dfs_core_final.py - REPLACE existing function
+async def load_and_optimize_complete_pipeline_v2(
         dk_file: str,
         dff_file: str = None,
         manual_input: str = "",
         contest_type: str = 'classic',
-        strategy: str = 'balanced'
-) -> Tuple[List[OptimizedPlayer], float, str]:
-    """Complete optimization pipeline"""
+        strategy: str = 'smart_confirmed'
+) -> Tuple[List[UnifiedPlayer], float, str]:
+    """
+    Updated pipeline using optimized components
+    """
+    from optimized_data_pipeline import OptimizedDataPipeline
+    from unified_milp_optimizer import optimize_with_unified_system
 
-    print("🚀 COMPLETE DFS OPTIMIZATION PIPELINE")
-    print("=" * 60)
+    # Load and enhance data (10x faster)
+    pipeline = OptimizedDataPipeline()
+    players = await pipeline.load_and_enhance_complete(
+        dk_file=dk_file,
+        dff_file=dff_file,
+        manual_input=manual_input,
+        force_refresh=False
+    )
 
-    # Initialize core
-    core = OptimizedDFSCore()
+    if not players:
+        return [], 0, "❌ Failed to load player data"
 
-    # Step 1: Load DraftKings data
-    print("📊 Step 1: Loading DraftKings data...")
-    if not core.load_draftkings_csv(dk_file):
-        return [], 0, "Failed to load DraftKings data"
+    # Run optimization with strategy filtering
+    return optimize_with_unified_system(
+        players=players,
+        contest_type=contest_type,
+        strategy=strategy,
+        manual_input=manual_input
+    )
 
-    # Step 2: Apply DFF rankings if provided
-    if dff_file:
-        print("🎯 Step 2: Applying DFF rankings...")
-        core.apply_dff_rankings(dff_file)
-
-    # Step 3: Enrich with Statcast data
-    print("🔬 Step 3: Enriching with Statcast data...")
-    core.enrich_with_statcast()
-
-    # Step 4: Apply manual selection if provided
-    if manual_input:
-        print("🎯 Step 4: Applying manual selection...")
-        core.apply_manual_selection(manual_input)
-
-    # Step 5: Optimize lineup
-    print("🧠 Step 5: Running optimization...")
-    lineup, score = core.optimize_lineup(contest_type, strategy)
-
-    if lineup:
-        summary = core.get_lineup_summary(lineup, score)
-        print("✅ Optimization complete!")
-        return lineup, score, summary
-    else:
-        return [], 0, "Optimization failed"
-
-
-# Testing functions
 def test_system():
     """Test the complete system"""
     print("🧪 TESTING STREAMLINED MILP-FOCUSED DFS SYSTEM")
@@ -1586,116 +1368,3 @@ def main():
 if __name__ == "__main__":
     success = main()
     sys.exit(0 if success else 1)
-# Simple Statcast Integration - Added by clean_and_fix_system.py
-try:
-    from simple_statcast_fetcher import SimpleStatcastFetcher
-    SIMPLE_STATCAST_AVAILABLE = True
-    print("✅ Simple Statcast integration enabled")
-except ImportError:
-    SIMPLE_STATCAST_AVAILABLE = False
-    print("⚠️ Simple Statcast not available")
-
-class SimpleStatcastService:
-    """Simple service to add real Statcast data to your existing system"""
-
-    def __init__(self):
-        self.fetcher = SimpleStatcastFetcher() if SIMPLE_STATCAST_AVAILABLE else None
-
-    def enrich_priority_players(self, players):
-        """Add real Statcast data to priority players only"""
-        if not self.fetcher:
-            return players
-
-        priority_players = [p for p in players if 
-                           getattr(p, 'is_confirmed', False) or 
-                           getattr(p, 'is_manual_selected', False)]
-
-        print(f"🔬 Fetching real data for {len(priority_players)} priority players...")
-
-        for player in priority_players:
-            try:
-                player_name = getattr(player, 'name', '')
-                position = getattr(player, 'primary_position', '')
-
-                if player_name and position:
-                    statcast_data = self.fetcher.fetch_player_data(player_name, position)
-
-                    if statcast_data:
-                        # Apply to player
-                        if hasattr(player, 'apply_statcast_data'):
-                            player.apply_statcast_data(statcast_data)
-                        elif hasattr(player, 'statcast_data'):
-                            player.statcast_data = statcast_data
-                            if hasattr(player, '_calculate_enhanced_score'):
-                                player._calculate_enhanced_score()
-
-                        print(f"✅ Real data: {player_name}")
-                    else:
-                        print(f"⚡ Simulation: {player_name}")
-
-            except Exception as e:
-                print(f"⚠️ Error with {player_name}: {e}")
-                continue
-
-        stats = self.fetcher.get_stats()
-        success_rate = stats['successful_fetches'] / (stats['successful_fetches'] + stats['failed_fetches']) * 100 if (stats['successful_fetches'] + stats['failed_fetches']) > 0 else 0
-
-        print(f"📊 Real Statcast Success: {stats['successful_fetches']} players ({success_rate:.1f}%)")
-
-        return players
-
-# Add method to OptimizedDFSCore
-def add_simple_statcast_to_core():
-    """Add simple Statcast to your existing OptimizedDFSCore"""
-
-    # Add to the existing OptimizedDFSCore class
-    if 'OptimizedDFSCore' in globals():
-        def enhanced_enrich_with_statcast(self):
-            """Enhanced version with real data for priority players"""
-
-            # Use simple Statcast service for priority players
-            simple_service = SimpleStatcastService()
-            self.players = simple_service.enrich_priority_players(self.players)
-
-            # Use original simulation for remaining players
-            for player in self.players:
-                if not hasattr(player, 'statcast_data') or not player.statcast_data:
-                    # Apply your original simulation
-                    import random
-                    import numpy as np
-
-                    player_name = getattr(player, 'name', 'Unknown')
-                    position = getattr(player, 'primary_position', 'UTIL')
-                    salary = getattr(player, 'salary', 3000)
-
-                    random.seed(hash(player_name) % 1000000)
-
-                    if position == 'P':
-                        salary_factor = min(salary / 10000.0, 1.2)
-                        statcast_data = {
-                            'xwOBA': round(max(0.250, np.random.normal(0.310 - (salary_factor * 0.020), 0.030)), 3),
-                            'Hard_Hit': round(max(0, np.random.normal(35.0 - (salary_factor * 3.0), 5.0)), 1),
-                            'K': round(max(0, np.random.normal(20.0 + (salary_factor * 5.0), 4.0)), 1),
-                            'data_source': 'Enhanced Simulation'
-                        }
-                    else:
-                        salary_factor = min(salary / 5000.0, 1.2)
-                        statcast_data = {
-                            'xwOBA': round(max(0.250, np.random.normal(0.310 + (salary_factor * 0.030), 0.040)), 3),
-                            'Hard_Hit': round(max(0, np.random.normal(30.0 + (salary_factor * 8.0), 7.0)), 1),
-                            'Barrel': round(max(0, np.random.normal(5.0 + (salary_factor * 4.0), 3.0)), 1),
-                            'data_source': 'Enhanced Simulation'
-                        }
-
-                    if hasattr(player, 'apply_statcast_data'):
-                        player.apply_statcast_data(statcast_data)
-                    elif hasattr(player, 'statcast_data'):
-                        player.statcast_data = statcast_data
-                        if hasattr(player, '_calculate_enhanced_score'):
-                            player._calculate_enhanced_score()
-
-        # Replace the method
-        OptimizedDFSCore.enrich_with_statcast = enhanced_enrich_with_statcast
-
-# Apply the enhancement
-add_simple_statcast_to_core()

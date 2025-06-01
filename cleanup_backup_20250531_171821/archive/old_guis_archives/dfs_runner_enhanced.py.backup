@@ -1,0 +1,1727 @@
+#!/usr/bin/env python3
+"""
+Enhanced DFS Runner - Part 1: Imports and Helper Functions
+Improved name matching and recent performance integration
+"""
+import sys
+import os
+import argparse
+import time
+import traceback
+import json
+import csv
+import re
+
+# Initialize required imports with error handling
+try:
+    import pandas as pd
+    import numpy as np
+except ImportError as e:
+    print(f"Critical error: Missing required packages: {e}")
+    print("Please install with: pip install pandas numpy")
+    sys.exit(1)
+
+# Try to import fuzzy matching library
+try:
+    from fuzzywuzzy import fuzz, process
+
+    FUZZY_MATCHING_AVAILABLE = True
+    print("✅ Fuzzy matching available for better name matching")
+except ImportError:
+    FUZZY_MATCHING_AVAILABLE = False
+    print("Info: For better name matching: pip install fuzzywuzzy python-Levenshtein")
+
+# Try to import optional modules with error handling
+try:
+    from dfs_optimizer import optimize_lineup, display_lineup
+
+    BASIC_OPTIMIZER_AVAILABLE = True
+except ImportError:
+    print("Warning: Basic optimizer module not available!")
+    BASIC_OPTIMIZER_AVAILABLE = False
+
+try:
+    from dfs_optimizer import optimize_lineup_milp, optimize_showdown_milp, display_showdown_lineup
+
+    MILP_AVAILABLE = True
+except ImportError:
+    print("Info: MILP optimizer not available. For advanced optimization: pip install pulp")
+    MILP_AVAILABLE = False
+
+try:
+    from vegas_lines import VegasLines
+
+    VEGAS_AVAILABLE = True
+except ImportError:
+    print("Info: Vegas lines module not available. For betting data: pip install requests")
+    VEGAS_AVAILABLE = False
+
+try:
+    from confirmed_lineups import ConfirmedLineups
+
+    CONFIRMED_LINEUPS_AVAILABLE = True
+except ImportError:
+    print("Info: Confirmed lineups module not available. For lineup data: pip install statsapi")
+    CONFIRMED_LINEUPS_AVAILABLE = False
+
+try:
+    from statcast_integration import StatcastIntegration
+
+    STATCAST_AVAILABLE = True
+except ImportError:
+    print("Info: Statcast integration not available. For advanced metrics: pip install pybaseball")
+    STATCAST_AVAILABLE = False
+
+try:
+    from verbosity import set_verbosity, get_verbosity
+except ImportError:
+    VERBOSITY_LEVEL = 1
+
+
+    def set_verbosity(level):
+        global VERBOSITY_LEVEL
+        VERBOSITY_LEVEL = max(0, min(int(level), 2))
+
+
+    def get_verbosity():
+        global VERBOSITY_LEVEL
+        return VERBOSITY_LEVEL
+
+try:
+    from dfs_data import DFSData
+except ImportError:
+    print("Critical error: DFSData module not found!")
+    print("Make sure dfs_data.py is in the same directory.")
+    sys.exit(1)
+
+
+# ===============================
+# ENHANCED NAME MATCHING SYSTEM
+# ===============================
+
+class PlayerNameMatcher:
+    """Enhanced player name matching with aliases, fuzzy matching, and learning"""
+
+    def __init__(self, alias_file_path="data/player_aliases.json"):
+        self.alias_file_path = alias_file_path
+        self.aliases = {}
+        self.load_aliases()
+
+        # Comprehensive nickname dictionary
+        self.nickname_map = {
+            'bobby': 'robert', 'bob': 'robert', 'rob': 'robert', 'robbie': 'robert',
+            'mike': 'michael', 'mick': 'michael', 'mickey': 'michael',
+            'dave': 'david', 'davey': 'david',
+            'tony': 'anthony', 'ant': 'anthony',
+            'chris': 'christopher', 'cristopher': 'christopher',
+            'matt': 'matthew', 'matty': 'matthew',
+            'joe': 'joseph', 'joey': 'joseph',
+            'josh': 'joshua', 'joshy': 'joshua',
+            'alex': 'alexander', 'al': 'alexander', 'alec': 'alexander',
+            'andy': 'andrew', 'drew': 'andrew',
+            'danny': 'daniel', 'dan': 'daniel',
+            'tommy': 'thomas', 'tom': 'thomas',
+            'jimmy': 'james', 'jim': 'james', 'jamie': 'james',
+            'billy': 'william', 'bill': 'william', 'will': 'william',
+            'ricky': 'richard', 'rick': 'richard', 'dick': 'richard',
+            'aj': 'anthony', 'cj': 'charles', 'dj': 'daniel',
+            'tj': 'thomas', 'jj': 'joseph', 'jp': 'john',
+            'jr': 'junior', 'iii': 'third', 'iv': 'fourth',
+            'manny': 'manuel', 'eddie': 'edward', 'ed': 'edward',
+            'nate': 'nathan', 'nathaniel': 'nathan',
+            'nico': 'nicholas', 'nick': 'nicholas',
+            'trey': 'third', 'tre': 'third'
+        }
+
+    def load_aliases(self):
+        """Load user-defined aliases from JSON file"""
+        try:
+            if os.path.exists(self.alias_file_path):
+                with open(self.alias_file_path, 'r') as f:
+                    self.aliases = json.load(f)
+                print(f"✅ Loaded {len(self.aliases)} player aliases")
+            else:
+                # Create directory if it doesn't exist
+                os.makedirs(os.path.dirname(self.alias_file_path), exist_ok=True)
+                self.aliases = {}
+        except Exception as e:
+            print(f"Warning: Could not load aliases: {e}")
+            self.aliases = {}
+
+    def save_aliases(self):
+        """Save aliases to JSON file"""
+        try:
+            os.makedirs(os.path.dirname(self.alias_file_path), exist_ok=True)
+            with open(self.alias_file_path, 'w') as f:
+                json.dump(self.aliases, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save aliases: {e}")
+
+    def clean_name(self, name):
+        """Enhanced name cleaning and normalization"""
+        if not name:
+            return ""
+
+        # Convert to lowercase and strip
+        name = name.lower().strip()
+
+        # Remove common suffixes
+        name = re.sub(r'\b(jr\.?|sr\.?|iii?|iv)\b', '', name)
+
+        # Remove punctuation and special characters
+        name = re.sub(r'[^\w\s]', ' ', name)
+
+        # Handle accented characters (basic conversion)
+        accent_map = {
+            'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a', 'ã': 'a',
+            'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
+            'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
+            'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o', 'õ': 'o',
+            'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
+            'ñ': 'n', 'ç': 'c'
+        }
+
+        for accented, plain in accent_map.items():
+            name = name.replace(accented, plain)
+
+        # Normalize spacing
+        name = ' '.join(name.split())
+
+        return name
+
+    def get_name_variants(self, name):
+        """Generate possible name variants including nicknames"""
+        variants = [name]
+        parts = name.split()
+
+        if len(parts) >= 2:
+            first_name = parts[0]
+            last_name = parts[-1]
+
+            # Add nickname variants
+            if first_name in self.nickname_map:
+                variants.append(f"{self.nickname_map[first_name]} {last_name}")
+
+            # Check if current first name is a full name with nickname equivalent
+            for nick, full in self.nickname_map.items():
+                if first_name == full:
+                    variants.append(f"{nick} {last_name}")
+
+            # Add first initial + last name
+            if len(first_name) > 0:
+                variants.append(f"{first_name[0]} {last_name}")
+                variants.append(f"{first_name[0]}. {last_name}")
+
+            # Try Last, First format
+            variants.append(f"{last_name}, {first_name}")
+
+            # If there's a middle name/initial, try without it
+            if len(parts) > 2:
+                variants.append(f"{parts[0]} {parts[-1]}")
+
+        return list(set(variants))  # Remove duplicates
+
+    def match_player_name(self, manual_name, dk_players_dict, team_hint=None):
+        """
+        Enhanced player name matching with multiple strategies
+
+        Args:
+            manual_name: Name from manual input
+            dk_players_dict: Dict of {dk_name: player_data}
+            team_hint: Optional team abbreviation to help disambiguation
+
+        Returns:
+            Tuple of (matched_player_data, confidence_score, match_method)
+        """
+        dk_names_list = list(dk_players_dict.keys())
+
+        # Strategy 1: Check user-defined aliases first
+        if manual_name in self.aliases:
+            alias_name = self.aliases[manual_name]
+            if alias_name in dk_players_dict:
+                return dk_players_dict[alias_name], 100, "alias"
+
+        # Strategy 2: Clean both names and try exact match
+        manual_clean = self.clean_name(manual_name)
+        for dk_name in dk_names_list:
+            dk_clean = self.clean_name(dk_name)
+            if manual_clean == dk_clean:
+                return dk_players_dict[dk_name], 95, "exact_clean"
+
+        # Strategy 3: Try name variants (nicknames, initials)
+        manual_variants = self.get_name_variants(manual_clean)
+        for variant in manual_variants:
+            for dk_name in dk_names_list:
+                dk_clean = self.clean_name(dk_name)
+                if variant == dk_clean:
+                    return dk_players_dict[dk_name], 90, "variant"
+
+        # Strategy 4: Use team context if available
+        if team_hint:
+            team_filtered_players = {
+                name: data for name, data in dk_players_dict.items()
+                if data[3].upper() == team_hint.upper()
+            }
+            if team_filtered_players:
+                # Retry strategies 2-3 with team-filtered list
+                team_names_list = list(team_filtered_players.keys())
+
+                for dk_name in team_names_list:
+                    dk_clean = self.clean_name(dk_name)
+                    if manual_clean == dk_clean:
+                        return team_filtered_players[dk_name], 92, "exact_clean_team"
+
+                for variant in manual_variants:
+                    for dk_name in team_names_list:
+                        dk_clean = self.clean_name(dk_name)
+                        if variant == dk_clean:
+                            return team_filtered_players[dk_name], 88, "variant_team"
+
+        # Strategy 5: Fuzzy matching
+        if FUZZY_MATCHING_AVAILABLE:
+            # Try fuzzy matching on cleaned names
+            dk_clean_names = [self.clean_name(name) for name in dk_names_list]
+
+            best_match, score = process.extractOne(
+                manual_clean,
+                dk_clean_names,
+                scorer=fuzz.WRatio
+            )
+
+            if score >= 85:  # High confidence threshold
+                # Find the original DK name that corresponds to this cleaned match
+                for i, clean_name in enumerate(dk_clean_names):
+                    if clean_name == best_match:
+                        original_dk_name = dk_names_list[i]
+                        return dk_players_dict[original_dk_name], score, "fuzzy"
+
+        # No match found
+        return None, 0, "no_match"
+
+    def suggest_alias(self, manual_name, potential_matches):
+        """Suggest potential aliases for unmatched names"""
+        print(f"\n❓ Could not match '{manual_name}'. Potential matches:")
+        for i, (name, data, confidence) in enumerate(potential_matches[:5]):
+            team = data[3] if len(data) > 3 else "UNK"
+            position = data[2] if len(data) > 2 else "UNK"
+            print(f"  {i + 1}. {name} ({position}, {team}) - {confidence}% confidence")
+
+
+# ===============================
+# RECENT PERFORMANCE HANDLER
+# ===============================
+
+class RecentPerformanceHandler:
+    """Handles recent performance data and DFF cheat sheet integration"""
+
+    def __init__(self):
+        self.recent_performance = {}
+        self.dff_rankings = {}
+
+        # Weight settings (as percentages)
+        self.recent_performance_weight = 0.20  # 20% impact
+        self.dff_rankings_weight = 0.15  # 15% impact
+        self.base_model_weight = 0.65  # 65% impact (remainder)
+
+    def load_recent_performance_csv(self, file_path):
+        """Load recent performance data from CSV"""
+        try:
+            if not os.path.exists(file_path):
+                print(f"Recent performance file not found: {file_path}")
+                return False
+
+            with open(file_path, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    player_name = row.get('Name', '').strip()
+                    if not player_name:
+                        continue
+
+                    # Expected columns: Name, Position, Team, Recent_xwOBA, Recent_PA, Trend
+                    self.recent_performance[player_name] = {
+                        'position': row.get('Position', '').strip(),
+                        'team': row.get('Team', '').strip(),
+                        'recent_xwoba': float(row.get('Recent_xwOBA', 0)) if row.get('Recent_xwOBA') else 0,
+                        'recent_pa': int(row.get('Recent_PA', 0)) if row.get('Recent_PA') else 0,
+                        'trend': row.get('Trend', '').strip().lower(),  # 'hot', 'cold', 'stable'
+                        'games': int(row.get('Recent_Games', 0)) if row.get('Recent_Games') else 0
+                    }
+
+            print(f"✅ Loaded recent performance for {len(self.recent_performance)} players")
+            return True
+
+        except Exception as e:
+            print(f"Error loading recent performance: {e}")
+            return False
+
+    def load_dff_cheat_sheet(self, file_path):
+        """Load DFF expert rankings/cheat sheet"""
+        try:
+            if not os.path.exists(file_path):
+                print(f"DFF cheat sheet not found: {file_path}")
+                return False
+
+            with open(file_path, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    player_name = row.get('Name', '').strip()
+                    if not player_name:
+                        continue
+
+                    # Expected columns: Name, Position, Team, DFF_Rank, DFF_Score, DFF_Tier
+                    self.dff_rankings[player_name] = {
+                        'position': row.get('Position', '').strip(),
+                        'team': row.get('Team', '').strip(),
+                        'dff_rank': int(row.get('DFF_Rank', 999)) if row.get('DFF_Rank') else 999,
+                        'dff_score': float(row.get('DFF_Score', 0)) if row.get('DFF_Score') else 0,
+                        'dff_tier': row.get('DFF_Tier', '').strip(),
+                        'notes': row.get('Notes', '').strip()
+                    }
+
+            print(f"✅ Loaded DFF rankings for {len(self.dff_rankings)} players")
+            return True
+
+        except Exception as e:
+            print(f"Error loading DFF cheat sheet: {e}")
+            return False
+
+    def calculate_recent_performance_adjustment(self, player_name, base_score, position):
+        """Calculate adjustment based on recent performance"""
+        if player_name not in self.recent_performance:
+            return 0, "No recent data"
+
+        recent_data = self.recent_performance[player_name]
+        adjustment = 0
+        reason = []
+
+        # Minimum sample size check
+        if recent_data['recent_pa'] < 10 and recent_data['games'] < 5:
+            return 0, "Insufficient recent sample"
+
+        # xwOBA-based adjustment
+        recent_xwoba = recent_data['recent_xwoba']
+        if recent_xwoba > 0:
+            if position == "P":
+                # For pitchers, lower xwOBA is better
+                if recent_xwoba < 0.280:
+                    adjustment += 2.0
+                    reason.append("Excellent recent xwOBA")
+                elif recent_xwoba < 0.300:
+                    adjustment += 1.0
+                    reason.append("Good recent xwOBA")
+                elif recent_xwoba > 0.360:
+                    adjustment -= 2.0
+                    reason.append("Poor recent xwOBA")
+                elif recent_xwoba > 0.340:
+                    adjustment -= 1.0
+                    reason.append("Below avg recent xwOBA")
+            else:
+                # For hitters, higher xwOBA is better
+                if recent_xwoba > 0.380:
+                    adjustment += 2.0
+                    reason.append("Excellent recent xwOBA")
+                elif recent_xwoba > 0.350:
+                    adjustment += 1.0
+                    reason.append("Good recent xwOBA")
+                elif recent_xwoba < 0.290:
+                    adjustment -= 2.0
+                    reason.append("Poor recent xwOBA")
+                elif recent_xwoba < 0.310:
+                    adjustment -= 1.0
+                    reason.append("Below avg recent xwOBA")
+
+        # Trend-based adjustment
+        trend = recent_data['trend']
+        if trend == 'hot':
+            adjustment += 1.5
+            reason.append("Hot streak")
+        elif trend == 'cold':
+            adjustment -= 1.5
+            reason.append("Cold streak")
+
+        # Apply weight
+        weighted_adjustment = adjustment * self.recent_performance_weight
+
+        return weighted_adjustment, "; ".join(reason) if reason else "Recent performance"
+
+    def calculate_dff_adjustment(self, player_name, base_score, position):
+        """Calculate adjustment based on DFF expert rankings"""
+        if player_name not in self.dff_rankings:
+            return 0, "No DFF data"
+
+        dff_data = self.dff_rankings[player_name]
+        adjustment = 0
+        reason = []
+
+        # Rank-based adjustment (lower rank = better)
+        dff_rank = dff_data['dff_rank']
+        if position == "P":
+            # Pitcher rankings
+            if dff_rank <= 5:
+                adjustment += 2.0
+                reason.append("Top 5 DFF pitcher")
+            elif dff_rank <= 10:
+                adjustment += 1.5
+                reason.append("Top 10 DFF pitcher")
+            elif dff_rank <= 15:
+                adjustment += 1.0
+                reason.append("Top 15 DFF pitcher")
+            elif dff_rank >= 50:
+                adjustment -= 1.0
+                reason.append("Low DFF pitcher rank")
+        else:
+            # Hitter rankings
+            if dff_rank <= 10:
+                adjustment += 2.0
+                reason.append("Top 10 DFF hitter")
+            elif dff_rank <= 20:
+                adjustment += 1.5
+                reason.append("Top 20 DFF hitter")
+            elif dff_rank <= 30:
+                adjustment += 1.0
+                reason.append("Top 30 DFF hitter")
+            elif dff_rank >= 100:
+                adjustment -= 1.0
+                reason.append("Low DFF hitter rank")
+
+        # Tier-based bonus
+        tier = dff_data['dff_tier'].lower()
+        if tier in ['a+', 'a']:
+            adjustment += 1.0
+            reason.append("Premium DFF tier")
+        elif tier == 'f':
+            adjustment -= 1.0
+            reason.append("Avoid DFF tier")
+
+        # Apply weight
+        weighted_adjustment = adjustment * self.dff_rankings_weight
+
+        return weighted_adjustment, "; ".join(reason) if reason else "DFF ranking"
+
+
+# ===============================
+# UTILITY FUNCTIONS
+# ===============================
+
+def fix_numpy_values(players):
+    """Convert NumPy float64 values to standard Python floats in player data"""
+    fixed_players = []
+
+    for player in players:
+        fixed_player = list(player)
+
+        # Fix the main numeric fields (indexes 4, 5, 6)
+        for i in (4, 5, 6):
+            if i < len(fixed_player) and hasattr(fixed_player[i], 'item'):
+                fixed_player[i] = float(fixed_player[i])
+
+        # Fix extended data dictionaries
+        for dict_index in [14, 15]:
+            if len(fixed_player) > dict_index and isinstance(fixed_player[dict_index], dict):
+                fixed_dict = {}
+                for key, value in fixed_player[dict_index].items():
+                    if hasattr(value, 'item'):
+                        fixed_dict[key] = float(value)
+                    else:
+                        fixed_dict[key] = value
+                fixed_player[dict_index] = fixed_dict
+
+        fixed_players.append(fixed_player)
+
+    return fixed_players
+
+
+def aggressively_clean_player_data(players):
+    """Completely sanitize player data for optimization"""
+    print("Performing aggressive player data cleaning...")
+    cleaned_players = []
+
+    for i, player in enumerate(players):
+        try:
+            # Create a fresh, clean player array with exactly 8 elements
+            clean_player = [None] * 8
+
+            # ID (always int)
+            clean_player[0] = int(float(str(player[0]).strip())) if player[0] is not None else i + 1
+
+            # Name (always string)
+            clean_player[1] = str(player[1]).strip() if player[1] else f"Player_{i + 1}"
+
+            # Position (always string, normalized)
+            if len(player) > 2 and player[2] is not None:
+                pos = str(player[2]).strip().upper()
+                if pos in ["SP", "RP"]:
+                    pos = "P"
+                clean_player[2] = pos
+            else:
+                clean_player[2] = "UTIL"
+
+            # Team (always string)
+            clean_player[3] = str(player[3]).strip().upper() if player[3] else "TEAM"
+
+            # Salary (always int)
+            if len(player) > 4 and player[4] is not None:
+                try:
+                    salary_str = str(player[4]).strip().replace('$', '').replace(',', '')
+                    clean_player[4] = int(float(salary_str))
+                except (ValueError, TypeError):
+                    clean_player[4] = 3000
+            else:
+                clean_player[4] = 3000
+
+            # Projection (always float)
+            if len(player) > 5 and player[5] is not None:
+                try:
+                    proj_str = str(player[5]).strip().replace(',', '')
+                    clean_player[5] = float(proj_str)
+                except (ValueError, TypeError):
+                    clean_player[5] = 0.0
+            else:
+                clean_player[5] = 0.0
+
+            # Score (always float)
+            if len(player) > 6 and player[6] is not None:
+                try:
+                    score_str = str(player[6]).strip().replace(',', '')
+                    clean_player[6] = float(score_str)
+                except (ValueError, TypeError):
+                    clean_player[6] = clean_player[5] if clean_player[5] > 0 else clean_player[4] / 1000.0
+            else:
+                clean_player[6] = clean_player[5] if clean_player[5] > 0 else clean_player[4] / 1000.0
+
+            # Batting order (int or None)
+            if (len(player) > 7 and player[7] is not None and
+                    str(player[7]).strip().lower() not in ['', 'none', 'nan']):
+                try:
+                    clean_player[7] = int(float(str(player[7]).strip()))
+                except (ValueError, TypeError):
+                    clean_player[7] = None
+            else:
+                clean_player[7] = None
+
+            # Ensure numeric types are proper Python types
+            for j in [0, 4, 5, 6]:
+                if hasattr(clean_player[j], 'item'):
+                    if j in [0, 4]:  # ID and Salary are integers
+                        clean_player[j] = int(clean_player[j])
+                    else:  # Projection and Score are floats
+                        clean_player[j] = float(clean_player[j])
+
+            if clean_player[7] is not None and hasattr(clean_player[7], 'item'):
+                clean_player[7] = int(clean_player[7])
+
+            # Sanity checks
+            if clean_player[4] <= 0:
+                clean_player[4] = 3000
+            if clean_player[6] <= 0:
+                clean_player[6] = clean_player[4] / 1000.0
+
+            cleaned_players.append(clean_player)
+
+        except Exception as e:
+            print(f"Error cleaning player {i}: {e}")
+            # Create a placeholder player
+            cleaned_players.append([
+                i + 1, f"Player_{i + 1}", "UTIL", "TEAM", 3000, 0.0, 3.0, None
+            ])
+
+    print(f"Aggressively cleaned {len(cleaned_players)} players")
+    return cleaned_players
+
+
+# ===============================
+# ENHANCED PLAYER MATCHING AND DATA LOADING
+# ===============================
+
+def parse_manual_players_enhanced(manual_players_input, team_context_file=None):
+    """
+    Enhanced manual players parsing with team context support
+
+    Args:
+        manual_players_input: String of comma-separated names or path to file
+        team_context_file: Optional CSV file with Name,Team columns for context
+
+    Returns:
+        Dict of {player_name: team_hint} or set of player names
+    """
+    if not manual_players_input or not isinstance(manual_players_input, str):
+        return {}
+
+    manual_players = {}
+    team_context = {}
+
+    # Load team context if provided
+    if team_context_file and os.path.exists(team_context_file):
+        try:
+            with open(team_context_file, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    name = row.get('Name', '').strip()
+                    team = row.get('Team', '').strip().upper()
+                    if name and team:
+                        team_context[name] = team
+            print(f"✅ Loaded team context for {len(team_context)} players")
+        except Exception as e:
+            print(f"Warning: Could not load team context: {e}")
+
+    try:
+        # Check if it's a file path
+        if os.path.exists(manual_players_input):
+            with open(manual_players_input, 'r') as f:
+                content = f.read()
+                if ',' in content:
+                    # Comma-separated in a file
+                    manual_player_names = [name.strip() for name in content.split(',') if name.strip()]
+                else:
+                    # Newline-separated
+                    manual_player_names = [line.strip() for line in content.splitlines() if line.strip()]
+        else:
+            # It's a comma-separated list
+            manual_player_names = [name.strip() for name in manual_players_input.split(',') if name.strip()]
+
+        # Build the result dictionary with optional team hints
+        for name in manual_player_names:
+            if name:
+                team_hint = team_context.get(name, None)
+                manual_players[name] = team_hint
+
+        print(f"✅ Loaded {len(manual_players)} manual players")
+        if team_context:
+            with_context = sum(1 for hint in manual_players.values() if hint is not None)
+            print(f"  - {with_context} players have team context")
+
+        return manual_players
+
+    except Exception as e:
+        print(f"Error parsing manual players: {e}")
+        return {}
+
+
+def convert_team_id_to_abbrev(team_id):
+    """Convert MLB team ID to standard abbreviation with better error handling"""
+    # Handle None or empty values
+    if not team_id:
+        return "UNK"
+
+    # Convert to string first
+    team_id_str = str(team_id).strip()
+
+    # If it's already a short abbreviation, return it
+    if len(team_id_str) <= 3 and team_id_str.isalpha():
+        return team_id_str.upper()
+
+    # Team ID mapping
+    team_id_map = {
+        "121": "NYM", "147": "NYY", "145": "CWS", "112": "CHC", "116": "DET",
+        "141": "TOR", "120": "WSH", "110": "BAL", "139": "TB", "146": "MIA",
+        "134": "PIT", "143": "PHI", "114": "CLE", "113": "CIN", "117": "HOU",
+        "140": "TEX", "138": "STL", "118": "KC", "144": "ATL", "111": "BOS",
+        "142": "MIN", "158": "MIL", "115": "COL", "109": "ARI", "136": "SEA",
+        "135": "SD", "133": "OAK", "137": "SF", "108": "LAA", "119": "LAD"
+    }
+
+    return team_id_map.get(team_id_str, team_id_str.upper())
+
+
+def filter_confirmed_players_enhanced(players, lineups, confirmed_only=False,
+                                      confirmed_pitchers_only=False, manual_players=None,
+                                      name_matcher=None):
+    """
+    COMPLETELY REWRITTEN: Bulletproof filtering logic
+    """
+    if not players:
+        print("No players to filter")
+        return players
+
+    if not CONFIRMED_LINEUPS_AVAILABLE:
+        print("Confirmed lineups module not available. Skipping filtering.")
+        return players
+
+    if manual_players is None:
+        manual_players = {}
+
+    if name_matcher is None:
+        name_matcher = PlayerNameMatcher()
+
+    print(f"🔍 FILTERING MODE: confirmed_only={confirmed_only}, confirmed_pitchers_only={confirmed_pitchers_only}")
+    print(f"Starting with {len(players)} players")
+
+    # Build confirmed player lookups
+    confirmed_batters = {}
+    confirmed_pitcher_names = set()
+
+    try:
+        # Build confirmed batters lookup
+        for team_id, lineup in lineups.lineups.items():
+            team_abbrev = convert_team_id_to_abbrev(team_id)
+            for player in lineup:
+                mlb_name = player['name']
+                confirmed_batters[mlb_name] = {
+                    'team': team_abbrev,
+                    'position': player['position'],
+                    'order': player['order']
+                }
+
+        # Build confirmed pitchers lookup
+        for team_id, pitcher_info in lineups.starting_pitchers.items():
+            confirmed_pitcher_names.add(pitcher_info['name'])
+
+        print(
+            f"📊 Found {len(confirmed_batters)} confirmed batters and {len(confirmed_pitcher_names)} confirmed pitchers")
+
+    except Exception as e:
+        print(f"❌ Error building confirmed lookups: {e}")
+        return players
+
+    # MAIN FILTERING LOOP
+    filtered_players = []
+    stats = {'pitchers_kept': 0, 'pitchers_filtered': 0, 'batters_kept': 0, 'batters_filtered': 0}
+
+    for player in players:
+        dk_name = player[1]
+        position = player[2]
+        team = str(player[3]).upper() if player[3] else "UNK"
+
+        # === PITCHER FILTERING ===
+        if position == "P":
+            should_keep_pitcher = False
+            reason = ""
+
+            # Check if pitcher is confirmed
+            is_confirmed = False
+            for confirmed_name in confirmed_pitcher_names:
+                try:
+                    matched_player, confidence, method = name_matcher.match_player_name(
+                        dk_name, {confirmed_name: player}, team
+                    )
+                    if matched_player and confidence >= 75:
+                        is_confirmed = True
+                        reason = f"confirmed ({confidence}% match to {confirmed_name})"
+                        break
+                except:
+                    continue
+
+            # Pitcher decision logic
+            if dk_name in manual_players:
+                should_keep_pitcher = True
+                reason = "manual player"
+            elif confirmed_pitchers_only:
+                should_keep_pitcher = is_confirmed
+                if not is_confirmed:
+                    reason = "not confirmed starter"
+            else:
+                should_keep_pitcher = True
+                reason = "pitcher filtering disabled"
+
+            # Apply decision
+            if should_keep_pitcher:
+                filtered_players.append(player)
+                stats['pitchers_kept'] += 1
+                print(f"  ✅ Kept pitcher: {dk_name} ({reason})")
+            else:
+                stats['pitchers_filtered'] += 1
+                print(f"  ❌ Filtered pitcher: {dk_name} ({reason})")
+
+        # === BATTER FILTERING ===
+        else:
+            should_keep_batter = False
+            reason = ""
+
+            # Check if batter is confirmed
+            is_confirmed = False
+            confirmed_details = None
+
+            for mlb_name, info in confirmed_batters.items():
+                try:
+                    # FIXED: Correct parameter order for name matching
+                    matched_player, confidence, method = name_matcher.match_player_name(
+                        dk_name, {mlb_name: player}, team
+                    )
+
+                    if matched_player and confidence >= 75:
+                        # Check position compatibility
+                        mlb_pos = info['position']
+                        position_compatible = (
+                                position == mlb_pos or
+                                ('/' in position and mlb_pos in position.split('/')) or
+                                (position == 'OF' and mlb_pos in ['LF', 'CF', 'RF']) or
+                                (mlb_pos == 'OF' and position in ['LF', 'CF', 'RF'])
+                        )
+
+                        if position_compatible:
+                            is_confirmed = True
+                            confirmed_details = info
+                            reason = f"confirmed ({confidence}% match to {mlb_name}, batting #{info['order']})"
+                            break
+                except:
+                    continue
+
+            # Batter decision logic
+            if dk_name in manual_players:
+                if confirmed_only and not is_confirmed:
+                    should_keep_batter = False
+                    reason = "manual player but NOT confirmed (strict mode)"
+                else:
+                    should_keep_batter = True
+                    reason = "manual player" + (" and confirmed" if is_confirmed else "")
+            elif confirmed_only:
+                should_keep_batter = is_confirmed
+                if not is_confirmed:
+                    reason = "not in confirmed lineup"
+            else:
+                should_keep_batter = True
+                reason = "batter filtering disabled"
+
+            # Apply decision
+            if should_keep_batter:
+                # Add batting order if confirmed
+                player_copy = list(player)
+                if is_confirmed and confirmed_details:
+                    while len(player_copy) <= 7:
+                        player_copy.append(None)
+                    player_copy[7] = confirmed_details['order']
+
+                filtered_players.append(player_copy)
+                stats['batters_kept'] += 1
+                print(f"  ✅ Kept batter: {dk_name} ({reason})")
+            else:
+                stats['batters_filtered'] += 1
+                print(f"  🚫 BLOCKED batter: {dk_name} ({reason})")
+
+    # Final summary
+    print(f"\n📊 FILTERING RESULTS:")
+    print(f"  Pitchers: {stats['pitchers_kept']} kept, {stats['pitchers_filtered']} filtered")
+    print(f"  Batters: {stats['batters_kept']} kept, {stats['batters_filtered']} filtered")
+    print(f"  Total: {len(players)} → {len(filtered_players)} players")
+
+    # Position breakdown
+    position_counts = {}
+    for player in filtered_players:
+        pos = player[2]
+        position_counts[pos] = position_counts.get(pos, 0) + 1
+    print(f"  🎯 Final positions: {position_counts}")
+
+    return filtered_players
+
+
+def apply_recent_performance_adjustments(players, performance_handler, name_matcher):
+    """Apply recent performance and DFF adjustments to player scores"""
+    if not performance_handler:
+        return players
+
+    adjusted_players = []
+    adjustments_made = 0
+
+    # Create lookup for easier matching
+    dk_players_dict = {player[1]: player for player in players}
+
+    for player in players:
+        player_copy = list(player)
+        dk_name = player[1]
+        position = player[2]
+        base_score = player[6]
+
+        total_adjustment = 0
+        adjustment_reasons = []
+
+        # Try direct name match first
+        recent_adj, recent_reason = performance_handler.calculate_recent_performance_adjustment(
+            dk_name, base_score, position
+        )
+        dff_adj, dff_reason = performance_handler.calculate_dff_adjustment(
+            dk_name, base_score, position
+        )
+
+        # If no direct match, try enhanced name matching
+        if recent_adj == 0 and "No recent data" in recent_reason:
+            # Try to find a match in recent performance data
+            recent_names = list(performance_handler.recent_performance.keys())
+            if recent_names:
+                recent_dict = {name: name for name in recent_names}  # Dummy dict for matching
+                matched_name, confidence, method = name_matcher.match_player_name(
+                    dk_name, recent_dict
+                )
+                if matched_name and confidence >= 80:
+                    recent_adj, recent_reason = performance_handler.calculate_recent_performance_adjustment(
+                        matched_name, base_score, position
+                    )
+                    if recent_adj != 0:
+                        recent_reason += f" (matched via {method})"
+
+        # Same for DFF data
+        if dff_adj == 0 and "No DFF data" in dff_reason:
+            dff_names = list(performance_handler.dff_rankings.keys())
+            if dff_names:
+                dff_dict = {name: name for name in dff_names}
+                matched_name, confidence, method = name_matcher.match_player_name(
+                    dk_name, dff_dict
+                )
+                if matched_name and confidence >= 80:
+                    dff_adj, dff_reason = performance_handler.calculate_dff_adjustment(
+                        matched_name, base_score, position
+                    )
+                    if dff_adj != 0:
+                        dff_reason += f" (matched via {method})"
+
+        # Apply adjustments
+        if recent_adj != 0:
+            total_adjustment += recent_adj
+            adjustment_reasons.append(f"Recent: {recent_reason} ({recent_adj:+.1f})")
+
+        if dff_adj != 0:
+            total_adjustment += dff_adj
+            adjustment_reasons.append(f"DFF: {dff_reason} ({dff_adj:+.1f})")
+
+        if total_adjustment != 0:
+            player_copy[6] = max(1.0, base_score + total_adjustment)  # Ensure minimum score
+            adjustments_made += 1
+
+            if get_verbosity() >= 2:
+                print(f"  📈 {dk_name}: {base_score:.1f} → {player_copy[6]:.1f} ({'; '.join(adjustment_reasons)})")
+
+        adjusted_players.append(player_copy)
+
+    if adjustments_made > 0:
+        print(f"✅ Applied performance adjustments to {adjustments_made} players")
+
+    return adjusted_players
+
+
+def get_teams_from_csv(players):
+    """Extract unique team abbreviations from the DraftKings CSV players"""
+    csv_teams = set()
+    for player in players:
+        team = str(player[3]).upper() if player[3] else "UNK"  # Team is at index 3
+        if team:
+            csv_teams.add(team)
+    print(f"Teams in your CSV: {sorted(csv_teams)}")
+    return csv_teams
+
+
+def add_verbosity_args(parser):
+    """Add verbosity arguments to parser for controlling output level"""
+    verbosity_group = parser.add_mutually_exclusive_group()
+    verbosity_group.add_argument('--quiet', '-q', action='store_true',
+                                 help='Minimal output (only essential info)')
+    verbosity_group.add_argument('-v', '--verbose', action='store_true',
+                                 help='Increased verbosity')
+    verbosity_group.add_argument('-vv', '--debug', action='store_true',
+                                 help='Debug level output with maximum detail')
+    return parser
+
+
+def handle_verbosity_args(args):
+    """Set the verbosity level based on command line arguments"""
+    if args.quiet:
+        set_verbosity(0)  # Quiet
+    elif args.debug:
+        set_verbosity(2)  # Very verbose
+    elif args.verbose:
+        set_verbosity(1)  # Normal
+    else:
+        set_verbosity(1)  # Default: Normal
+
+
+def debug_player_data_types(players, sample_size=3):
+    """Print detailed debug information about player data types"""
+    if get_verbosity() < 2:
+        return
+
+    print("\n===== PLAYER DATA TYPE DEBUGGING =====")
+    print(f"Total players: {len(players)}")
+
+    sample = players[:sample_size]
+
+    for i, player in enumerate(sample):
+        print(f"\nPlayer {i + 1}: {player[1]} ({player[2]}, {player[3]})")
+        print(f"  Data length: {len(player)} elements")
+
+        for j in range(min(8, len(player))):
+            element_type = type(player[j]).__name__
+            print(f"  [{j}]: {player[j]} (Type: {element_type})")
+
+        # Check for extended data
+        for dict_index, data_type in [(14, "Statcast"), (15, "Vegas")]:
+            if len(player) > dict_index and isinstance(player[dict_index], dict):
+                print(f"  {data_type} metrics sample:")
+                sample_items = list(player[dict_index].items())[:3]
+                for key, value in sample_items:
+                    value_type = type(value).__name__
+                    print(f"    {key}: {value} (Type: {value_type})")
+                    if hasattr(value, 'dtype'):
+                        print(f"      WARNING: NumPy value detected - dtype: {value.dtype}")
+
+    print("\n===== END DEBUG INFO =====\n")
+
+
+# ===============================
+# MAIN FUNCTION AND ARGUMENT PARSING
+# ===============================
+
+def main():
+    """Main entry point for enhanced DFS optimizer"""
+    parser = argparse.ArgumentParser(
+        description='Enhanced DFS Lineup Optimizer with Advanced Name Matching and Recent Performance'
+    )
+
+    # Add verbosity arguments
+    parser = add_verbosity_args(parser)
+
+    # Input options
+    parser.add_argument('--dk', type=str, help='Path to DraftKings CSV export')
+    parser.add_argument('--output', type=str, help='Path to save optimized lineup')
+
+    # Recent performance and expert data
+    parser.add_argument('--recent-performance', type=str,
+                        help='Path to recent performance CSV file')
+    parser.add_argument('--dff-cheat-sheet', type=str,
+                        help='Path to DFF expert rankings/cheat sheet CSV file')
+
+    # Optimization options
+    parser.add_argument('--attempts', type=int, default=2000, help='Number of optimization attempts')
+    parser.add_argument('--statcast', action='store_true', help='Enrich with Statcast data')
+    parser.add_argument('--min-stack', type=int, default=2, help='Minimum players for team stack')
+    parser.add_argument('--max-stack', type=int, default=5, help='Maximum players for team stack')
+    parser.add_argument('--stack-bonus', type=float, default=1.5, help='Score multiplier for stacked players')
+    parser.add_argument('--min-salary', type=int, default=0, help='Minimum total salary for the lineup')
+    parser.add_argument('--budget', type=int, default=50000, help='Salary cap')
+
+    # Add options based on available modules
+    if MILP_AVAILABLE:
+        parser.add_argument('--milp', action='store_true', help='Use MILP optimization (faster, more accurate)')
+        parser.add_argument('--showdown', action='store_true', help='Optimize for MLB Showdown contest')
+
+    if CONFIRMED_LINEUPS_AVAILABLE:
+        parser.add_argument('--confirmed-only', action='store_true', help='Only use confirmed lineup players')
+        parser.add_argument('--confirmed-pitchers-only', action='store_true',
+                            help='Only use confirmed starting pitchers')
+
+    if VEGAS_AVAILABLE:
+        parser.add_argument('--no-vegas', action='store_true', help='Skip using Vegas lines')
+
+    # Enhanced manual player options
+    parser.add_argument('--manual-players', type=str,
+                        help='Comma-separated player names or path to file with player names')
+    parser.add_argument('--manual-players-only', action='store_true',
+                        help='Use ONLY manual players (filter out others)')
+    parser.add_argument('--team-context', type=str,
+                        help='CSV file with Name,Team columns to help with player matching')
+
+    # Additional options
+    parser.add_argument('--refresh-data', action='store_true', help='Force refresh data')
+    parser.add_argument('--force', action='store_true', help='Force continue even with warnings')
+    parser.add_argument('--save-aliases', action='store_true',
+                        help='Save successful name matches as aliases for future use')
+
+    args = parser.parse_args()
+
+    # Set verbosity level
+    handle_verbosity_args(args)
+
+    print("🚀 Enhanced DFS Lineup Optimizer v2.0")
+    print("=" * 50)
+    print("Features: Advanced Name Matching | Recent Performance | Expert Rankings")
+    print("=" * 50)
+
+    # Initialize components
+    name_matcher = PlayerNameMatcher()
+    performance_handler = RecentPerformanceHandler()
+    dfs_data = DFSData()
+
+    # Load recent performance data if provided
+    if args.recent_performance:
+        if performance_handler.load_recent_performance_csv(args.recent_performance):
+            print(f"✅ Recent performance data loaded")
+        else:
+            print("⚠️ Could not load recent performance data")
+
+    # Load DFF cheat sheet if provided
+    if args.dff_cheat_sheet:
+        if performance_handler.load_dff_cheat_sheet(args.dff_cheat_sheet):
+            print(f"✅ DFF expert rankings loaded")
+        else:
+            print("⚠️ Could not load DFF cheat sheet")
+
+    # Load DraftKings file
+    data_loaded = False
+    if args.dk and os.path.exists(args.dk):
+        print(f"\n📁 Loading DraftKings data from: {args.dk}")
+        if dfs_data.import_from_draftkings(args.dk):
+            data_loaded = True
+            print(f"✅ Successfully loaded DraftKings data")
+
+    # If not loaded from file, look for DraftKings file in the data directory
+    if not data_loaded:
+        print("🔍 Searching for DraftKings files...")
+        dk_files = dfs_data.find_dk_files()
+        if dk_files:
+            # Use the newest DK file
+            newest_dk = max(dk_files, key=os.path.getmtime)
+            print(f"📁 Found DraftKings file: {newest_dk}")
+            if dfs_data.import_from_draftkings(newest_dk):
+                data_loaded = True
+                print(f"✅ Successfully loaded DraftKings data")
+
+    # If still no data, exit
+    if not data_loaded:
+        print("❌ Error: No DraftKings data found. Please provide a file with --dk.")
+        sys.exit(1)
+
+    # Generate initial player data
+    basic_players = dfs_data.players
+
+    # Extract teams from your DraftKings CSV
+    csv_teams = get_teams_from_csv(basic_players)
+    print(f"\n📊 Your slate has {len(csv_teams)} teams: {', '.join(sorted(csv_teams))}")
+
+    # Parse manual players if specified (with enhanced parsing)
+    manual_players = {}
+    if args.manual_players:
+        manual_players = parse_manual_players_enhanced(
+            args.manual_players,
+            args.team_context
+        )
+        
+        # FORCE MANUAL-ONLY MODE: If manual players specified, use ONLY those
+        if manual_players and len(manual_players) > 0:
+            print(f"🎯 MANUAL-ONLY MODE: Restricting to {len(manual_players)} specified players")
+            
+            # Filter basic_players to only include manual players
+            manual_only_players = []
+            manual_names = set(manual_players.keys())
+            
+            for player in basic_players:
+                dk_name = player[1]
+                if dk_name in manual_names:
+                    manual_only_players.append(player)
+                    print(f"  ✅ Keeping manual player: {dk_name}")
+                else:
+                    print(f"  🚫 Excluding non-manual player: {dk_name}")
+            
+            basic_players = manual_only_players
+            print(f"🎯 MANUAL-ONLY: Using {len(basic_players)} players instead of full roster")
+
+        if args.manual_players_only and manual_players:
+            print(f"\n🎯 Restricting to {len(manual_players)} manual players only...")
+
+            # Use enhanced matching for manual-only mode
+            dk_players_dict = {player[1]: player for player in basic_players}
+            matched_manual_players = []
+            unmatched_manual = set(manual_players.keys())
+
+            for manual_name, team_hint in manual_players.items():
+                matched_player, confidence, method = name_matcher.match_player_name(
+                    manual_name, dk_players_dict, team_hint
+                )
+
+                if matched_player and confidence >= 70:  # Lower threshold for manual-only
+                    matched_manual_players.append(matched_player)
+                    unmatched_manual.discard(manual_name)
+                    if get_verbosity() >= 1:
+                        print(f"  ✅ {manual_name} → {matched_player[1]} ({confidence}% via {method})")
+                else:
+                    if get_verbosity() >= 1:
+                        print(f"  ❌ Could not match: {manual_name}")
+
+            basic_players = matched_manual_players
+            print(f"✅ Restricted to {len(basic_players)} matched manual players")
+
+            if unmatched_manual:
+                print(f"⚠️ Could not match {len(unmatched_manual)} manual players:")
+                for name in sorted(unmatched_manual):
+                    print(f"  - {name}")
+
+                if not args.force:
+                    response = input("\nContinue anyway? (y/N): ").strip().lower()
+                    if response != 'y':
+                        print("Exiting...")
+                        sys.exit(1)
+
+    # Apply confirmed lineup filtering BEFORE Statcast enrichment
+    if ((args.confirmed_only or args.confirmed_pitchers_only) and
+            CONFIRMED_LINEUPS_AVAILABLE):
+        try:
+            print(f"\n🔍 Filtering players based on confirmed lineups...")
+
+            # Get confirmed lineups
+            lineups = ConfirmedLineups(verbose=(get_verbosity() > 0))
+
+            # Filter MLB data to only your slate's teams
+            print("Filtering MLB data to match your slate...")
+            filtered_lineups = {}
+            filtered_pitchers = {}
+
+            for team_id, lineup in lineups.lineups.items():
+                team_abbrev = convert_team_id_to_abbrev(team_id)
+                if team_abbrev in csv_teams:
+                    filtered_lineups[team_id] = lineup
+                    print(f"  ✅ {team_abbrev}: {len(lineup)} players")
+
+            for team_id, pitcher in lineups.starting_pitchers.items():
+                team_abbrev = convert_team_id_to_abbrev(team_id)
+                if team_abbrev in csv_teams:
+                    filtered_pitchers[team_id] = pitcher
+                    print(f"  ✅ {team_abbrev}: SP {pitcher['name']}")
+
+            # Replace the original lineups with filtered ones
+            lineups.lineups = filtered_lineups
+            lineups.starting_pitchers = filtered_pitchers
+
+            print(f"\n📊 Filtered to {len(filtered_lineups)} teams with confirmed data")
+
+            # Now filter players based on confirmed lineups using enhanced matching
+            initial_count = len(basic_players)
+            basic_players = filter_confirmed_players_enhanced(
+                basic_players,
+                lineups,
+                confirmed_only=args.confirmed_only,
+                confirmed_pitchers_only=args.confirmed_pitchers_only,
+                manual_players=manual_players,
+                name_matcher=name_matcher
+            )
+
+            print(f"✅ Player pool: {initial_count} → {len(basic_players)} players")
+
+
+
+            # Validate we have enough players for each position
+            position_counts = {}
+            for player in basic_players:
+                pos = player[2]
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+
+            positions_needed = {"P": 2, "C": 1, "1B": 1, "2B": 1, "3B": 1, "SS": 1, "OF": 3}
+            missing_positions = []
+
+            for pos, needed in positions_needed.items():
+                available = position_counts.get(pos, 0)
+                if available < needed:
+                    missing_positions.append(f"{pos} (need {needed}, have {available})")
+
+            if missing_positions and not args.force:
+                print(f"\n❌ ERROR: Not enough players for: {', '.join(missing_positions)}")
+                print("Cannot create a valid lineup!")
+                print("Try using --confirmed-pitchers-only instead of --confirmed-only")
+                print("Or use --force to attempt optimization anyway.")
+                if not args.force:
+                    sys.exit(1)
+
+            # Save successful matches as aliases if requested
+            if args.save_aliases:
+                print("💾 Saving successful name matches as aliases...")
+                name_matcher.save_aliases()
+
+        except Exception as e:
+            print(f"\n❌ Error filtering lineups: {str(e)}")
+            print("⚠️ Continuing with all players...")
+            if get_verbosity() >= 2:
+                traceback.print_exc()
+
+    # Apply Statcast enrichment to the filtered player list
+    players = basic_players
+    if args.statcast and STATCAST_AVAILABLE:
+        try:
+            print(f"\n🔬 Initializing Statcast integration...")
+            statcast = StatcastIntegration(cache_dir="../data/statcast")
+
+            if args.refresh_data:
+                print("🔄 Force refresh enabled for Statcast data")
+                statcast.set_force_refresh(True)
+
+            # Enrich player data
+            print(f"📊 Enriching {len(basic_players)} players with Statcast metrics...")
+            print("⏳ This may take a few minutes for new players...")
+
+            start_time = time.time()
+            enriched_players = statcast.enrich_player_data(basic_players, force_refresh=args.refresh_data)
+            elapsed = time.time() - start_time
+
+            print(f"✅ Statcast enrichment completed in {elapsed:.1f} seconds")
+            players = enriched_players
+
+        except Exception as e:
+            print(f"⚠️ Error with Statcast integration: {e}")
+            print("🔄 Continuing with basic player data...")
+            if get_verbosity() >= 2:
+                traceback.print_exc()
+
+    # Apply recent performance and DFF adjustments
+    if args.recent_performance or args.dff_cheat_sheet:
+        print(f"\n📈 Applying recent performance and expert ranking adjustments...")
+        try:
+            players = apply_recent_performance_adjustments(
+                players, performance_handler, name_matcher
+            )
+        except Exception as e:
+            print(f"⚠️ Error applying performance adjustments: {e}")
+            if get_verbosity() >= 2:
+                traceback.print_exc()
+
+    # Load Vegas lines if not disabled
+    if not args.no_vegas and VEGAS_AVAILABLE:
+        try:
+            print(f"\n💰 Loading Vegas betting lines...")
+            vegas = VegasLines(verbose=(get_verbosity() > 0))
+            lines_data = vegas.get_vegas_lines(force_refresh=args.refresh_data)
+
+            if lines_data:
+                # Convert lines data to game info for DFSData
+                game_data = []
+                for team, game_info in lines_data.items():
+                    if 'opponent' in game_info:
+                        game_data.append({
+                            'home_team': team if game_info.get('is_home', False) else game_info['opponent'],
+                            'away_team': game_info['opponent'] if game_info.get('is_home', False) else team
+                        })
+
+                # Set game info in DFSData to populate opponent_map
+                if hasattr(dfs_data, 'set_game_info'):
+                    dfs_data.set_game_info(game_data)
+
+                # Apply Vegas adjustments directly to player scores
+                players = vegas.apply_to_players(players)
+                print("✅ Vegas data applied successfully!")
+            else:
+                print("⚠️ No Vegas lines data available")
+
+        except Exception as e:
+            print(f"⚠️ Error loading Vegas lines: {e}")
+            if get_verbosity() >= 2:
+                traceback.print_exc()
+
+    # Show final player summary
+    print(f"\n📋 Final Player Pool Summary:")
+    position_counts = {}
+    total_adjustments = 0
+
+    for player in players:
+        pos = player[2]
+        position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        # Count players with recent performance adjustments
+        if len(player) > 16 and isinstance(player[16], dict):
+            total_adjustments += 1
+
+    print(f"  📊 Total players: {len(players)}")
+    print(f"  🎯 Position breakdown: {position_counts}")
+    if total_adjustments > 0:
+        print(f"  📈 Players with performance adjustments: {total_adjustments}")
+
+    # Prepare data for optimization
+    print(f"\n=== 🔧 Preparing Player Data for Optimization ===")
+
+    # Debug player data if in verbose mode
+    if get_verbosity() >= 2:
+        debug_player_data_types(players, sample_size=2)
+
+    # Perform aggressive data cleaning
+    sanitized_players = aggressively_clean_player_data(players)
+
+    # Final validation
+    final_position_counts = {}
+    for player in sanitized_players:
+        pos = player[2]
+        final_position_counts[pos] = final_position_counts.get(pos, 0) + 1
+
+    print(f"📊 Final position counts: {final_position_counts}")
+
+    # Check if we can create a valid lineup
+    positions_needed = {"P": 2, "C": 1, "1B": 1, "2B": 1, "3B": 1, "SS": 1, "OF": 3}
+    can_create_lineup = all(
+        final_position_counts.get(pos, 0) >= needed
+        for pos, needed in positions_needed.items()
+    )
+
+    if not can_create_lineup and not args.force:
+        print(f"\n❌ Cannot create a valid lineup with current player pool!")
+        print("Missing positions:")
+        for pos, needed in positions_needed.items():
+            available = final_position_counts.get(pos, 0)
+            if available < needed:
+                print(f"  - {pos}: need {needed}, have {available}")
+        print("\nTry:")
+        print("  - Using --confirmed-pitchers-only instead of --confirmed-only")
+        print("  - Adding more manual players")
+        print("  - Using --force to attempt anyway")
+        sys.exit(1)
+
+    print(f"✅ Ready for optimization with {len(sanitized_players)} players")
+
+    return sanitized_players, args
+
+
+# ===============================
+# OPTIMIZATION AND OUTPUT
+# ===============================
+
+def run_optimization(sanitized_players, args):
+    """Run the optimization with the prepared player data"""
+
+    # Run the optimizer with appropriate method
+    start_time = time.time()
+    best_lineup = None
+    best_score = 0
+    captain_index = None
+
+    try:
+        # Use different optimization based on contest type and availability
+        if args.showdown and MILP_AVAILABLE:
+            print(f"\n=== 🎯 Running Showdown MILP Optimization ===")
+            print(f"⚙️ Budget: ${args.budget:,} | Min Salary: ${args.min_salary:,}")
+
+            try:
+                best_lineup, best_score, captain_index = optimize_showdown_milp(
+                    sanitized_players,
+                    budget=args.budget,
+                    min_salary=args.min_salary,
+                    contest_type="CASH"
+                )
+
+                if best_lineup:
+                    try:
+                        lineup_text = display_showdown_lineup(
+                            best_lineup,
+                            captain_index,
+                            contest_type="CASH"
+                        )
+                        print(f"\n🏆 BEST SHOWDOWN LINEUP FOUND:")
+                        print("=" * 50)
+                        print(lineup_text)
+                        print(f"\n📊 Lineup Score: {best_score:.2f}")
+
+                        if args.output:
+                            with open(args.output, 'w') as f:
+                                f.write(lineup_text)
+                            print(f"💾 Showdown lineup saved to {args.output}")
+
+                        return True
+
+                    except Exception as e:
+                        print(f"⚠️ Error displaying lineup: {e}")
+                        # Fallback display
+                        print(f"\n🏆 BEST SHOWDOWN LINEUP (Simple Display):")
+                        print("=" * 50)
+                        total_salary = 0
+                        for player_idx, player in enumerate(best_lineup):
+                            position = player[2]
+                            name = player[1]
+                            team = str(player[3]).upper() if player[3] else "UNK"
+
+                            if player_idx == captain_index:
+                                position = "CPT"
+                                salary = int(player[4] * 1.5)
+                                score = f"{player[6] * 1.5:.1f}"
+                            else:
+                                salary = player[4]
+                                score = f"{player[6]:.1f}"
+
+                            total_salary += salary
+                            print(f"{position}: {name} ({team}) - ${salary:,} - {score}")
+
+                        print(f"\nTotal Salary: ${total_salary:,}")
+                        print(f"Total Score: {best_score:.2f}")
+                        return True
+
+                else:
+                    print("❌ Could not generate a valid Showdown lineup.")
+                    print("Try using more players or looser constraints.")
+                    return False
+
+            except Exception as e:
+                print(f"❌ Error in Showdown optimization: {e}")
+                if get_verbosity() >= 2:
+                    traceback.print_exc()
+                return False
+
+        elif args.milp and MILP_AVAILABLE:
+            print(f"\n=== ⚡ Running MILP Optimization ===")
+            print(f"⚙️ Budget: ${args.budget:,} | Attempts: {args.attempts}")
+            print(f"👥 Stack: {args.min_stack}-{args.max_stack} players | Bonus: {args.stack_bonus}x")
+
+            try:
+                best_lineup, best_score = optimize_lineup_milp(
+                    sanitized_players,
+                    budget=args.budget,
+                    num_attempts=args.attempts,
+                    min_team_stack=args.min_stack,
+                    max_team_stack=args.max_stack,
+                    stack_bonus=args.stack_bonus,
+                    min_salary=args.min_salary,
+                    contest_type="CASH"
+                )
+
+                if not best_lineup:
+                    print("⚠️ MILP optimization failed. Trying Monte Carlo method...")
+                    if BASIC_OPTIMIZER_AVAILABLE:
+                        best_lineup, best_score = optimize_lineup(
+                            sanitized_players,
+                            budget=args.budget,
+                            num_attempts=args.attempts,
+                            min_team_stack=args.min_stack,
+                            max_team_stack=args.max_stack,
+                            stack_bonus=args.stack_bonus,
+                            min_salary=args.min_salary,
+                            contest_type="CASH"
+                        )
+                    else:
+                        print("❌ Basic optimizer not available. Cannot fall back.")
+                        return False
+
+            except Exception as e:
+                print(f"❌ Error in MILP optimization: {e}")
+                if get_verbosity() >= 1:
+                    traceback.print_exc()
+
+                print("🔄 Falling back to Monte Carlo method...")
+                if BASIC_OPTIMIZER_AVAILABLE:
+                    best_lineup, best_score = optimize_lineup(
+                        sanitized_players,
+                        budget=args.budget,
+                        num_attempts=args.attempts,
+                        min_team_stack=args.min_stack,
+                        max_team_stack=args.max_stack,
+                        stack_bonus=args.stack_bonus,
+                        min_salary=args.min_salary,
+                        contest_type="CASH"
+                    )
+                else:
+                    print("❌ Basic optimizer not available. Cannot fall back.")
+                    return False
+
+        else:
+            # Standard Monte Carlo optimization
+            if not BASIC_OPTIMIZER_AVAILABLE:
+                print("❌ Basic optimizer (Monte Carlo) not available for optimization.")
+                return False
+
+            print(f"\n=== 🎲 Running Monte Carlo Optimization ===")
+            print(f"⚙️ Budget: ${args.budget:,} | Attempts: {args.attempts}")
+            print(f"👥 Stack: {args.min_stack}-{args.max_stack} players | Bonus: {args.stack_bonus}x")
+
+            best_lineup, best_score = optimize_lineup(
+                sanitized_players,
+                budget=args.budget,
+                num_attempts=args.attempts,
+                min_team_stack=args.min_stack,
+                max_team_stack=args.max_stack,
+                stack_bonus=args.stack_bonus,
+                min_salary=args.min_salary,
+                contest_type="CASH"
+            )
+
+        # Display the lineup if not a Showdown contest
+        if not args.showdown and best_lineup:
+            try:
+                lineup_text = display_lineup(best_lineup, contest_type="CASH")
+                print(f"\n🏆 BEST LINEUP FOUND:")
+                print("=" * 50)
+                print(lineup_text)
+                print(f"\n📊 Lineup Score: {best_score:.2f}")
+
+                if args.output:
+                    with open(args.output, 'w') as f:
+                        f.write(lineup_text)
+                    print(f"💾 Lineup saved to {args.output}")
+
+                return True
+
+            except Exception as e:
+                print(f"⚠️ Error displaying lineup: {e}")
+                if get_verbosity() >= 1:
+                    traceback.print_exc()
+
+                # Fallback display
+                print(f"\n🏆 BEST LINEUP (Simple Display):")
+                print("=" * 50)
+                total_salary = 0
+                for player in best_lineup:
+                    position = player[2]
+                    name = player[1]
+                    team = str(player[3]).upper() if player[3] else "UNK"
+                    salary = player[4]
+                    score = f"{player[6]:.1f}"
+                    batting_order = f"#{player[7]}" if len(player) > 7 and player[7] is not None else ""
+
+                    total_salary += salary
+                    print(f"{position}: {name} ({team}) - ${salary:,} - {score} {batting_order}")
+
+                print(f"\nTotal Salary: ${total_salary:,}")
+                print(f"Total Score: {best_score:.2f}")
+                return True
+
+        elif not best_lineup:
+            print("❌ Could not generate a valid lineup.")
+            print("💡 Try adjusting constraints or including more players:")
+            print("  - Lower --min-salary")
+            print("  - Reduce --min-stack or --max-stack")
+            print("  - Add more manual players")
+            print("  - Use --confirmed-pitchers-only instead of --confirmed-only")
+            return False
+
+        elapsed = time.time() - start_time
+        print(f"\n⏱️ Optimization completed in {elapsed:.2f} seconds")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error running optimizer: {e}")
+        traceback.print_exc()
+        return False
+
+
+def print_final_summary(success, start_time):
+    """Print final summary of the optimization run"""
+    elapsed_total = time.time() - start_time
+
+    print(f"\n" + "=" * 60)
+    if success:
+        print("🎉 OPTIMIZATION COMPLETED SUCCESSFULLY!")
+        print(f"⏱️ Total runtime: {elapsed_total:.2f} seconds")
+        print("✅ Your optimal lineup is ready!")
+        print("\n💡 Tips for next time:")
+        print("  - Use --recent-performance for hot/cold streak data")
+        print("  - Use --dff-cheat-sheet for expert rankings")
+        print("  - Use --save-aliases to improve name matching")
+        print("  - Use --milp for faster, more accurate optimization")
+    else:
+        print("❌ OPTIMIZATION FAILED")
+        print(f"⏱️ Total runtime: {elapsed_total:.2f} seconds")
+        print("\n🔧 Troubleshooting:")
+        print("  - Check that your DraftKings CSV is valid")
+        print("  - Ensure you have enough players for each position")
+        print("  - Try using --force to bypass validation")
+        print("  - Use --verbose or --debug for more information")
+
+    print("=" * 60)
+
+
+# ===============================
+# ENTRY POINT
+# ===============================
+
+if __name__ == "__main__":
+    total_start_time = time.time()
+    success = False
+
+    try:
+        # Run main function to get prepared data and arguments
+        sanitized_players, args = main()
+
+        # Run the optimization
+        success = run_optimization(sanitized_players, args)
+
+    except KeyboardInterrupt:
+        print(f"\n\n⏹️ Optimization interrupted by user")
+        success = False
+
+    except Exception as e:
+        print(f"\n❌ Critical error: {e}")
+        if get_verbosity() >= 1:
+            traceback.print_exc()
+        success = False
+
+    finally:
+        # Print final summary
+        print_final_summary(success, total_start_time)
+
+        # Exit with appropriate code
+        sys.exit(0 if success else 1)
