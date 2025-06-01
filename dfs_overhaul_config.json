@@ -1,0 +1,32 @@
+{
+  "critical_fixes": {
+    "joe_boyle_fix": true,
+    "confirmed_player_priority": 2000,
+    "dff_ranking_weight": 50,
+    "top_pitcher_bonus": 1000
+  },
+  "optimization": {
+    "timeout_seconds": 60,
+    "threads": 4,
+    "confirmed_constraint_strict": true,
+    "require_top_confirmed_pitchers": true
+  },
+  "validation": {
+    "require_confirmed_pitchers": true,
+    "min_confirmed_percentage": 70,
+    "validate_dff_rankings": true,
+    "block_joe_boyle_type_issues": true
+  },
+  "performance": {
+    "parallel_statcast": true,
+    "intelligent_caching": true,
+    "batch_size": 8,
+    "cache_expiry_hours": 6
+  },
+  "testing": {
+    "run_validation_tests": true,
+    "test_joe_boyle_scenario": true,
+    "test_hunter_brown_priority": true,
+    "performance_benchmarks": true
+  }
+}
