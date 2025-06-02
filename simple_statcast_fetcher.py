@@ -4,14 +4,13 @@ Simple Working Statcast Fetcher - No complications, just works
 Fixes the barrel error with minimal code
 """
 
-import pandas as pd
-import numpy as np
 import json
-import time
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
-import logging
+
+import pandas as pd
 
 try:
     import pybaseball
