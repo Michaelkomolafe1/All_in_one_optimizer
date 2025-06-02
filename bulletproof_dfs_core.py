@@ -75,6 +75,30 @@ except ImportError:
             return {}
 
 
+
+# PARK FACTORS DATA - Conservative adjustments for extreme venues
+PARK_FACTORS = {
+    "COL": 1.1,
+    "TEX": 1.05,
+    "CIN": 1.05,
+    "NYY": 1.05,
+    "BOS": 1.03,
+    "PHI": 1.03,
+    "MIA": 0.95,
+    "OAK": 0.95,
+    "SD": 0.97,
+    "SEA": 0.97
+}
+
+# STACKING CONFIGURATION - Conservative boosts for correlated players  
+STACKING_CONFIG = {
+    "min_implied_runs": 4.8,
+    "stack_boost_small": 0.3,
+    "stack_boost_medium": 0.5,
+    "stack_boost_large": 0.8,
+    "max_stack_size": 3
+}
+
 class AdvancedPlayer:
     """Enhanced player model with comprehensive statistical analysis"""
 
@@ -359,6 +383,11 @@ class BulletproofDFSCore:
             return 0
 
         print("🔍 Detecting confirmed players...")
+        # TIMING FIX: Ensure data is loaded before proceeding
+        if hasattr(self.confirmed_lineups, 'ensure_data_loaded'):
+            print("⏳ Ensuring confirmed lineup data is loaded...")
+            self.confirmed_lineups.ensure_data_loaded(max_wait_seconds=15)
+
 
         confirmed_count = 0
         for player in self.players:
@@ -550,6 +579,123 @@ class BulletproofDFSCore:
 
         return position_counts
 
+    def apply_conservative_stacking(self):
+        """Apply conservative stacking boosts for correlated players"""
+        print("⚡ Applying conservative stacking logic...")
+
+        # Group players by team
+        teams = {}
+        for player in self.players:
+            if not player.is_eligible_for_selection():
+                continue
+            if player.primary_position == 'P':  # Skip pitchers
+                continue
+
+            team = player.team
+            if team not in teams:
+                teams[team] = []
+            teams[team].append(player)
+
+        stacked_count = 0
+
+        for team, team_players in teams.items():
+            if len(team_players) < 2:  # Need at least 2 players to stack
+                continue
+
+            # Check if team has high implied runs (from Vegas data)
+            team_implied_runs = 0
+            for player in team_players:
+                if hasattr(player, 'vegas_data') and player.vegas_data:
+                    team_implied_runs = player.vegas_data.get('team_total', 0)
+                    break
+
+            if team_implied_runs < STACKING_CONFIG['min_implied_runs']:
+                continue
+
+            # Sort players by batting order if available (fallback to score)
+            def get_sort_key(p):
+                # Try to get batting order from confirmed lineups data
+                order = 9  # Default to end of order
+                if hasattr(p, 'confirmation_sources') and 'online_lineup' in p.confirmation_sources:
+                    # In a real implementation, we'd get the actual batting order
+                    # For now, use a simple heuristic
+                    pass
+                return (order, -p.enhanced_score)  # Sort by order, then by score
+
+            team_players.sort(key=get_sort_key)
+
+            # Apply conservative stacking boosts
+            stack_size = min(len(team_players), STACKING_CONFIG['max_stack_size'])
+
+            for i, player in enumerate(team_players[:stack_size]):
+                if i == 0:  # First player (leadoff-ish)
+                    boost = STACKING_CONFIG['stack_boost_small']
+                elif i == 1:  # Second player  
+                    boost = STACKING_CONFIG['stack_boost_medium']
+                else:  # Third player
+                    boost = STACKING_CONFIG['stack_boost_large'] 
+
+                old_score = player.enhanced_score
+                player.enhanced_score += boost
+
+                # Store stacking info
+                if not hasattr(player, 'stacking_data'):
+                    player.stacking_data = {}
+                player.stacking_data = {
+                    'team': team,
+                    'stack_position': i + 1,
+                    'boost_applied': boost,
+                    'team_implied_runs': team_implied_runs
+                }
+
+                stacked_count += 1
+                print(f"   ⚡ {player.name} (#{i+1} in {team} stack): +{boost:.1f} pts ({old_score:.1f} → {player.enhanced_score:.1f})")
+
+        print(f"✅ Applied stacking to {stacked_count} players")
+
+
+    def apply_park_factors(self):
+        """Apply conservative park factors to players"""
+        if not PARK_FACTORS:
+            return
+
+        print("🏟️ Applying conservative park factors...")
+
+        adjusted_count = 0
+        for player in self.players:
+            # Only apply to eligible players (confirmed + manual)
+            if not player.is_eligible_for_selection():
+                continue
+
+            # Get opponent team to determine park
+            park_team = None
+            if hasattr(player, 'vegas_data') and player.vegas_data:
+                if player.vegas_data.get('is_home', False):
+                    park_team = player.team
+                else:
+                    park_team = player.vegas_data.get('opponent', '')
+            else:
+                # Fallback: assume home team
+                park_team = player.team
+
+            if park_team in PARK_FACTORS:
+                factor = PARK_FACTORS[park_team]
+                old_score = player.enhanced_score
+                player.enhanced_score *= factor
+
+                # Store park factor info
+                player.park_factors = {
+                    'park_team': park_team,
+                    'factor': factor,
+                    'adjustment': player.enhanced_score - old_score
+                }
+
+                adjusted_count += 1
+                print(f"   🏟️ {player.name}: {factor:.2f}x factor ({old_score:.1f} → {player.enhanced_score:.1f})")
+
+        print(f"✅ Applied park factors to {adjusted_count} players")
+
+
     def optimize_lineup_bulletproof(self):
         """BULLETPROOF COMPREHENSIVE OPTIMIZATION"""
         print("🎯 BULLETPROOF COMPREHENSIVE OPTIMIZATION")
@@ -581,6 +727,10 @@ class BulletproofDFSCore:
 
         # Apply comprehensive statistical analysis
         self._apply_comprehensive_statistical_analysis(eligible_players)
+
+        # Apply new features (conservative boosts)
+        self.apply_park_factors()
+        self.apply_conservative_stacking()
 
         # Use MILP if available
         if MILP_AVAILABLE:
@@ -674,6 +824,56 @@ class BulletproofDFSCore:
             return []
 
 
+    def generate_multiple_lineups(self, count=3, diversity_factor=0.02):
+        """Generate multiple diverse lineups for tournaments"""
+        print(f"🎯 Generating {count} diverse lineups...")
+
+        lineups = []
+        scores = []
+
+        for i in range(count):
+            print(f"\n--- Generating Lineup {i+1}/{count} ---")
+
+            # Add small random variation for diversity (very conservative)
+            if i > 0:  # Keep first lineup exactly as optimized
+                self._add_lineup_diversity(diversity_factor)
+
+            # Run single optimization
+            lineup, score = self.optimize_lineup_bulletproof()
+
+            if lineup and len(lineup) >= 10:
+                lineups.append(lineup)
+                scores.append(score)
+                print(f"✅ Lineup {i+1}: {len(lineup)} players, {score:.2f} score")
+            else:
+                print(f"❌ Lineup {i+1}: Failed to generate")
+
+            # Reset diversity for next iteration
+            if i > 0:
+                self._reset_lineup_diversity()
+
+        print(f"\n🎉 Generated {len(lineups)}/{count} successful lineups")
+        return lineups, scores
+
+    def _add_lineup_diversity(self, diversity_factor):
+        """Add small random variations for lineup diversity"""
+        import random
+
+        for player in self.players:
+            if player.is_eligible_for_selection():
+                # Very small random adjustment (±2% max)
+                variation = random.uniform(-diversity_factor, diversity_factor)
+                player.enhanced_score *= (1 + variation)
+
+    def _reset_lineup_diversity(self):
+        """Reset players to their original enhanced scores"""
+        # In a full implementation, we'd store original scores
+        # For now, just re-run the analysis pipeline
+        self._apply_comprehensive_statistical_analysis(
+            [p for p in self.players if p.is_eligible_for_selection()]
+        )
+
+
 def load_and_optimize_complete_pipeline(
     dk_file: str,
     dff_file: str = None,
@@ -762,6 +962,69 @@ def create_enhanced_test_data():
     dk_file.close()
 
     return dk_file.name, None
+
+
+
+
+def load_and_optimize_multiple_lineups(
+    dk_file: str,
+    dff_file: str = None,
+    manual_input: str = "",
+    contest_type: str = 'classic',
+    strategy: str = 'comprehensive',
+    lineup_count: int = 3
+):
+    """Complete bulletproof optimization pipeline for multiple lineups"""
+
+    print("🚀 BULLETPROOF MULTI-LINEUP OPTIMIZATION")
+    print("=" * 70)
+    print(f"📊 Strategy: {strategy}")
+    print(f"🎯 Generating: {lineup_count} diverse lineups")
+
+    core = BulletproofDFSCore()
+
+    # Step 1: Load DraftKings data
+    if not core.load_draftkings_csv(dk_file):
+        return [], [], "Failed to load DraftKings data"
+
+    # Step 2: Apply manual selection first
+    if manual_input:
+        manual_count = core.apply_manual_selection(manual_input)
+        print(f"✅ Manual selection: {manual_count} players")
+
+    # Step 3: Detect confirmed players
+    confirmed_count = core.detect_confirmed_players()
+    print(f"✅ Confirmed detection: {confirmed_count} players")
+
+    # Step 4: Apply DFF rankings
+    if dff_file:
+        core.apply_dff_rankings(dff_file)
+
+    # Step 5: Enrich with all modules
+    core.enrich_with_vegas_lines()
+    core.enrich_with_statcast_priority()
+
+    # Step 6: Multi-lineup optimization
+    lineups, scores = core.generate_multiple_lineups(lineup_count)
+
+    if lineups:
+        summary = f"""
+✅ BULLETPROOF MULTI-LINEUP OPTIMIZATION SUCCESS
+===============================================
+Generated: {len(lineups)} lineups
+Strategy: Enhanced with park factors + conservative stacking
+Protection: Bulletproof (confirmed + manual players only)
+
+LINEUPS SUMMARY:
+"""
+        for i, (lineup, score) in enumerate(zip(lineups, scores), 1):
+            total_salary = sum(p.salary for p in lineup)
+            summary += f"Lineup {i}: {len(lineup)} players, ${total_salary:,}, {score:.2f} pts\n"
+
+        print(summary)
+        return lineups, scores, summary
+    else:
+        return [], [], "Multi-lineup optimization failed - insufficient eligible players"
 
 
 if __name__ == "__main__":

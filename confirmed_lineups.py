@@ -5,6 +5,7 @@ import logging
 import statsapi
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
+import time
 
 # Set up logging
 logging.basicConfig(
@@ -376,6 +377,22 @@ class ConfirmedLineups:
             self.refresh_all_data()
 
         return self.starting_pitchers
+
+
+    def ensure_data_loaded(self, max_wait_seconds=10):
+        """Ensure lineup data is fully loaded before proceeding"""
+        start_time = time.time()
+
+        while (time.time() - start_time) < max_wait_seconds:
+            if self.lineups or self.starting_pitchers:
+                verbose_print(f"✅ Lineup data loaded: {len(self.lineups)} lineups, {len(self.starting_pitchers)} pitchers")
+                return True
+
+            verbose_print("⏳ Waiting for lineup data to load...")
+            time.sleep(0.5)
+
+        verbose_print("⚠️ Timeout waiting for lineup data")
+        return len(self.lineups) > 0 or len(self.starting_pitchers) > 0
 
     def is_player_confirmed(self, player_name: str, team: Optional[str] = None) -> Tuple[bool, Optional[int]]:
         """
