@@ -678,14 +678,12 @@ def load_and_optimize_complete_pipeline(
     dk_file: str,
     dff_file: str = None,
     manual_input: str = "",
-    contest_type: str = 'classic',
-    strategy: str = 'comprehensive'
+    contest_type: str = 'classic'
 ):
     """Complete bulletproof optimization pipeline"""
 
     print("🚀 BULLETPROOF DFS OPTIMIZATION - COMPREHENSIVE STRATEGY")
     print("=" * 70)
-    print(f"📊 Strategy: {strategy} (bulletproof system uses single comprehensive approach)")
 
     core = BulletproofDFSCore()
 
