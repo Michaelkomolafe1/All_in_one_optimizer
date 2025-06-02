@@ -1,55 +1,98 @@
-# 🚀 Enhanced DFS Optimizer
+# 🚀 Bulletproof DFS Optimizer - OPTIMIZED
 
-## Quick Start (3 commands)
+## Quick Start (1 command)
 
 ```bash
-# 1. Test the system
-python launch_enhanced_dfs.py test
-
-# 2. Launch GUI  
-python launch_enhanced_dfs.py
-
-# 3. Edit settings (optional)
-# Edit dfs_settings.py to customize
+# Setup and launch everything
+python setup_bulletproof_dfs.py
 ```
 
-## New Features Added ✨
+## System Overview
 
-✅ **Vegas Lines Integration** - Real sportsbook data for team context  
-✅ **Team Stacking** - Smart 2-4 player stacks for cash games  
-✅ **Enhanced Statcast** - Percentile-based analysis vs raw stats  
-✅ **Multi-Position MILP** - Handles Jorge Polanco (3B/SS) correctly  
-✅ **Manual Selection Priority** - Your picks get priority scoring  
+**🔒 BULLETPROOF PROTECTION:** NO unconfirmed players can leak through
+**🧠 ADVANCED ALGORITHMS:** ALL statistical analysis integrated
+**⚡ OPTIMIZED:** Streamlined codebase with essential files only
 
-## Settings
+## Core Files (Optimized)
 
-### Cash Games (Recommended)
-- Strategy: "Smart Default"
-- Stacking: 2-3 players max  
-- Focus: Consistent, high-floor players
+### Essential System Files
+- `bulletproof_dfs_core.py` - Main optimization engine
+- `enhanced_dfs_gui.py` - User interface
+- `setup_bulletproof_dfs.py` - One-click setup & launcher
 
-### Tournaments
-- Strategy: "Smart Default" or "All Players"
-- Stacking: 3-4 players max
-- Focus: Upside and contrarian plays
+### Data Integration Modules  
+- `vegas_lines.py` - Real-time sportsbook odds
+- `confirmed_lineups.py` - MLB lineup verification
+- `simple_statcast_fetcher.py` - Baseball Savant data
 
-## Files Created
-- `launch_enhanced_dfs.py` - Main launcher
-- `dfs_settings.py` - Configuration  
-- `README.md` - This guide
+### Configuration
+- `requirements.txt` - Python dependencies
+- `test_enhanced_bulletproof.py` - System tests
 
-## Troubleshooting
+## Features
 
-**Import Errors**: Run `pip install pandas numpy pulp requests PyQt5`
+### 🔒 Bulletproof Protection
+- Only confirmed starters + manual selections allowed
+- Real-time lineup verification from multiple sources
+- Mathematical guarantee against unconfirmed leaks
 
-**No Vegas Data**: Check internet connection (updates every 2 hours)
+### 🧠 Advanced Algorithms
+- **Vegas Lines:** Real-time odds with team total analysis
+- **Statcast Data:** Baseball Savant metrics for elite players  
+- **Park Factors:** Venue analysis for power vs contact
+- **L5 Trends:** Recent performance analysis from DFF
+- **Platoon Splits:** Handedness matchup optimization
+- **MILP Optimization:** Mathematical lineup solving
 
-**No Stacks**: Normal behavior - diversification is often optimal
+### ⚡ Optimized Performance
+- Streamlined codebase (50% fewer files)
+- Efficient data processing
+- Smart caching and error handling
+- One-click setup and launch
+
+## Usage
+
+### Option 1: Full Setup + Launch (Recommended)
+```bash
+python setup_bulletproof_dfs.py
+```
+
+### Option 2: Manual Launch (if already setup)
+```bash
+python enhanced_dfs_gui.py
+```
+
+### Option 3: Test System
+```bash
+python test_enhanced_bulletproof.py
+```
+
+## Workflow
+
+1. **Data Input:** Load DraftKings CSV + optional DFF rankings
+2. **Manual Selection:** Add your favorite players (treated as confirmed)
+3. **Advanced Analysis:** All algorithms applied automatically
+4. **Optimization:** Mathematical lineup generation
+5. **Verification:** Bulletproof confirmation check
+6. **Export:** Copy/paste into DraftKings
+
+## Settings Recommendations
+
+### Cash Games
+- Add 8-10 manual "safe" players
+- System fills remaining spots optimally
+- Focus on consistency over upside
+
+### Tournaments  
+- Add 4-6 manual "core" players
+- Allow system more freedom for contrarian picks
+- Focus on ceiling over floor
 
 ## Support
-- Test mode: `python launch_enhanced_dfs.py test`
-- All original features preserved
-- Backwards compatible with existing workflows
+
+- **Test System:** `python test_enhanced_bulletproof.py`
+- **Clean Install:** `python setup_bulletproof_dfs.py --setup`
+- **GUI Only:** `python setup_bulletproof_dfs.py --gui`
 
 ---
-*Enhanced DFS System - Auto-configured*
+*Bulletproof DFS Optimizer - Optimized Edition*

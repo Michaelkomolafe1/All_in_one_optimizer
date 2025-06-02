@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-BULLETPROOF DFS CORE - COMPREHENSIVE SINGLE STRATEGY
-===================================================
-✅ Single comprehensive strategy with ALL statistical data
-✅ Confirmed + Manual players ONLY
-✅ 80% confidence threshold, 20% max adjustments
-✅ NO artificial boosts - only data-driven analysis
+BULLETPROOF DFS CORE - CLEAN VERSION
+===================================
+✅ Clean, working version with all features
+✅ Enhanced manual selection ready
+✅ Smart validator integration ready
 """
 
 import os
@@ -77,9 +76,7 @@ except ImportError:
 
 
 class AdvancedPlayer:
-    """
-    Enhanced player model with comprehensive statistical analysis
-    """
+    """Enhanced player model with comprehensive statistical analysis"""
 
     def __init__(self, player_data: Dict):
         # Basic attributes
@@ -173,8 +170,6 @@ class AdvancedPlayer:
     def apply_dff_data(self, dff_data: Dict):
         """Apply DFF data"""
         self.dff_data = dff_data
-
-        # Check if DFF confirms player
         if str(dff_data.get('confirmed_order', '')).upper() == 'YES':
             self.add_confirmation_source("dff_confirmed")
 
@@ -223,9 +218,7 @@ class AdvancedPlayer:
 
 
 class BulletproofDFSCore:
-    """
-    Bulletproof DFS Core with single comprehensive strategy
-    """
+    """Bulletproof DFS Core with single comprehensive strategy"""
 
     def __init__(self):
         self.players = []
@@ -353,8 +346,8 @@ class BulletproofDFSCore:
         name2_parts = name2.split()
 
         if len(name1_parts) >= 2 and len(name2_parts) >= 2:
-            if (name1_parts[-1] == name2_parts[-1] and  # Same last name
-                name1_parts[0][0] == name2_parts[0][0]):  # Same first initial
+            if (name1_parts[-1] == name2_parts[-1] and
+                name1_parts[0][0] == name2_parts[0][0]):
                 return 0.8
 
         return 0.0
@@ -478,9 +471,7 @@ class BulletproofDFSCore:
     def get_eligible_players_bulletproof(self):
         """Get ONLY eligible players"""
         eligible = [p for p in self.players if p.is_eligible_for_selection()]
-
         print(f"🔒 BULLETPROOF FILTER: {len(eligible)}/{len(self.players)} players eligible")
-
         return eligible
 
     def _apply_comprehensive_statistical_analysis(self, players):
@@ -560,10 +551,7 @@ class BulletproofDFSCore:
         return position_counts
 
     def optimize_lineup_bulletproof(self):
-        """
-        BULLETPROOF COMPREHENSIVE OPTIMIZATION
-        Single strategy: Confirmed + Manual players with ALL statistical data
-        """
+        """BULLETPROOF COMPREHENSIVE OPTIMIZATION"""
         print("🎯 BULLETPROOF COMPREHENSIVE OPTIMIZATION")
         print("=" * 60)
         print("🔒 Strategy: Confirmed + Manual players ONLY")
@@ -638,17 +626,66 @@ class BulletproofDFSCore:
         print("⚠️ MILP optimization not implemented, using greedy")
         return self._optimize_greedy(players)
 
+    def validate_current_lineup(self):
+        """Validate current manually selected players"""
+        try:
+            from smart_lineup_validator import SmartLineupValidator
+            selected_players = [p for p in self.players if getattr(p, "is_manual_selected", False)]
+            validator = SmartLineupValidator(self.salary_cap)
+            return validator.validate_lineup(selected_players)
+        except ImportError:
+            return {"error": "Smart lineup validator not available"}
+        except Exception as e:
+            return {"error": f"Validation failed: {str(e)}"}
+
+    def print_lineup_status(self):
+        """Print current lineup status to console"""
+        try:
+            from smart_lineup_validator import SmartLineupValidator
+            selected_players = [p for p in self.players if getattr(p, "is_manual_selected", False)]
+            if not selected_players:
+                print("\n📋 No players manually selected yet")
+                return
+            validator = SmartLineupValidator(self.salary_cap)
+            summary = validator.get_lineup_summary(selected_players)
+            print(f"\n{summary}")
+        except ImportError:
+            print("⚠️ Smart lineup validator not available")
+        except Exception as e:
+            print(f"❌ Status check failed: {e}")
+
+    def get_smart_recommendations(self, max_recommendations=5):
+        """Get smart player recommendations"""
+        try:
+            from smart_lineup_validator import get_value_recommendations
+            selected_players = [p for p in self.players if getattr(p, "is_manual_selected", False)]
+            recommendations = get_value_recommendations(selected_players, self.players, max_recommendations)
+            if recommendations:
+                print(f"\n🎯 TOP {len(recommendations)} RECOMMENDATIONS:")
+                for i, rec in enumerate(recommendations, 1):
+                    print(f"{i}. {rec['player_name']} ({rec['position']})")
+                    print(f"   💰 ${rec['salary']:,} | 📊 {rec['projected_score']:.1f} pts")
+            return recommendations
+        except ImportError:
+            print("⚠️ Smart recommendations not available")
+            return []
+        except Exception as e:
+            print(f"❌ Recommendations failed: {e}")
+            return []
+
 
 def load_and_optimize_complete_pipeline(
     dk_file: str,
     dff_file: str = None,
     manual_input: str = "",
-    contest_type: str = 'classic'
+    contest_type: str = 'classic',
+    strategy: str = 'comprehensive'
 ):
     """Complete bulletproof optimization pipeline"""
 
     print("🚀 BULLETPROOF DFS OPTIMIZATION - COMPREHENSIVE STRATEGY")
     print("=" * 70)
+    print(f"📊 Strategy: {strategy} (bulletproof system uses single comprehensive approach)")
 
     core = BulletproofDFSCore()
 
