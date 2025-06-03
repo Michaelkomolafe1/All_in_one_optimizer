@@ -121,7 +121,7 @@ class AdvancedPlayer:
         self.team = str(player_data.get('team', '')).strip().upper()
         self.salary = self._parse_salary(player_data.get('salary', 3000))
         self.projection = self._parse_float(player_data.get('projection', 0))
-
+        self.optimization_mode = 'bulletproof'
         # Enhanced confirmation tracking
         self.is_confirmed = False
         self.is_manual_selected = False
@@ -138,6 +138,36 @@ class AdvancedPlayer:
         # Calculate scores
         self.base_score = self.projection if self.projection > 0 else (self.salary / 1000.0)
         self.enhanced_score = self.base_score
+
+    def set_optimization_mode(self, mode: str):
+        """Set optimization mode"""
+        valid_modes = ['bulletproof', 'manual_only', 'confirmed_only']
+        if mode in valid_modes:
+            self.optimization_mode = mode
+            print(f"⚙️ Optimization mode: {mode}")
+        else:
+            print(f"❌ Invalid mode. Choose: {valid_modes}")
+
+    def get_eligible_players_by_mode(self):
+        """Get eligible players based on current mode"""
+        if self.optimization_mode == 'manual_only':
+            eligible = [p for p in self.players if p.is_manual_selected]
+            print(f"🎯 MANUAL-ONLY FILTER: {len(eligible)}/{len(self.players)} manually selected players")
+        elif self.optimization_mode == 'confirmed_only':
+            eligible = [p for p in self.players if p.is_confirmed]
+            print(f"🔒 CONFIRMED-ONLY FILTER: {len(eligible)}/{len(self.players)} confirmed players")
+        else:  # bulletproof
+            eligible = [p for p in self.players if p.is_confirmed or p.is_manual_selected]
+            print(f"🔒 BULLETPROOF FILTER: {len(eligible)}/{len(self.players)} players eligible")
+
+        # Position breakdown
+        position_counts = {}
+        for player in eligible:
+            for pos in player.positions:
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        print(f"📍 Eligible position coverage: {position_counts}")
+        return eligible
 
     def _parse_positions_enhanced(self, position_str: str) -> List[str]:
         """Enhanced position parsing"""
@@ -252,13 +282,13 @@ class AdvancedPlayer:
             status_parts.append(f"CONFIRMED ({sources})")
         if self.is_manual_selected:
             status_parts.append("MANUAL")
-        if self.dff_data.get('ppg_projection', 0) > 0:
+        if hasattr(self, 'dff_data') and self.dff_data.get('ppg_projection', 0) > 0:
             status_parts.append(f"DFF:{self.dff_data['ppg_projection']:.1f}")
-        if self.statcast_data:
+        if hasattr(self, 'statcast_data') and self.statcast_data:
             status_parts.append("STATCAST")
-        if self.vegas_data:
+        if hasattr(self, 'vegas_data') and self.vegas_data:
             status_parts.append("VEGAS")
-        if self.park_factors:
+        if hasattr(self, 'park_factors') and self.park_factors:
             status_parts.append("PARK")
         return " | ".join(status_parts) if status_parts else "UNCONFIRMED"
 
@@ -283,6 +313,101 @@ class BulletproofDFSCore:
         self.statcast_fetcher = SimpleStatcastFetcher() if STATCAST_AVAILABLE else None
 
         print("🚀 Bulletproof DFS Core with HYBRID pitcher detection")
+
+    # ADD THIS TO YOUR bulletproof_dfs_core.py:
+
+    def set_optimization_mode(self, mode: str):
+        """Set optimization mode with validation"""
+        valid_modes = ['bulletproof', 'manual_only', 'confirmed_only']
+        if mode in valid_modes:
+            self.optimization_mode = mode
+            print(f"⚙️ Optimization mode: {mode}")
+        else:
+            print(f"❌ Invalid mode. Choose: {valid_modes}")
+
+    def get_eligible_players_by_mode(self):
+        """Get eligible players based on current mode"""
+        if self.optimization_mode == 'manual_only':
+            eligible = [p for p in self.players if p.is_manual_selected]
+            print(f"🎯 MANUAL-ONLY FILTER: {len(eligible)}/{len(self.players)} manually selected players")
+        elif self.optimization_mode == 'confirmed_only':
+            eligible = [p for p in self.players if p.is_confirmed]
+            print(f"🔒 CONFIRMED-ONLY FILTER: {len(eligible)}/{len(self.players)} confirmed players")
+        else:  # bulletproof
+            eligible = [p for p in self.players if p.is_confirmed or p.is_manual_selected]
+            print(f"🔒 BULLETPROOF FILTER: {len(eligible)}/{len(self.players)} players eligible")
+
+        # Position breakdown
+        position_counts = {}
+        for player in eligible:
+            for pos in player.positions:
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        print(f"📍 Eligible position coverage: {position_counts}")
+        return eligible
+
+    # MODIFY YOUR load_and_optimize_complete_pipeline FUNCTION:
+
+
+
+    # ADD THIS NEW METHOD TO BulletproofDFSCore:
+
+    def optimize_lineup_with_mode(self):
+        """Optimize lineup using current mode"""
+        print(f"🎯 {self.optimization_mode.upper().replace('_', '-')} OPTIMIZATION")
+        print("=" * 60)
+
+        # Get eligible players based on mode
+        eligible_players = self.get_eligible_players_by_mode()
+
+        if len(eligible_players) < 10:
+            print(f"❌ INSUFFICIENT ELIGIBLE PLAYERS: {len(eligible_players)}/10 required")
+            self._provide_mode_specific_suggestions()
+            return [], 0
+
+        # Position validation
+        position_validation = self._validate_positions_comprehensive(eligible_players)
+        if not position_validation['valid']:
+            print("❌ INSUFFICIENT POSITION COVERAGE:")
+            for issue in position_validation['issues']:
+                print(f"   • {issue}")
+            return [], 0
+
+        print(f"✅ Using {len(eligible_players)} eligible players")
+
+        # Apply all algorithms
+        self._apply_comprehensive_statistical_analysis(eligible_players)
+        self.apply_park_factors()
+
+        # Optimize
+        return self._optimize_greedy_enhanced(eligible_players)
+
+    def _provide_mode_specific_suggestions(self):
+        """Provide suggestions based on current mode"""
+        suggestions = {
+            'manual_only': [
+                "💡 Add more players to your manual selection",
+                "📝 Need 10+ manually selected players for full lineup",
+                "🎯 Try: 'Shohei Ohtani, Tyler Glasnow, Juan Soto, Mookie Betts...'",
+                "🔍 Use partial names if full names don't match"
+            ],
+            'confirmed_only': [
+                "💡 Wait for games to start (~1-7pm)",
+                "⏰ Lineups posted closer to game time",
+                "🔄 Switch to 'manual_only' for 3AM testing",
+                "🎯 Or add manual players and use 'bulletproof' mode"
+            ],
+            'bulletproof': [
+                "💡 Add manual players OR wait for confirmations",
+                "🌙 At 3AM, use manual-only mode for testing",
+                "⏰ Confirmations available during game hours",
+                "🎯 Manual players work 24/7"
+            ]
+        }
+
+        mode_suggestions = suggestions.get(self.optimization_mode, [])
+        for suggestion in mode_suggestions:
+            print(f"   {suggestion}")
 
     def load_draftkings_csv(self, file_path: str) -> bool:
         """Load DraftKings CSV"""
@@ -416,13 +541,22 @@ class BulletproofDFSCore:
         print(f"📊 Detected {num_teams} teams, estimated {estimated_games} games")
         return estimated_games
 
-    def detect_confirmed_players(self) -> int:
-        """HYBRID: API confirmation + smart fallback for pitchers"""
-        if not self.confirmed_lineups:
-            print("⚠️ Confirmed lineups module not available - using smart fallback")
-            return self._smart_fallback_confirmation()
+    # !/usr/bin/env python3
+    """
+    FIXED DETECT_CONFIRMED_PLAYERS METHOD
+    ====================================
+    🔧 Replace this method in your bulletproof_dfs_core.py
+    ✅ Properly detects both lineups AND pitchers
+    📊 Realistic confirmation counts
+    """
 
-        print("🔍 HYBRID pitcher detection: API + smart fallback...")
+    def detect_confirmed_players(self) -> int:
+        """FIXED: Detect both lineup players AND starting pitchers"""
+        if not self.confirmed_lineups:
+            print("⚠️ Confirmed lineups module not available")
+            return 0
+
+        print("🔍 Detecting confirmed players with REAL API data...")
 
         # Ensure data is loaded
         if hasattr(self.confirmed_lineups, 'ensure_data_loaded'):
@@ -430,39 +564,52 @@ class BulletproofDFSCore:
 
         confirmed_count = 0
         lineup_confirmed = 0
-        api_pitcher_confirmed = 0
+        pitcher_confirmed = 0
 
-        # Step 1: Try API confirmation for all players
+        # Process all players
         for player in self.players:
             # Check lineup confirmations for position players
-            is_confirmed, batting_order = self.confirmed_lineups.is_player_confirmed(player.name, player.team)
+            if player.primary_position != 'P':
+                is_confirmed, batting_order = self.confirmed_lineups.is_player_confirmed(
+                    player.name, player.team
+                )
 
-            if is_confirmed:
-                player.add_confirmation_source("online_lineup")
-                confirmed_count += 1
-                lineup_confirmed += 1
+                if is_confirmed:
+                    player.add_confirmation_source("confirmed_lineup")
+                    confirmed_count += 1
+                    lineup_confirmed += 1
+                    print(f"🔒 LINEUP: {player.name} (batting {batting_order})")
 
-            # Check API pitcher confirmation
-            if player.primary_position == 'P':
-                is_starting = self.confirmed_lineups.is_pitcher_starting(player.name, player.team)
+            # Check pitcher confirmations
+            else:
+                is_starting = self.confirmed_lineups.is_pitcher_starting(
+                    player.name, player.team
+                )
 
                 if is_starting:
-                    player.add_confirmation_source("api_confirmed_starter")
+                    player.add_confirmation_source("confirmed_starter")
                     confirmed_count += 1
-                    api_pitcher_confirmed += 1
-                    print(f"🔒 API STARTER: {player.name}")
+                    pitcher_confirmed += 1
+                    print(f"🔒 PITCHER: {player.name}")
 
-        print(f"📊 API Results: {lineup_confirmed} lineup players, {api_pitcher_confirmed} API starters")
+        print(f"✅ Confirmed detection complete:")
+        print(f"   📊 {lineup_confirmed} lineup players")
+        print(f"   ⚾ {pitcher_confirmed} starting pitchers")
+        print(f"   🎯 {confirmed_count} total confirmed")
 
-        # Step 2: Smart fallback for pitchers if API failed
-        if api_pitcher_confirmed == 0:
-            print("🧠 API pitcher confirmation failed - using smart fallback...")
-            fallback_confirmed = self._smart_pitcher_fallback()
-            confirmed_count += fallback_confirmed
-            print(f"🧠 Fallback confirmed {fallback_confirmed} additional starters")
+        # Validation for 3-game slate
+        if lineup_confirmed == 0:
+            print("⚠️ No lineup confirmations found - check ESPN API connectivity")
 
-        print(f"✅ HYBRID Confirmed detection: {confirmed_count} players")
+        if pitcher_confirmed == 0:
+            print("⚠️ No pitcher confirmations found - check probable pitcher sources")
+
+        expected_total = 36  # ~30 lineup + ~6 pitchers for 3-game slate
+        if confirmed_count < 20 or confirmed_count > 80:
+            print(f"⚠️ Unusual confirmation count: {confirmed_count} (expected ~{expected_total})")
+
         return confirmed_count
+
 
     def _smart_pitcher_fallback(self) -> int:
         """Smart fallback pitcher confirmation based on slate size"""
@@ -805,24 +952,34 @@ class BulletproofDFSCore:
 
 # Entry point function for GUI compatibility
 def load_and_optimize_complete_pipeline(
-        dk_file: str,
-        dff_file: str = None,
-        manual_input: str = "",
-        contest_type: str = 'classic',
-        strategy: str = 'bulletproof'
+    dk_file: str,
+    dff_file: str = None,
+    manual_input: str = "",
+    contest_type: str = 'classic',
+    strategy: str = 'bulletproof'
 ):
-    """Complete pipeline with HYBRID pitcher detection"""
+    """Complete pipeline with manual-only mode support"""
 
-    print("🚀 BULLETPROOF DFS WITH HYBRID PITCHER DETECTION")
+    mode_descriptions = {
+        'bulletproof': 'Confirmed + Manual players',
+        'manual_only': 'Manual players ONLY (perfect for 3AM!)',
+        'confirmed_only': 'Confirmed players ONLY'
+    }
+
+    print("🚀 BULLETPROOF DFS OPTIMIZATION PIPELINE")
     print("=" * 70)
-    print("🔧 HYBRID APPROACH:")
-    print("   • Try API confirmation first")
-    print("   • Smart salary-based fallback (limited by slate size)")
-    print("   • All advanced algorithms working")
-    print("   • Realistic counts for small slates")
+    print(f"🎯 Mode: {strategy} ({mode_descriptions.get(strategy, 'Unknown')})")
+
+    if strategy == 'manual_only':
+        print("🌙 Manual-Only Mode - Perfect for 3AM testing!")
+        print("   • No confirmations needed")
+        print("   • Uses only your manual selections")
+        print("   • All advanced algorithms active")
+
     print("=" * 70)
 
     core = BulletproofDFSCore()
+    core.set_optimization_mode(strategy)
 
     # Pipeline execution
     if not core.load_draftkings_csv(dk_file):
@@ -832,8 +989,16 @@ def load_and_optimize_complete_pipeline(
         manual_count = core.apply_manual_selection(manual_input)
         print(f"✅ Manual selection: {manual_count} players")
 
-    confirmed_count = core.detect_confirmed_players()
-    print(f"✅ Confirmed detection: {confirmed_count} players")
+        if strategy == 'manual_only' and manual_count == 0:
+            return [], 0, "Manual-only mode requires manual player selections"
+
+    # Only try confirmations if not manual-only mode
+    if strategy != 'manual_only':
+        confirmed_count = core.detect_confirmed_players()
+        print(f"✅ Confirmed detection: {confirmed_count} players")
+
+        if strategy == 'confirmed_only' and confirmed_count == 0:
+            return [], 0, "Confirmed-only mode requires confirmed players (try again during game hours)"
 
     # Apply REAL data sources
     if dff_file and os.path.exists(dff_file):
@@ -842,21 +1007,21 @@ def load_and_optimize_complete_pipeline(
     core.enrich_with_vegas_lines()
     core.enrich_with_statcast_priority()
 
-    # Optimization
-    lineup, score = core.optimize_lineup_bulletproof()
+    # Use mode-aware optimization
+    lineup, score = core.optimize_lineup_with_mode()
 
     if lineup:
         total_salary = sum(p.salary for p in lineup)
 
-        # Count real algorithm usage
-        vegas_count = sum(1 for p in lineup if p.vegas_data)
-        statcast_count = sum(1 for p in lineup if p.statcast_data)
-        dff_count = sum(1 for p in lineup if p.dff_data)
-        park_count = sum(1 for p in lineup if p.park_factors)
+        # Count features
+        vegas_count = sum(1 for p in lineup if hasattr(p, 'vegas_data') and p.vegas_data)
+        statcast_count = sum(1 for p in lineup if hasattr(p, 'statcast_data') and p.statcast_data)
+        dff_count = sum(1 for p in lineup if hasattr(p, 'dff_data') and p.dff_data)
 
         summary = f"""
-✅ BULLETPROOF OPTIMIZATION WITH HYBRID DETECTION SUCCESS
-======================================================
+✅ {strategy.upper().replace('_', '-')} OPTIMIZATION SUCCESS
+=============================================
+Mode: {mode_descriptions.get(strategy, 'Unknown')}
 Players: {len(lineup)}/10
 Total Salary: ${total_salary:,}/{core.salary_cap:,}
 Projected Score: {score:.2f}
@@ -865,7 +1030,6 @@ ADVANCED ALGORITHMS APPLIED:
 • Vegas lines: {vegas_count}/10 players
 • Statcast data: {statcast_count}/10 players  
 • DFF analysis: {dff_count}/10 players
-• Park factors: {park_count}/10 players
 
 LINEUP:
 """
@@ -876,8 +1040,7 @@ LINEUP:
         print(summary)
         return lineup, score, summary
     else:
-        return [], 0, "Optimization failed - insufficient eligible players"
-
+        return [], 0, f"{strategy} optimization failed - see suggestions above"
 
 # Test data function
 def create_enhanced_test_data():
