@@ -1,0 +1,146 @@
+# CORE OPTIMIZATIONS FOR bulletproof_dfs_core.py
+# ================================================
+# Copy these methods to your bulletproof_dfs_core.py file
+
+# 1. ADD THIS METHOD TO BulletproofDFSCore class:
+def get_confirmed_players_only(self):
+    """Get ONLY confirmed players for efficient enrichment"""
+    confirmed_only = []
+
+    for player in self.players:
+        if player.is_confirmed or player.is_manual_selected:
+            confirmed_only.append(player)
+
+    print(f"🎯 CONFIRMED FILTER: {len(confirmed_only)}/{len(self.players)} players for enrichment")
+    return confirmed_only
+
+# 2. ADD THIS METHOD TO BulletproofDFSCore class:  
+def enrich_confirmed_players_parallel(self):
+    """OPTIMIZED: Parallel enrichment of confirmed players only"""
+    print("⚡ PARALLEL ENRICHMENT: Confirmed players only")
+    print("=" * 60)
+
+    confirmed_players = self.get_confirmed_players_only()
+
+    if len(confirmed_players) == 0:
+        print("⚠️ No confirmed players found")
+        return
+
+    print(f"🎯 Parallel enrichment of {len(confirmed_players)} confirmed players...")
+
+    # STEP 1: Parallel Statcast enrichment (fastest first)
+    if self.statcast_fetcher:
+        print("\n⚡ PARALLEL STATCAST (All confirmed players)...")
+
+        # Use the new fast parallel fetcher
+        if hasattr(self.statcast_fetcher, 'fetch_multiple_players_parallel'):
+            statcast_results = self.statcast_fetcher.fetch_multiple_players_parallel(confirmed_players)
+
+            # Apply results to players
+            for player in confirmed_players:
+                if player.name in statcast_results:
+                    player.apply_statcast_data(statcast_results[player.name])
+        else:
+            print("⚠️ Falling back to sequential Statcast...")
+            for player in confirmed_players[:20]:  # Limit if not parallel
+                data = self.statcast_fetcher.fetch_player_data(player.name, player.primary_position)
+                if data:
+                    player.apply_statcast_data(data)
+
+    # STEP 2: Vegas lines (confirmed players only)
+    print("\n💰 VEGAS LINES (Confirmed players only)...")
+    if self.vegas_lines:
+        vegas_data = self.vegas_lines.get_vegas_lines()
+        if vegas_data:
+            enriched_count = 0
+            for player in confirmed_players:
+                if player.team in vegas_data:
+                    player.apply_vegas_data(vegas_data[player.team])
+                    enriched_count += 1
+            print(f"✅ Vegas: {enriched_count}/{len(confirmed_players)} confirmed players")
+
+    # STEP 3: Park factors (confirmed players only)
+    print("\n🏟️ PARK FACTORS (Confirmed players only)...")
+    adjusted_count = 0
+    for player in confirmed_players:
+        if player.team in PARK_FACTORS:
+            factor = PARK_FACTORS[player.team]
+            old_score = player.enhanced_score
+            player.enhanced_score *= factor
+
+            player.park_factors = {
+                'park_team': player.team,
+                'factor': factor,
+                'adjustment': player.enhanced_score - old_score
+            }
+            adjusted_count += 1
+
+    print(f"✅ Park factors: {adjusted_count}/{len(confirmed_players)} confirmed players")
+    print("\n⚡ PARALLEL ENRICHMENT COMPLETE!")
+
+# 3. ADD THIS METHOD TO AdvancedPlayer class:
+def get_enhanced_status_string(self) -> str:
+    """ENHANCED: Show ALL data sources with multi-position support"""
+    status_parts = []
+
+    # Multi-position display
+    if len(self.positions) > 1:
+        pos_display = "/".join(self.positions)
+        status_parts.append(f"MULTI-POS({pos_display})")
+
+    # Confirmation status
+    if self.is_confirmed:
+        sources = ", ".join(self.confirmation_sources[:2])  # Show first 2 sources
+        status_parts.append(f"CONFIRMED({sources})")
+    if self.is_manual_selected:
+        status_parts.append("MANUAL")
+
+    # DFF data
+    if hasattr(self, 'dff_data') and self.dff_data:
+        dff_parts = []
+        if self.dff_data.get('ppg_projection', 0) > 0:
+            dff_parts.append(f"PROJ:{self.dff_data['ppg_projection']:.1f}")
+        if self.dff_data.get('ownership', 0) > 0:
+            dff_parts.append(f"OWN:{self.dff_data['ownership']:.1f}%")
+        if dff_parts:
+            status_parts.append(f"DFF({','.join(dff_parts)})")
+
+    # Statcast data
+    if hasattr(self, 'statcast_data') and self.statcast_data:
+        statcast_parts = []
+        if 'xwOBA' in self.statcast_data:
+            statcast_parts.append(f"xwOBA:{self.statcast_data['xwOBA']:.3f}")
+        if 'Hard_Hit' in self.statcast_data:
+            statcast_parts.append(f"HH:{self.statcast_data['Hard_Hit']:.1f}%")
+        if statcast_parts:
+            status_parts.append(f"STATCAST({','.join(statcast_parts)})")
+
+    # Vegas data
+    if hasattr(self, 'vegas_data') and self.vegas_data:
+        vegas_parts = []
+        if 'team_total' in self.vegas_data:
+            vegas_parts.append(f"TT:{self.vegas_data['team_total']:.1f}")
+        if vegas_parts:
+            status_parts.append(f"VEGAS({','.join(vegas_parts)})")
+
+    # Park factors
+    if hasattr(self, 'park_factors') and self.park_factors:
+        factor = self.park_factors.get('factor', 1.0)
+        status_parts.append(f"PARK({factor:.2f}x)")
+
+    return " | ".join(status_parts) if status_parts else "UNCONFIRMED"
+
+# 4. REPLACE IN load_and_optimize_complete_pipeline function:
+# Replace this section:
+#    if dff_file and os.path.exists(dff_file):
+#        core.apply_dff_rankings(dff_file)
+#    core.enrich_with_vegas_lines()
+#    core.enrich_with_statcast_priority()
+
+# With this:
+#    if dff_file and os.path.exists(dff_file):
+#        core.apply_dff_rankings(dff_file)
+#    core.enrich_confirmed_players_parallel()
+
+# 5. REPLACE the get_status_string method in AdvancedPlayer class with:
+#    get_status_string = get_enhanced_status_string
