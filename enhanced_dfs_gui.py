@@ -1,40 +1,38 @@
 #!/usr/bin/env python3
 """
-COMPLETE WORKING DFS GUI - ALL ERRORS FIXED
-===========================================
-✅ All methods included and working
-✅ Manual-only mode dropdown
-✅ 3AM testing ready
-✅ All syntax correct
+ENHANCED DFS GUI - COMPLETE REWRITE
+===================================
+Works with new unified systems
 """
 
 import sys
 import os
+import csv
 import tempfile
-from pathlib import Path
+from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 
-# Import PyQt5 with error handling
+# Import PyQt5
 try:
     from PyQt5.QtWidgets import *
     from PyQt5.QtCore import *
     from PyQt5.QtGui import *
-    print("✅ PyQt5 loaded successfully")
+
+    PYQT5_AVAILABLE = True
 except ImportError:
     print("❌ PyQt5 not available. Install with: pip install PyQt5")
     sys.exit(1)
 
-# Import bulletproof core
+# Import our core systems
 try:
-    from bulletproof_dfs_core import (
-        load_and_optimize_complete_pipeline,
-        create_enhanced_test_data,
-        AdvancedPlayer
-    )
+    from bulletproof_dfs_core import BulletproofDFSCore, AdvancedPlayer
+    from unified_data_system import UnifiedDataSystem
+    from optimal_lineup_optimizer import OptimalLineupOptimizer
+    from smart_confirmation_system import SmartConfirmationSystem
+
     CORE_AVAILABLE = True
-    print("✅ Bulletproof DFS core loaded")
 except ImportError as e:
-    print(f"❌ Could not import bulletproof DFS core: {e}")
+    print(f"❌ Could not import core systems: {e}")
     CORE_AVAILABLE = False
 
 
@@ -42,7 +40,7 @@ class OptimizationThread(QThread):
     """Background thread for running optimization"""
 
     progress_updated = pyqtSignal(str)
-    optimization_completed = pyqtSignal(object, float, str)
+    optimization_completed = pyqtSignal(list, float, str)
     optimization_failed = pyqtSignal(str)
 
     def __init__(self, dk_file, dff_file, manual_input, contest_type, optimization_mode):
@@ -54,72 +52,134 @@ class OptimizationThread(QThread):
         self.optimization_mode = optimization_mode
 
     def run(self):
-        """Run optimization in background with mode support"""
+        """Run optimization in background"""
         try:
-            if self.optimization_mode == 'manual_only':
-                self.progress_updated.emit("🎯 MANUAL-ONLY MODE - Perfect for 3AM!")
-                self.progress_updated.emit("📝 Using only your manual selections...")
-                self.progress_updated.emit("🧠 Advanced algorithms still active...")
-            else:
-                self.progress_updated.emit("🚀 Starting optimization...")
-                self.progress_updated.emit("📊 Loading DraftKings data...")
-                self.progress_updated.emit("🔍 Detecting confirmed lineups...")
+            # Emit progress updates
+            self.progress_updated.emit(f"🚀 Starting {self.optimization_mode.upper()} optimization...")
 
-            # Use the mode in the pipeline call
-            lineup, score, summary = load_and_optimize_complete_pipeline(
-                dk_file=self.dk_file,
-                dff_file=self.dff_file,
-                manual_input=self.manual_input,
-                contest_type=self.contest_type,
-                strategy=self.optimization_mode
-            )
+            # Create core instance
+            core = BulletproofDFSCore()
+
+            # Set contest type
+            if self.contest_type == 'showdown':
+                core.contest_type = 'showdown'
+
+            # Load DraftKings data
+            self.progress_updated.emit("📊 Loading DraftKings data...")
+            if not core.load_draftkings_csv(self.dk_file):
+                self.optimization_failed.emit("Failed to load DraftKings CSV")
+                return
+
+            # Load DFF data if available
+            if self.dff_file and os.path.exists(self.dff_file):
+                self.progress_updated.emit("📈 Loading DFF rankings...")
+                core.load_dff_rankings(self.dff_file)
+
+            # Set optimization mode
+            core.set_optimization_mode(self.optimization_mode)
+
+            # Apply manual selections if any
+            if self.manual_input:
+                self.progress_updated.emit("🎯 Applying manual selections...")
+                manual_count = core.apply_manual_selection(self.manual_input)
+                self.progress_updated.emit(f"✅ Applied {manual_count} manual selections")
+
+                if self.optimization_mode == 'manual_only' and manual_count < 10:
+                    self.optimization_failed.emit(
+                        f"Manual-only mode requires at least 10 players. Found {manual_count}")
+                    return
+
+            # Get confirmations
+            if self.optimization_mode in ['bulletproof', 'confirmed_only']:
+                self.progress_updated.emit("🔍 Detecting confirmed players...")
+                confirmed_count = core.detect_confirmed_players()
+                self.progress_updated.emit(f"✅ Found {confirmed_count} confirmed players")
+
+            # Run statistical analysis
+            self.progress_updated.emit("📊 Running statistical analysis...")
+            eligible_players = core.get_eligible_players_by_mode()
+
+            if not eligible_players:
+                self.optimization_failed.emit("No eligible players found for optimization")
+                return
+
+            self.progress_updated.emit(f"📈 Analyzing {len(eligible_players)} eligible players...")
+
+            # Apply all enhancements
+            if hasattr(core, '_apply_comprehensive_statistical_analysis'):
+                core._apply_comprehensive_statistical_analysis(eligible_players)
+
+            # Run optimization
+            self.progress_updated.emit("⚡ Running optimization...")
+            lineup, score = core.optimize_lineup_with_mode()
 
             if lineup and score > 0:
-                self.optimization_completed.emit(lineup, score, summary)
+                # Create summary
+                total_salary = sum(p.salary for p in lineup)
+                summary = f"""
+                Optimization Complete!
+                Players: {len(lineup)}
+                Projected Score: {score:.2f}
+                Total Salary: ${total_salary:,}
+                Mode: {self.optimization_mode}
+                """
+                self.optimization_completed.emit(lineup, score, summary.strip())
             else:
-                if self.optimization_mode == 'manual_only':
-                    self.optimization_failed.emit("Manual-only optimization failed - check manual player names")
-                else:
-                    self.optimization_failed.emit("No valid lineup generated - try manual-only mode for 3AM testing")
+                self.optimization_failed.emit("Optimization failed - no valid lineup found")
 
         except Exception as e:
-            self.optimization_failed.emit(str(e))
+            self.optimization_failed.emit(f"Error during optimization: {str(e)}")
 
 
 class EnhancedDFSGUI(QMainWindow):
-    """Enhanced DFS GUI with bulletproof confirmation system"""
+    """Enhanced DFS GUI with all new systems integrated"""
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Enhanced DFS Optimizer")
+        self.setWindowTitle("Enhanced DFS Optimizer 2.0")
         self.setMinimumSize(1200, 900)
 
-        # Data
+        # Initialize data
         self.dk_file = ""
         self.dff_file = ""
         self.optimization_thread = None
+        self.last_lineup = []
 
+        # Setup UI
         self.setup_ui()
         self.show_welcome_message()
         self.auto_detect_files()
 
-        print("✅ Enhanced DFS GUI initialized with bulletproof core")
-
     def setup_ui(self):
-        """Setup user interface"""
+        """Setup the user interface"""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
         layout = QVBoxLayout(central_widget)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
+        layout.setSpacing(15)
 
         # Header
         self.create_header(layout)
 
         # Tab widget
         self.tab_widget = QTabWidget()
-        self.tab_widget.addTab(self.create_setup_tab(), "⚙️ Data Setup")
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #ccc;
+                background: white;
+            }
+            QTabBar::tab {
+                padding: 8px 16px;
+                margin-right: 5px;
+            }
+            QTabBar::tab:selected {
+                background: #1e40af;
+                color: white;
+            }
+        """)
+
+        self.tab_widget.addTab(self.create_setup_tab(), "⚙️ Setup")
         self.tab_widget.addTab(self.create_optimize_tab(), "🚀 Optimize")
         self.tab_widget.addTab(self.create_results_tab(), "📊 Results")
 
@@ -128,32 +188,29 @@ class EnhancedDFSGUI(QMainWindow):
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready - Enhanced DFS Optimizer (Manual-Only Mode for 3AM Testing)")
+        self.status_bar.showMessage("Ready - Enhanced DFS Optimizer 2.0")
 
     def create_header(self, layout):
-        """Create clean, simplified header"""
+        """Create application header"""
         header_frame = QFrame()
         header_frame.setStyleSheet("""
             QFrame {
                 background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
                     stop: 0 #1e40af, stop: 1 #3730a3);
                 border-radius: 12px;
-                color: white;
                 padding: 20px;
             }
         """)
 
         header_layout = QVBoxLayout(header_frame)
 
-        # Clean, simple title
-        title = QLabel("🚀 Enhanced DFS Optimizer")
+        title = QLabel("🚀 Enhanced DFS Optimizer 2.0")
         title.setAlignment(Qt.AlignCenter)
         title.setFont(QFont("Arial", 28, QFont.Bold))
         title.setStyleSheet("color: white;")
         header_layout.addWidget(title)
 
-        # Single clean subtitle
-        subtitle = QLabel("Bulletproof Protection • Advanced Algorithms • Manual-Only Mode for 3AM")
+        subtitle = QLabel("Mathematical Optimization • Advanced Statistics • Smart Confirmations")
         subtitle.setAlignment(Qt.AlignCenter)
         subtitle.setFont(QFont("Arial", 12))
         subtitle.setStyleSheet("color: white; opacity: 0.9;")
@@ -162,7 +219,7 @@ class EnhancedDFSGUI(QMainWindow):
         layout.addWidget(header_frame)
 
     def create_setup_tab(self):
-        """Create setup tab"""
+        """Create the setup tab"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
@@ -176,6 +233,18 @@ class EnhancedDFSGUI(QMainWindow):
 
         dk_btn = QPushButton("Browse Files")
         dk_btn.clicked.connect(self.select_dk_file)
+        dk_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1e40af;
+                color: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1e3a8a;
+            }
+        """)
 
         dk_file_layout.addWidget(self.dk_label, 1)
         dk_file_layout.addWidget(dk_btn)
@@ -184,15 +253,27 @@ class EnhancedDFSGUI(QMainWindow):
         layout.addWidget(dk_group)
 
         # DFF file section
-        dff_group = QGroupBox("🎯 DFF Expert Rankings (Optional)")
+        dff_group = QGroupBox("📈 DFF Expert Rankings (Optional)")
         dff_layout = QVBoxLayout(dff_group)
 
         dff_file_layout = QHBoxLayout()
-        self.dff_label = QLabel("No DFF file selected")
+        self.dff_label = QLabel("No file selected (optional)")
         self.dff_label.setStyleSheet("padding: 10px; border: 2px dashed #ccc; border-radius: 5px;")
 
-        dff_btn = QPushButton("Browse DFF CSV")
+        dff_btn = QPushButton("Browse DFF")
         dff_btn.clicked.connect(self.select_dff_file)
+        dff_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #059669;
+                color: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #047857;
+            }
+        """)
 
         dff_file_layout.addWidget(self.dff_label, 1)
         dff_file_layout.addWidget(dff_btn)
@@ -200,142 +281,111 @@ class EnhancedDFSGUI(QMainWindow):
 
         layout.addWidget(dff_group)
 
-        # Manual selection section
-        manual_group = QGroupBox("🎯 Manual Player Selection (REQUIRED for 3AM Testing)")
+        # Manual players section
+        manual_group = QGroupBox("🎯 Manual Player Selection")
         manual_layout = QVBoxLayout(manual_group)
 
-        info = QLabel("💡 Add players here for manual-only mode - perfect for 3AM testing!")
-        info.setStyleSheet("color: #1e40af; font-weight: bold; margin: 5px;")
+        info = QLabel("Add players manually (comma separated). Required for Manual-Only mode.")
+        info.setStyleSheet("color: #1e40af; margin-bottom: 10px;")
         manual_layout.addWidget(info)
 
         self.manual_input = QTextEdit()
-        self.manual_input.setMaximumHeight(120)
+        self.manual_input.setMaximumHeight(100)
         self.manual_input.setPlaceholderText(
-            "Tyler Glasnow, Pablo Lopez, Will Smith, Pete Alonso, Gleyber Torres, Manny Machado, Trea Turner, Shohei Ohtani, Juan Soto, Mookie Betts")
+            "Example: Shohei Ohtani, Mike Trout, Aaron Judge, Freddie Freeman..."
+        )
         manual_layout.addWidget(self.manual_input)
 
-        # Quick fill buttons
+        # Quick buttons
         btn_layout = QHBoxLayout()
 
-        sample_btn = QPushButton("📝 Load 3AM Test Players")
-        sample_btn.clicked.connect(self.load_sample_players)
-        btn_layout.addWidget(sample_btn)
-
-        clear_btn = QPushButton("🗑️ Clear")
+        clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self.manual_input.clear)
         btn_layout.addWidget(clear_btn)
+
+        sample_btn = QPushButton("Load Sample Players")
+        sample_btn.clicked.connect(self.load_sample_players)
+        btn_layout.addWidget(sample_btn)
 
         manual_layout.addLayout(btn_layout)
         layout.addWidget(manual_group)
 
-        # Sample data section
-        sample_group = QGroupBox("🧪 Test with Sample Data")
-        sample_layout = QVBoxLayout(sample_group)
+        # Test data section
+        test_group = QGroupBox("🧪 Test Mode")
+        test_layout = QVBoxLayout(test_group)
 
-        sample_btn = QPushButton("🚀 Load Enhanced Sample Data")
-        sample_btn.clicked.connect(self.use_sample_data)
-        sample_btn.setStyleSheet("""
+        test_btn = QPushButton("🧪 Create Test Data")
+        test_btn.clicked.connect(self.use_test_data)
+        test_btn.setStyleSheet("""
             QPushButton {
-                background-color: #059669;
+                background-color: #7c3aed;
                 color: white;
                 padding: 12px;
                 font-weight: bold;
                 border-radius: 6px;
             }
             QPushButton:hover {
-                background-color: #047857;
+                background-color: #6d28d9;
             }
         """)
-        sample_layout.addWidget(sample_btn)
+        test_layout.addWidget(test_btn)
 
-        layout.addWidget(sample_group)
+        layout.addWidget(test_group)
 
         layout.addStretch()
         return tab
 
     def create_optimize_tab(self):
-        """Create optimize tab with manual-only mode"""
+        """Create the optimize tab"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        # Settings with mode selection
+        # Settings
         settings_group = QGroupBox("⚙️ Optimization Settings")
         settings_layout = QFormLayout(settings_group)
 
+        # Contest type
         self.contest_combo = QComboBox()
-        self.contest_combo.addItems(["Classic Contest (10 players)", "Showdown Contest (6 players)"])
+        self.contest_combo.addItems(["Classic (10 players)", "Showdown (6 players)"])
         settings_layout.addRow("Contest Type:", self.contest_combo)
 
-        # Mode selection dropdown
+        # Optimization mode
         self.mode_combo = QComboBox()
         self.mode_combo.addItems([
-            "Bulletproof (Confirmed + Manual)",
-            "Manual-Only (Ultimate Control)",
-            "Confirmed-Only (No Manual)"
+            "Bulletproof (All eligible players)",
+            "Manual-Only (Your selections only)",
+            "Confirmed-Only (Confirmed lineups only)"
         ])
-        self.mode_combo.setCurrentIndex(1)  # Default to Manual-Only for 3AM testing
-        settings_layout.addRow("Optimization Mode:", self.mode_combo)
+        settings_layout.addRow("Mode:", self.mode_combo)
 
         layout.addWidget(settings_group)
 
-        # 3AM Testing info box
-        info_group = QGroupBox("🌙 3AM Testing - Manual-Only Mode")
+        # Features info
+        info_group = QGroupBox("🧠 Active Features")
         info_layout = QVBoxLayout(info_group)
 
         info_text = QLabel("""
-<b>🌙 Perfect for 3AM Testing!</b><br><br>
-<b>Why 0 confirmations at 3AM:</b> No MLB games happening now<br>
-<b>Manual-Only Mode (Selected):</b> Uses ONLY your manual selections<br>
-<b>Works 24/7:</b> Regardless of game schedule<br>
-<b>All algorithms active:</b> Vegas, Statcast, DFF, Park factors<br><br>
-<b>⏰ Other modes work during game hours (1-7pm)</b>
+        <b>Mathematical Optimization:</b> Integer programming for true optimal lineups<br>
+        <b>Vegas Lines:</b> Real-time betting data integration<br>
+        <b>Statcast Data:</b> Advanced baseball metrics<br>
+        <b>Smart Confirmations:</b> Unified lineup detection<br>
+        <b>Position Flexibility:</b> Multi-position player optimization<br>
+        <b>No Artificial Boosts:</b> Pure data-driven projections
         """)
         info_text.setWordWrap(True)
-        info_text.setStyleSheet("padding: 10px; background-color: #1a1a2e; color: white; border-radius: 5px;")
+        info_text.setStyleSheet("padding: 10px; background-color: #f0f9ff; border-radius: 5px;")
         info_layout.addWidget(info_text)
 
         layout.addWidget(info_group)
 
-        # Advanced features info
-        features_group = QGroupBox("🧠 Advanced Features Active")
-        features_layout = QVBoxLayout(features_group)
-
-        features_text = QLabel("""
-🎯 <b>BULLETPROOF COMPREHENSIVE STRATEGY</b>
-
-🔒 <b>Player Pool:</b> Manual selections ONLY (perfect for 3AM)
-📊 <b>Analysis:</b> ALL statistical data with 80% confidence
-📈 <b>Adjustments:</b> Max 20% based on league averages
-
-📊 <b>Comprehensive Statistical Analysis:</b>
-💰 <b>Vegas Environment:</b> Run totals vs 4.5 league average
-🔬 <b>Statcast Performance:</b> xwOBA vs league baseline (0.320)
-🏟️ <b>Park Factors:</b> HR factors for power hitters
-📈 <b>L5 Performance:</b> Recent vs season performance
-🎯 <b>Platoon Advantages:</b> Handedness matchups
-⚡ <b>MILP Optimization:</b> Mathematical lineup solving
-
-✅ <b>Single 80% confidence threshold</b>
-✅ <b>Maximum 20% realistic adjustments</b>
-✅ <b>NO artificial inflation</b>
-        """)
-        features_text.setWordWrap(True)
-        features_text.setStyleSheet("padding: 10px; background-color: #f0f9ff; border-radius: 5px;")
-        features_layout.addWidget(features_text)
-
-        layout.addWidget(features_group)
-
-        # Optimization control
-        control_group = QGroupBox("🚀 Generate Lineup")
-        control_layout = QVBoxLayout(control_group)
-
-        self.run_btn = QPushButton("🎯 Generate Manual-Only Lineup")
+        # Run button
+        self.run_btn = QPushButton("🚀 Generate Optimal Lineup")
+        self.run_btn.setMinimumHeight(50)
         self.run_btn.setStyleSheet("""
             QPushButton {
                 background-color: #1e40af;
                 color: white;
-                padding: 15px;
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
                 border-radius: 8px;
             }
@@ -343,18 +393,16 @@ class EnhancedDFSGUI(QMainWindow):
                 background-color: #1e3a8a;
             }
             QPushButton:disabled {
-                background-color: #cccccc;
+                background-color: #9ca3af;
             }
         """)
         self.run_btn.clicked.connect(self.run_optimization)
-        self.run_btn.setEnabled(False)
-        control_layout.addWidget(self.run_btn)
+        layout.addWidget(self.run_btn)
 
+        # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        control_layout.addWidget(self.progress_bar)
-
-        layout.addWidget(control_group)
+        layout.addWidget(self.progress_bar)
 
         # Console
         console_group = QGroupBox("📋 Optimization Log")
@@ -363,7 +411,7 @@ class EnhancedDFSGUI(QMainWindow):
         self.console = QTextEdit()
         self.console.setReadOnly(True)
         self.console.setFont(QFont("Consolas", 10))
-        self.console.setStyleSheet("background-color: #1e1e1e; color: #ffffff; border: 1px solid #333;")
+        self.console.setStyleSheet("background-color: #1e1e1e; color: #ffffff;")
         console_layout.addWidget(self.console)
 
         layout.addWidget(console_group)
@@ -371,106 +419,91 @@ class EnhancedDFSGUI(QMainWindow):
         return tab
 
     def create_results_tab(self):
-        """Create results tab"""
+        """Create the results tab"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        # Results summary
+        # Summary
         self.results_summary = QLabel("No optimization results yet")
         self.results_summary.setWordWrap(True)
         self.results_summary.setStyleSheet(
-            "padding: 20px; background-color: #f0f9ff; border-radius: 8px; border: 1px solid #bfdbfe;")
+            "padding: 20px; background-color: #f0f9ff; border-radius: 8px; font-size: 14px;"
+        )
         layout.addWidget(self.results_summary)
 
         # Lineup table
         self.lineup_table = QTableWidget()
-        self.lineup_table.setColumnCount(6)
-        self.lineup_table.setHorizontalHeaderLabels(["Position", "Player", "Team", "Salary", "Score", "Status"])
+        self.lineup_table.setColumnCount(7)
+        self.lineup_table.setHorizontalHeaderLabels([
+            "Position", "Player", "Team", "Salary", "Projected", "Vegas", "Statcast"
+        ])
         self.lineup_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.lineup_table)
 
-        # Import text
-        import_group = QGroupBox("📋 DraftKings Import")
-        import_layout = QVBoxLayout(import_group)
+        # Export section
+        export_group = QGroupBox("📤 Export Lineup")
+        export_layout = QVBoxLayout(export_group)
 
-        self.import_text = QTextEdit()
-        self.import_text.setMaximumHeight(80)
-        self.import_text.setPlaceholderText("Optimized lineup will appear here for copy/paste into DraftKings")
-        import_layout.addWidget(self.import_text)
+        self.export_text = QTextEdit()
+        self.export_text.setMaximumHeight(60)
+        self.export_text.setPlaceholderText("Lineup will appear here for copy/paste")
+        export_layout.addWidget(self.export_text)
 
         copy_btn = QPushButton("📋 Copy to Clipboard")
-        copy_btn.clicked.connect(self.copy_to_clipboard)
-        import_layout.addWidget(copy_btn)
+        copy_btn.clicked.connect(self.copy_lineup)
+        export_layout.addWidget(copy_btn)
 
-        layout.addWidget(import_group)
+        layout.addWidget(export_group)
 
         return tab
 
     def show_welcome_message(self):
-        """Display welcome message"""
-        welcome = [
-            "🌙 ENHANCED DFS OPTIMIZER - 3AM MANUAL-ONLY MODE",
-            "=" * 60,
-            "",
-            "🎯 PERFECT FOR 3AM TESTING:",
-            "  • Manual-Only Mode selected by default",
-            "  • No confirmations needed (none available at 3AM)",
-            "  • All advanced algorithms still working",
-            "  • Works 24/7 regardless of game schedule",
-            "",
-            "🧠 ALL ADVANCED ALGORITHMS ACTIVE:",
-            "  • 💰 Vegas Lines: Real-time odds analysis",
-            "  • 🔬 Statcast Data: Baseball Savant metrics",
-            "  • 🏟️ Park Factors: Venue analysis",
-            "  • 📈 L5 Performance: Recent form trends",
-            "  • 🎯 Platoon Advantages: Matchup optimization",
-            "  • ⚡ Mathematical Optimization: MILP solving",
-            "",
-            "📋 3AM WORKFLOW:",
-            "  1. Add manual players (10+ recommended)",
-            "  2. Select Manual-Only mode (default)",
-            "  3. Click 'Generate Manual-Only Lineup'",
-            "  4. Get optimized lineup with all algorithms",
-            "",
-            "🌙 Ready for 3AM testing with manual-only mode!",
-            ""
-        ]
-        self.console.setPlainText("\n".join(welcome))
+        """Show welcome message in console"""
+        welcome = """
+🚀 ENHANCED DFS OPTIMIZER 2.0
+================================
+✅ Mathematical Optimization Engine
+✅ Advanced Statistical Analysis
+✅ Real-time Data Integration
+✅ Smart Lineup Confirmations
+
+Ready to generate optimal lineups!
+"""
+        self.console.setPlainText(welcome)
 
     def auto_detect_files(self):
-        """Auto-detect CSV files"""
+        """Auto-detect CSV files in directory"""
         import glob
 
         # Look for DraftKings files
-        dk_patterns = ['DKSalaries*.csv', '*dksalaries*.csv', '*draftkings*.csv']
-        dk_files = []
+        dk_patterns = ['*DKSalaries*.csv', '*draftkings*.csv', '*dk*.csv']
         for pattern in dk_patterns:
-            dk_files.extend(glob.glob(pattern))
+            files = glob.glob(pattern, recursive=False)
+            if files:
+                self.set_dk_file(files[-1])  # Use most recent
+                break
 
         # Look for DFF files
-        dff_patterns = ['DFF*.csv', '*dff*.csv', '*cheat*.csv']
-        dff_files = []
+        dff_patterns = ['*DFF*.csv', '*dff*.csv', '*rankings*.csv']
         for pattern in dff_patterns:
-            dff_files.extend(glob.glob(pattern))
-
-        # Set most recent files
-        if dk_files:
-            dk_files.sort(key=os.path.getmtime, reverse=True)
-            self.set_dk_file(dk_files[0])
-
-        if dff_files:
-            dff_files.sort(key=os.path.getmtime, reverse=True)
-            self.set_dff_file(dff_files[0])
+            files = glob.glob(pattern, recursive=False)
+            if files:
+                self.set_dff_file(files[-1])  # Use most recent
+                break
 
     def select_dk_file(self):
         """Select DraftKings CSV file"""
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select DraftKings CSV File", "", "CSV Files (*.csv)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select DraftKings CSV", "", "CSV Files (*.csv)"
+        )
         if file_path:
             self.set_dk_file(file_path)
 
     def select_dff_file(self):
         """Select DFF CSV file"""
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select DFF Rankings CSV", "", "CSV Files (*.csv)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select DFF Rankings CSV", "", "CSV Files (*.csv)"
+        )
         if file_path:
             self.set_dff_file(file_path)
 
@@ -480,9 +513,10 @@ class EnhancedDFSGUI(QMainWindow):
         filename = os.path.basename(file_path)
         self.dk_label.setText(f"✅ {filename}")
         self.dk_label.setStyleSheet(
-            "padding: 10px; border: 2px solid #059669; border-radius: 5px; background-color: #ecfdf5;")
+            "padding: 10px; border: 2px solid #059669; border-radius: 5px; background-color: #ecfdf5;"
+        )
         self.run_btn.setEnabled(True)
-        self.status_bar.showMessage(f"✅ DraftKings file loaded: {filename}")
+        self.status_bar.showMessage(f"Loaded: {filename}")
 
     def set_dff_file(self, file_path):
         """Set DFF file"""
@@ -490,249 +524,239 @@ class EnhancedDFSGUI(QMainWindow):
         filename = os.path.basename(file_path)
         self.dff_label.setText(f"✅ {filename}")
         self.dff_label.setStyleSheet(
-            "padding: 10px; border: 2px solid #f59e0b; border-radius: 5px; background-color: #fefce8;")
-        self.status_bar.showMessage(f"✅ DFF file loaded: {filename}")
+            "padding: 10px; border: 2px solid #f59e0b; border-radius: 5px; background-color: #fefce8;"
+        )
 
     def load_sample_players(self):
-        """Load sample manual players for 3AM testing"""
-        sample = "Tyler Glasnow, Pablo Lopez, Will Smith, Pete Alonso, Gleyber Torres, Manny Machado, Trea Turner, Shohei Ohtani, Juan Soto, Mookie Betts"
+        """Load sample players"""
+        sample = "Shohei Ohtani, Mike Trout, Aaron Judge, Freddie Freeman, Mookie Betts, Ronald Acuna Jr., Trea Turner, Jose Ramirez, Vladimir Guerrero Jr., Rafael Devers"
         self.manual_input.setPlainText(sample)
-        self.status_bar.showMessage("✅ 3AM test players loaded - ready for manual-only optimization!")
 
-    def use_sample_data(self):
-        """Load enhanced sample data"""
+    def use_test_data(self):
+        """Create and use test data"""
         try:
-            self.console.append("🧪 Loading enhanced sample data...")
+            # Create test CSV
+            test_file = os.path.join(tempfile.gettempdir(), 'test_dk_salaries.csv')
 
-            dk_file, dff_file = create_enhanced_test_data()
-            self.dk_file = dk_file
-            if dff_file:
-                self.dff_file = dff_file
+            with open(test_file, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Position', 'Name', 'Name', 'ID', 'Roster Position',
+                                 'Salary', 'Game Info', 'TeamAbbrev', 'AvgPointsPerGame'])
 
-            self.dk_label.setText("✅ Enhanced sample DraftKings data loaded")
-            self.dk_label.setStyleSheet(
-                "padding: 10px; border: 2px solid #059669; border-radius: 5px; background-color: #ecfdf5;")
+                # Add diverse test players
+                test_players = [
+                    ['P', 'Gerrit Cole', 'Gerrit Cole', '1', 'P', '10000', 'NYY@BOS', 'NYY', '18.5'],
+                    ['P', 'Shane Bieber', 'Shane Bieber', '2', 'P', '9500', 'CLE@MIN', 'CLE', '17.2'],
+                    ['P', 'Dylan Cease', 'Dylan Cease', '3', 'P', '8000', 'SD@LAD', 'SD', '15.1'],
+                    ['C', 'Will Smith', 'Will Smith', '4', 'C', '5000', 'LAD@SD', 'LAD', '10.2'],
+                    ['C', 'Salvador Perez', 'Salvador Perez', '5', 'C', '4500', 'KC@DET', 'KC', '9.1'],
+                    ['1B', 'Freddie Freeman', 'Freddie Freeman', '6', '1B', '5500', 'LAD@SD', 'LAD', '11.5'],
+                    ['1B', 'Pete Alonso', 'Pete Alonso', '7', '1B', '5000', 'NYM@PHI', 'NYM', '10.3'],
+                    ['2B', 'Jose Altuve', 'Jose Altuve', '8', '2B', '5200', 'HOU@TEX', 'HOU', '10.8'],
+                    ['2B', 'Marcus Semien', 'Marcus Semien', '9', '2B', '4800', 'TEX@HOU', 'TEX', '9.7'],
+                    ['3B', 'Manny Machado', 'Manny Machado', '10', '3B', '5300', 'SD@LAD', 'SD', '11.0'],
+                    ['3B', 'Jose Ramirez', 'Jose Ramirez', '11', '3B', '5800', 'CLE@MIN', 'CLE', '12.2'],
+                    ['SS', 'Trea Turner', 'Trea Turner', '12', 'SS', '5100', 'PHI@NYM', 'PHI', '10.5'],
+                    ['SS', 'Corey Seager', 'Corey Seager', '13', 'SS', '5400', 'TEX@HOU', 'TEX', '11.2'],
+                    ['OF', 'Aaron Judge', 'Aaron Judge', '14', 'OF', '6500', 'NYY@BOS', 'NYY', '13.8'],
+                    ['OF', 'Mike Trout', 'Mike Trout', '15', 'OF', '6000', 'LAA@SEA', 'LAA', '12.5'],
+                    ['OF', 'Mookie Betts', 'Mookie Betts', '16', 'OF', '5800', 'LAD@SD', 'LAD', '12.0'],
+                    ['OF', 'Ronald Acuna Jr.', 'Ronald Acuna Jr.', '17', 'OF', '5600', 'ATL@MIA', 'ATL', '11.6'],
+                    ['OF', 'Juan Soto', 'Juan Soto', '18', 'OF', '5500', 'SD@LAD', 'SD', '11.3'],
+                    ['OF', 'Yordan Alvarez', 'Yordan Alvarez', '19', 'OF', '5400', 'HOU@TEX', 'HOU', '11.0']
+                ]
 
-            if dff_file:
-                self.dff_label.setText("✅ Enhanced sample DFF data loaded")
-                self.dff_label.setStyleSheet(
-                    "padding: 10px; border: 2px solid #f59e0b; border-radius: 5px; background-color: #fefce8;")
+                for player in test_players:
+                    writer.writerow(player)
 
-            self.run_btn.setEnabled(True)
-            self.status_bar.showMessage("✅ Enhanced sample data loaded - ready to optimize")
-
-            # Pre-fill manual players
-            self.manual_input.setPlainText("Tyler Glasnow, Pablo Lopez, Will Smith, Pete Alonso")
-
-            QMessageBox.information(self, "Sample Data Loaded",
-                                    "✅ Enhanced sample data loaded!\n\n"
-                                    "Go to the Optimize tab and click 'Generate Manual-Only Lineup'")
+            self.set_dk_file(test_file)
+            QMessageBox.information(self, "Test Data", "Test data created and loaded successfully!")
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load sample data:\n{str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to create test data: {str(e)}")
 
     def run_optimization(self):
-        """Run optimization with mode selection"""
+        """Run the optimization"""
         if not self.dk_file:
             QMessageBox.warning(self, "No Data", "Please select a DraftKings CSV file first.")
             return
 
         # Get settings
-        manual_input = self.manual_input.toPlainText().strip()
         contest_type = 'classic' if self.contest_combo.currentIndex() == 0 else 'showdown'
-
-        # Get optimization mode
         mode_map = {
             0: 'bulletproof',
             1: 'manual_only',
             2: 'confirmed_only'
         }
-        optimization_mode = mode_map.get(self.mode_combo.currentIndex(), 'manual_only')
+        optimization_mode = mode_map[self.mode_combo.currentIndex()]
 
-        # Check manual input for manual-only mode
+        # Get manual input
+        manual_input = self.manual_input.toPlainText().strip()
+
+        # Validate manual-only mode
         if optimization_mode == 'manual_only' and not manual_input:
-            QMessageBox.warning(self, "Manual-Only Mode",
-                                "Manual-Only mode requires manual player selections.\n\n"
-                                "Please add players in the Manual Selection box.\n\n"
-                                "Click 'Load 3AM Test Players' for a quick start!")
+            QMessageBox.warning(
+                self,
+                "Manual Input Required",
+                "Manual-Only mode requires manual player selections.\n\n"
+                "Please add players in the Manual Player Selection box."
+            )
             return
 
         # Update UI
         self.run_btn.setEnabled(False)
-        self.run_btn.setText(f"🚀 Optimizing ({optimization_mode.replace('_', '-').title()})...")
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)
-
-        # Clear console and show mode
+        self.progress_bar.setRange(0, 0)  # Indeterminate
         self.console.clear()
-        mode_descriptions = {
-            'bulletproof': 'Confirmed + Manual players',
-            'manual_only': 'Manual players ONLY (perfect for 3AM!)',
-            'confirmed_only': 'Confirmed players ONLY'
-        }
 
-        self.console.append(f"🚀 Starting {optimization_mode.upper()} optimization...")
-        self.console.append(f"🎯 Mode: {mode_descriptions[optimization_mode]}")
-        self.console.append("=" * 80)
-
-        if optimization_mode == 'manual_only':
-            self.console.append("🌙 Manual-Only Mode - Perfect for 3AM testing!")
-            self.console.append("🎯 Using ONLY your manual selections")
-            self.console.append("🧠 All advanced algorithms will still work")
-
-        # Start optimization thread
+        # Create and start optimization thread
         self.optimization_thread = OptimizationThread(
-            self.dk_file, self.dff_file, manual_input, contest_type, optimization_mode
+            self.dk_file,
+            self.dff_file,
+            manual_input,
+            contest_type,
+            optimization_mode
         )
-        self.optimization_thread.progress_updated.connect(self.on_progress_updated)
-        self.optimization_thread.optimization_completed.connect(self.on_optimization_completed)
+
+        self.optimization_thread.progress_updated.connect(self.on_progress_update)
+        self.optimization_thread.optimization_completed.connect(self.on_optimization_complete)
         self.optimization_thread.optimization_failed.connect(self.on_optimization_failed)
+
         self.optimization_thread.start()
 
-    def on_progress_updated(self, message):
+    def on_progress_update(self, message):
         """Handle progress updates"""
         self.console.append(message)
 
-    def on_optimization_completed(self, lineup, score, summary):
+    def on_optimization_complete(self, lineup, score, summary):
         """Handle successful optimization"""
-        self.console.append("\n🎉 MANUAL-ONLY OPTIMIZATION COMPLETED!")
+        self.console.append("\n" + "=" * 50)
+        self.console.append("✅ OPTIMIZATION COMPLETE!")
+        self.console.append(summary)
 
-        # Update results
+        # Store lineup
+        self.last_lineup = lineup
+
+        # Update results tab
         self.update_results(lineup, score, summary)
 
         # Switch to results tab
         self.tab_widget.setCurrentIndex(2)
-        self.status_bar.showMessage("✅ Manual-only optimization complete!")
 
-        # Count advanced features used
-        vegas_count = sum(1 for p in lineup if hasattr(p, 'vegas_data') and p.vegas_data)
-        statcast_count = sum(1 for p in lineup if hasattr(p, 'statcast_data') and p.statcast_data)
-        dff_count = sum(1 for p in lineup if hasattr(p, 'dff_data') and p.dff_data)
+        # Reset UI
+        self.run_btn.setEnabled(True)
+        self.progress_bar.setVisible(False)
+        self.status_bar.showMessage("Optimization complete!")
 
-        QMessageBox.information(self, "Manual-Only Success!",
-                                f"🌙 Manual-only optimization successful!\n\n"
-                                f"📊 Generated {len(lineup)} player lineup\n"
-                                f"💰 Projected score: {score:.2f} points\n"
-                                f"🎯 All players from your manual selections\n\n"
-                                f"🧠 Advanced algorithms applied:\n"
-                                f"   • Vegas lines: {vegas_count}/10 players\n"
-                                f"   • Statcast data: {statcast_count}/10 players\n"
-                                f"   • DFF analysis: {dff_count}/10 players\n\n"
-                                f"Perfect for 3AM testing!")
-
-        self._reset_ui()
+        # Show success message
+        QMessageBox.information(
+            self,
+            "Success!",
+            f"Optimization complete!\n\n"
+            f"Score: {score:.2f} points\n"
+            f"Players: {len(lineup)}"
+        )
 
     def on_optimization_failed(self, error_message):
         """Handle optimization failure"""
-        self.console.append(f"\n❌ OPTIMIZATION FAILED: {error_message}")
+        self.console.append("\n" + "=" * 50)
+        self.console.append(f"❌ OPTIMIZATION FAILED: {error_message}")
 
-        QMessageBox.critical(self, "Optimization Failed",
-                             f"❌ Optimization failed:\n\n{error_message}\n\n"
-                             f"💡 For manual-only mode:\n"
-                             f"   • Add 10+ manual players\n"
-                             f"   • Include 2 pitchers and 8 position players\n"
-                             f"   • Try the 'Load 3AM Test Players' button")
-
-        self._reset_ui()
-
-    def _reset_ui(self):
-        """Reset UI after optimization"""
+        # Reset UI
         self.run_btn.setEnabled(True)
-        self.run_btn.setText("🎯 Generate Manual-Only Lineup")
         self.progress_bar.setVisible(False)
+        self.status_bar.showMessage("Optimization failed")
+
+        # Show error message
+        QMessageBox.critical(
+            self,
+            "Optimization Failed",
+            f"Optimization failed:\n\n{error_message}"
+        )
 
     def update_results(self, lineup, score, summary):
-        """Update results tab"""
-        try:
-            # Update summary
-            total_salary = sum(p.salary for p in lineup)
-            manual_count = sum(1 for p in lineup if p.is_manual_selected)
+        """Update the results tab"""
+        # Update summary
+        total_salary = sum(p.salary for p in lineup)
 
-            # Count advanced features
-            vegas_count = sum(1 for p in lineup if hasattr(p, 'vegas_data') and p.vegas_data)
-            statcast_count = sum(1 for p in lineup if hasattr(p, 'statcast_data') and p.statcast_data)
-            dff_count = sum(1 for p in lineup if hasattr(p, 'dff_data') and p.dff_data)
+        summary_html = f"""
+        <h3>Optimization Results</h3>
+        <p><b>Total Score:</b> {score:.2f} points</p>
+        <p><b>Total Salary:</b> ${total_salary:,} / $50,000</p>
+        <p><b>Players:</b> {len(lineup)}</p>
+        <p><b>Average Score:</b> {score / len(lineup):.2f} per player</p>
+        """
 
-            summary_text = f"""
-            <b>🌙 MANUAL-ONLY OPTIMIZATION SUCCESS</b><br><br>
+        self.results_summary.setText(summary_html)
 
-            <b>💰 Financial Summary:</b><br>
-            • Total Salary: ${total_salary:,} / $50,000<br>
-            • Salary Remaining: ${50000 - total_salary:,}<br>
-            • Projected Score: {score:.2f} points<br><br>
+        # Update table
+        self.lineup_table.setRowCount(len(lineup))
 
-            <b>🎯 Player Selection:</b><br>
-            • Manual Players: {manual_count}/10<br>
-            • Status: ✅ ALL MANUAL SELECTIONS<br><br>
+        for i, player in enumerate(lineup):
+            # Position
+            pos = getattr(player, 'assigned_position', player.primary_position)
+            self.lineup_table.setItem(i, 0, QTableWidgetItem(pos))
 
-            <b>🧠 Advanced Algorithms Applied:</b><br>
-            • Vegas Lines: {vegas_count}/10 players<br>
-            • Statcast Data: {statcast_count}/10 players<br>
-            • DFF Analysis: {dff_count}/10 players<br><br>
+            # Name
+            self.lineup_table.setItem(i, 1, QTableWidgetItem(player.name))
 
-            <b>📊 Perfect for 3AM Testing!</b><br>
-            • No confirmations needed<br>
-            • All algorithms working<br>
-            • Ready for game-day optimization
-            """
+            # Team
+            self.lineup_table.setItem(i, 2, QTableWidgetItem(player.team))
 
-            self.results_summary.setText(summary_text)
+            # Salary
+            self.lineup_table.setItem(i, 3, QTableWidgetItem(f"${player.salary:,}"))
 
-            # Update table
-            self.lineup_table.setRowCount(len(lineup))
+            # Projected score
+            self.lineup_table.setItem(i, 4, QTableWidgetItem(f"{player.enhanced_score:.2f}"))
 
-            for row, player in enumerate(lineup):
-                self.lineup_table.setItem(row, 0, QTableWidgetItem(player.primary_position))
-                self.lineup_table.setItem(row, 1, QTableWidgetItem(player.name))
-                self.lineup_table.setItem(row, 2, QTableWidgetItem(player.team))
-                self.lineup_table.setItem(row, 3, QTableWidgetItem(f"${player.salary:,}"))
-                self.lineup_table.setItem(row, 4, QTableWidgetItem(f"{player.enhanced_score:.1f}"))
-                self.lineup_table.setItem(row, 5, QTableWidgetItem("MANUAL"))
+            # Vegas indicator
+            vegas_indicator = "✅" if hasattr(player, 'vegas_data') and player.vegas_data else "❌"
+            self.lineup_table.setItem(i, 5, QTableWidgetItem(vegas_indicator))
 
-            # Auto-resize columns
-            self.lineup_table.resizeColumnsToContents()
+            # Statcast indicator
+            statcast_indicator = "✅" if hasattr(player, 'statcast_data') and player.statcast_data else "❌"
+            self.lineup_table.setItem(i, 6, QTableWidgetItem(statcast_indicator))
 
-            # Update import text
-            player_names = [player.name for player in lineup]
-            import_string = ", ".join(player_names)
-            self.import_text.setPlainText(import_string)
+        # Create export text
+        export_lines = []
+        for player in lineup:
+            export_lines.append(player.name)
 
-        except Exception as e:
-            print(f"Error updating results: {e}")
+        self.export_text.setPlainText(", ".join(export_lines))
 
-    def copy_to_clipboard(self):
+    def copy_lineup(self):
         """Copy lineup to clipboard"""
-        text = self.import_text.toPlainText()
+        text = self.export_text.toPlainText()
         if text:
             clipboard = QApplication.clipboard()
             clipboard.setText(text)
-            self.status_bar.showMessage("✅ Lineup copied to clipboard!", 3000)
-            QMessageBox.information(self, "Copied!",
-                                    "✅ Lineup copied to clipboard!\n\n"
-                                    "Paste into DraftKings to import your lineup.")
+            self.status_bar.showMessage("Lineup copied to clipboard!", 3000)
+            QMessageBox.information(self, "Copied!", "Lineup copied to clipboard!")
         else:
-            QMessageBox.warning(self, "No Lineup", "No lineup to copy. Generate a lineup first.")
+            QMessageBox.warning(self, "No Lineup", "No lineup to copy.")
 
 
 def main():
     """Main application entry point"""
     app = QApplication(sys.argv)
-    app.setApplicationName("Enhanced DFS Optimizer - Manual-Only Mode")
+    app.setApplicationName("Enhanced DFS Optimizer")
 
     # Check if core is available
     if not CORE_AVAILABLE:
-        QMessageBox.critical(None, "Missing Bulletproof Core",
-                             "Could not import bulletproof_dfs_core.py\n\n"
-                             "Make sure bulletproof_dfs_core.py exists in the same directory.")
+        QMessageBox.critical(
+            None,
+            "Missing Dependencies",
+            "Core systems not found. Please ensure all files are present:\n"
+            "- bulletproof_dfs_core.py\n"
+            "- unified_data_system.py\n"
+            "- optimal_lineup_optimizer.py\n"
+            "- smart_confirmation_system.py"
+        )
         return 1
 
-    # Create and show window
+    # Create and show main window
     window = EnhancedDFSGUI()
     window.show()
-
-    print("✅ Enhanced DFS GUI launched successfully!")
-    print("🌙 Manual-Only Mode ready for 3AM testing!")
-    print("🧠 ALL advanced algorithms integrated")
 
     return app.exec_()
 
