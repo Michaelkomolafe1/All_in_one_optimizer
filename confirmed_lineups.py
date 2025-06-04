@@ -214,10 +214,10 @@ class VerifiedRealLineupFetcher:
 
         return team_mapping.get(team_name, team_name[:3].upper() if team_name else '')
 
-    def _enhanced_smart_analysis(self) -> Optional[Dict]:
-        """ENHANCED smart analysis - MUCH better than basic salary guessing"""
+        def _enhanced_smart_analysis(self) -> Optional[Dict]:
+            """ENHANCED smart analysis - MORE AGGRESSIVE CONFIRMATION"""
 
-        print("🧠 VERIFIED: Enhanced smart analysis (anti-salary-guessing)")
+        print("🧠 VERIFIED: Enhanced smart analysis (MORE AGGRESSIVE)")
 
         # Group by team
         teams_data = {}
@@ -280,34 +280,40 @@ class VerifiedRealLineupFetcher:
                     }
                     print(f"🎯 VERIFIED ENHANCED PITCHER: {team} - {likely_starter['name']} (${likely_starter['salary']:,}) [{confidence}]")
 
-        # CONSERVATIVE lineup analysis (only obvious choices)
+        # MUCH MORE AGGRESSIVE lineup analysis
         for team, data in teams_data.items():
             hitters = data['hitters']
 
-            if len(hitters) >= 6:
+            if len(hitters) >= 4:  # Lowered threshold from 6 to 4
                 sorted_hitters = sorted(hitters, key=lambda x: x['salary'], reverse=True)
 
-                # Only confirm obvious top players (conservative approach)
+                # VERY AGGRESSIVE: Confirm many more players
                 confirmed_hitters = []
                 for i, player in enumerate(sorted_hitters):
-                    if len(confirmed_hitters) >= 4:  # Max 4 per team (conservative)
+                    if len(confirmed_hitters) >= 8:  # Increased from 6 to 8 per team
                         break
 
-                    # Only confirm if really obvious
+                    # Much more liberal confirmation criteria
                     should_confirm = False
                     reason = ""
 
-                    if player['salary'] >= 5500:  # Clear star player
+                    if player['salary'] >= 4000:  # Lowered from 4500
                         should_confirm = True
-                        reason = "star_salary_5500+"
-                    elif player['salary'] >= 4500 and i == 0:  # Top player with good salary
+                        reason = "star_salary_4000+"
+                    elif player['salary'] >= 3200 and i <= 4:  # Top 5 players (was top 3)
                         should_confirm = True
-                        reason = "top_player_4500+"
+                        reason = "top5_player_3200+"
+                    elif i == 0 and player['salary'] >= 2800:  # Even lower for top player
+                        should_confirm = True
+                        reason = "top_player_any_2800+"
+                    elif i <= 2:  # Top 3 players regardless of salary
+                        should_confirm = True
+                        reason = f"top3_auto_rank{i+1}"
                     elif i < len(sorted_hitters) - 1:
                         gap = player['salary'] - sorted_hitters[i + 1]['salary']
-                        if gap >= 1000:  # Big salary gap
+                        if gap >= 500:  # Much lower gap threshold
                             should_confirm = True
-                            reason = f"big_gap_{gap}"
+                            reason = f"salary_gap_{gap}"
 
                     if should_confirm:
                         confirmed_hitters.append({
@@ -324,180 +330,3 @@ class VerifiedRealLineupFetcher:
                     print(f"📋 VERIFIED ENHANCED LINEUP: {team} - {len(confirmed_hitters)} players (avg ${avg_salary:,})")
 
         return real_lineups
-
-    def _validate_real_data(self, data: Dict) -> bool:
-        """Validate real data"""
-        confirmed_teams = set(data.get('pitchers', {}).keys()) | set(data.get('lineups', {}).keys())
-        relevant_teams = confirmed_teams.intersection(self.csv_teams)
-        return len(relevant_teams) >= 1
-
-    def _apply_real_confirmations(self, real_data: Dict, source_name: str) -> int:
-        """Apply real confirmations to CSV players"""
-
-        confirmed_count = 0
-        self.lineups = {}
-        self.starting_pitchers = {}
-
-        # Apply pitcher confirmations
-        for team, pitcher_info in real_data.get('pitchers', {}).items():
-            if team not in self.csv_teams:
-                continue
-
-            real_name = pitcher_info['name']
-            csv_match = self._find_csv_player_match(real_name, team, 'P')
-
-            if csv_match:
-                csv_match['player_object'].add_confirmation_source(f"{source_name}_pitcher")
-
-                self.starting_pitchers[team] = {
-                    'name': csv_match['name'],
-                    'team': team,
-                    'confirmed': True,
-                    'source': pitcher_info['source']
-                }
-                confirmed_count += 1
-
-                print(f"🎯 VERIFIED CONFIRMED PITCHER: {real_name} → {csv_match['name']} ({team}) ${csv_match['salary']:,}")
-
-        # Apply lineup confirmations
-        for team, lineup in real_data.get('lineups', {}).items():
-            if team not in self.csv_teams:
-                continue
-
-            csv_lineup = []
-
-            for lineup_player in lineup:
-                real_name = lineup_player['name']
-                csv_match = self._find_csv_player_match(real_name, team, exclude_position='P')
-
-                if csv_match:
-                    csv_match['player_object'].add_confirmation_source(f"{source_name}_lineup")
-
-                    csv_lineup.append({
-                        'name': csv_match['name'],
-                        'position': csv_match['position'],
-                        'order': lineup_player['order'],
-                        'team': team,
-                        'source': lineup_player['source']
-                    })
-                    confirmed_count += 1
-
-                    print(f"📋 VERIFIED CONFIRMED HITTER: {real_name} → {csv_match['name']} ({team}) ${csv_match['salary']:,}")
-
-            if csv_lineup:
-                self.lineups[team] = csv_lineup
-
-        return confirmed_count
-
-    def _find_csv_player_match(self, real_name: str, team: str, position: str = None, exclude_position: str = None) -> Optional[Dict]:
-        """Find matching player in CSV with enhanced matching"""
-
-        candidates = [p for p in self.csv_players if p['team'] == team]
-
-        if position and position == 'P':
-            candidates = [p for p in candidates if p['position'] in ['SP', 'RP', 'P']]
-        elif exclude_position and exclude_position == 'P':
-            candidates = [p for p in candidates if p['position'] not in ['SP', 'RP', 'P']]
-
-        best_match = None
-        best_score = 0
-
-        for csv_player in candidates:
-            similarity = self._name_similarity(real_name, csv_player['name'])
-            if similarity > best_score and similarity >= 0.7:
-                best_score = similarity
-                best_match = csv_player
-
-        return best_match
-
-    def _name_similarity(self, name1: str, name2: str) -> float:
-        """Enhanced name similarity"""
-
-        if not name1 or not name2:
-            return 0.0
-
-        name1_clean = self._clean_name(name1)
-        name2_clean = self._clean_name(name2)
-
-        if name1_clean == name2_clean:
-            return 1.0
-
-        if name1_clean in name2_clean or name2_clean in name1_clean:
-            return 0.95
-
-        # Last name + first initial match (baseball names)
-        name1_parts = name1_clean.split()
-        name2_parts = name2_clean.split()
-
-        if len(name1_parts) >= 2 and len(name2_parts) >= 2:
-            if (name1_parts[-1] == name2_parts[-1] and 
-                name1_parts[0][0] == name2_parts[0][0]):
-                return 0.9
-            elif name1_parts[-1] == name2_parts[-1]:
-                return 0.8
-
-        return 0.0
-
-    def _clean_name(self, name: str) -> str:
-        """Clean player names for matching"""
-        name = str(name).lower().strip()
-        name = re.sub(r"[^a-z\s']", '', name)  # Keep letters, spaces, apostrophes
-        name = re.sub(r'\s+', ' ', name)  # Normalize spaces
-        return name
-
-    # Standard interface methods for compatibility
-    def ensure_data_loaded(self, max_wait_seconds=10):
-        return len(self.lineups) > 0 or len(self.starting_pitchers) > 0
-
-    def is_player_confirmed(self, player_name: str, team=None) -> Tuple[bool, Optional[int]]:
-        for team_id, lineup in self.lineups.items():
-            for player in lineup:
-                if self._name_similarity(player_name, player['name']) > 0.8:
-                    if team and team.upper() != team_id:
-                        continue
-                    return True, player['order']
-        return False, None
-
-    def is_pitcher_starting(self, pitcher_name: str, team=None) -> bool:
-        if team:
-            team = team.upper()
-            if team in self.starting_pitchers:
-                pitcher_data = self.starting_pitchers[team]
-                return self._name_similarity(pitcher_name, pitcher_data['name']) > 0.8
-
-        for team_code, pitcher_data in self.starting_pitchers.items():
-            if self._name_similarity(pitcher_name, pitcher_data['name']) > 0.8:
-                return True
-        return False
-
-    def get_starting_pitchers(self, force_refresh: bool = False) -> Dict:
-        return self.starting_pitchers
-
-    def print_all_lineups(self) -> None:
-        print("\n=== VERIFIED REAL CONFIRMATIONS ===")
-
-        if self.starting_pitchers:
-            print("\n🎯 VERIFIED CONFIRMED STARTING PITCHERS:")
-            for team, pitcher in sorted(self.starting_pitchers.items()):
-                print(f"   {team}: {pitcher['name']} ({pitcher['source']})")
-
-        if self.lineups:
-            print("\n📋 VERIFIED CONFIRMED LINEUPS:")
-            for team, lineup in sorted(self.lineups.items()):
-                print(f"\n{team} Lineup:")
-                for player in lineup:
-                    print(f"   {player['order']}. {player['name']} ({player['position']}) [{player['source']}]")
-
-        total = len(self.starting_pitchers) + sum(len(lineup) for lineup in self.lineups.values())
-        print(f"\n✅ Total VERIFIED confirmations: {total} players")
-
-
-# Compatibility alias for existing code
-ConfirmedLineups = VerifiedRealLineupFetcher
-
-
-if __name__ == "__main__":
-    print("✅ VERIFIED Real Lineup System - GRANT HOLMAN PROBLEM SOLVED!")
-    print("🎯 Gets actual confirmed lineups, not salary guessing") 
-    print("🌐 Works with ANY DraftKings CSV")
-    print("💰 Confirms low-salary actual starters (Grant Holman $4,000)")

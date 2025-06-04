@@ -275,6 +275,58 @@ class AdvancedPlayer:
         pos_str = '/'.join(self.positions)
         status = "✅" if self.is_eligible_for_selection() else "❌"
         return f"Player({self.name}, {pos_str}, ${self.salary}, {self.enhanced_score:.1f}, {status})"
+    def get_position_flexibility_score(self) -> float:
+        """Calculate position flexibility score (0-10)"""
+        if len(self.positions) == 1:
+            return 0.0
+        elif len(self.positions) == 2:
+            return 5.0
+        elif len(self.positions) >= 3:
+            return 8.0
+        return 0.0
+
+    def get_optimal_position_assignment(self, needed_positions: Dict[str, int]) -> str:
+        """Get optimal position assignment based on current needs"""
+        if not needed_positions:
+            return self.primary_position
+
+        # Find position with highest need that this player can fill
+        best_pos = self.primary_position
+        max_need = needed_positions.get(self.primary_position, 0)
+
+        for pos in self.positions:
+            need = needed_positions.get(pos, 0)
+            if need > max_need:
+                max_need = need
+                best_pos = pos
+
+        return best_pos
+
+    def can_fill_multiple_needs(self, needed_positions: Dict[str, int]) -> List[str]:
+        """Return list of needed positions this player can fill"""
+        fillable = []
+        for pos in self.positions:
+            if needed_positions.get(pos, 0) > 0:
+                fillable.append(pos)
+        return fillable
+
+    def get_flexibility_value_bonus(self) -> float:
+        """Get value bonus for position flexibility (1.0 = no bonus, 1.05 = 5% bonus)"""
+        flexibility_score = self.get_position_flexibility_score()
+        if flexibility_score >= 8:
+            return 1.05  # 5% bonus for 3+ positions
+        elif flexibility_score >= 5:
+            return 1.02  # 2% bonus for 2 positions
+        return 1.0  # No bonus for single position
+
+    def get_enhanced_display_string(self) -> str:
+        """Get enhanced display string with flexibility info"""
+        pos_str = "/".join(self.positions)
+        flex_indicator = "🔄" if len(self.positions) > 1 else "  "
+        value = self.enhanced_score / (self.salary / 1000) if self.salary > 0 else 0
+
+        return f"{flex_indicator} {self.name:<20} {pos_str:<8} ${self.salary:,} {self.enhanced_score:.1f}pts ({value:.2f})"
+
 
 
 class BulletproofDFSCore:
@@ -767,6 +819,232 @@ def optimized_pipeline_execution(core, dff_file):
     core.apply_park_factors()
 
     print("✅ All data sources applied to confirmed players")
+
+    def _complete_greedy_optimization(self, players):
+        """Complete greedy optimization that actually works"""
+
+        # Calculate value for each player
+        players_with_value = []
+        for player in players:
+            if player.salary > 0:
+                value = player.enhanced_score / (player.salary / 1000)
+                players_with_value.append((player, value))
+
+        # Sort by value (best first)
+        players_with_value.sort(key=lambda x: x[1], reverse=True)
+
+        lineup = []
+        remaining_salary = self.salary_cap
+        requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+        filled = {pos: 0 for pos in requirements}
+
+        # Fill each position requirement
+        for pos, needed in requirements.items():
+            print(f"   Filling {pos}: need {needed}")
+
+            while filled[pos] < needed and len(lineup) < 10:
+                best_player = None
+                best_value = 0
+
+                for player, value in players_with_value:
+                    if (player not in lineup and
+                            pos in player.positions and
+                            player.salary <= remaining_salary):
+                        if value > best_value:
+                            best_value = value
+                            best_player = player
+
+                if best_player:
+                    lineup.append(best_player)
+                    remaining_salary -= best_player.salary
+                    filled[pos] += 1
+                    print(f"     Added: {best_player.name} (${best_player.salary:,})")
+                else:
+                    print(f"     ⚠️ Cannot fill {pos} with remaining budget ${remaining_salary}")
+                    break
+
+        # Verify lineup is complete
+        if len(lineup) == 10:
+            print(f"✅ Complete lineup built: {len(lineup)} players")
+            return lineup
+        else:
+            print(f"❌ Incomplete lineup: {len(lineup)}/10 players")
+            return []
+    def optimize_lineup_with_mode(self):
+        """COMPLETE: Lineup optimization with mode awareness"""
+        print(f"\n⚡ LINEUP OPTIMIZATION - {self.optimization_mode.upper()} MODE")
+        print("=" * 60)
+
+        # Get eligible players based on mode
+        eligible_players = self.get_eligible_players_by_mode()
+
+        if not eligible_players:
+            print(f"❌ No eligible players found for {self.optimization_mode} mode")
+            return [], 0
+
+        print(f"✅ Found {len(eligible_players)} eligible players")
+
+        # Quick position validation
+        position_counts = {}
+        for player in eligible_players:
+            for pos in player.positions:
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+        missing = []
+
+        for pos, needed in requirements.items():
+            available = position_counts.get(pos, 0)
+            if available < needed:
+                missing.append(f"{pos} (need {needed}, have {available})")
+
+        if missing:
+            print("❌ POSITION REQUIREMENTS NOT MET:")
+            for issue in missing:
+                print(f"   • Missing {issue}")
+            return [], 0
+
+        print("✅ Position requirements satisfied")
+
+        # Apply statistical analysis
+        if hasattr(self, '_apply_comprehensive_statistical_analysis'):
+            self._apply_comprehensive_statistical_analysis(eligible_players)
+
+        # Run optimization
+        print("🎯 Running greedy optimization...")
+        lineup = self._complete_greedy_optimization(eligible_players)
+
+        if lineup and len(lineup) == 10:
+            total_score = sum(player.enhanced_score for player in lineup)
+            total_salary = sum(player.salary for player in lineup)
+
+            print(f"✅ Optimization successful!")
+            print(f"   Players: {len(lineup)}/10")
+            print(f"   Salary: ${total_salary:,}/{self.salary_cap:,}")
+            print(f"   Score: {total_score:.2f} points")
+
+            return lineup, total_score
+        else:
+            print("❌ Optimization failed - could not build valid lineup")
+            return [], 0
+
+    def _optimize_milp(self, players):
+        """ADDED: Mathematical optimization using MILP"""
+        try:
+            import pulp
+
+            # Create the optimization problem
+            prob = pulp.LpProblem("DFS_Lineup", pulp.LpMaximize)
+
+            # Decision variables
+            player_vars = {}
+            for i, player in enumerate(players):
+                player_vars[i] = pulp.LpVariable(f"player_{i}", cat='Binary')
+
+            # Objective function (maximize projected points)
+            prob += pulp.lpSum([player.enhanced_score * player_vars[i] for i, player in enumerate(players)])
+
+            # Salary constraint
+            prob += pulp.lpSum([player.salary * player_vars[i] for i, player in enumerate(players)]) <= self.salary_cap
+
+            # Total players constraint
+            prob += pulp.lpSum([player_vars[i] for i in range(len(players))]) == 10
+
+            # Position constraints
+            position_requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+
+            for pos, required in position_requirements.items():
+                eligible_for_pos = []
+                for i, player in enumerate(players):
+                    if player.can_play_position(pos):
+                        eligible_for_pos.append(player_vars[i])
+
+                if eligible_for_pos:
+                    prob += pulp.lpSum(eligible_for_pos) >= required
+
+            # Solve the problem
+            prob.solve(pulp.PULP_CBC_CMD(msg=0))
+
+            if prob.status == pulp.LpStatusOptimal:
+                selected_players = []
+                total_score = 0
+
+                for i, player in enumerate(players):
+                    if player_vars[i].varValue == 1:
+                        selected_players.append(player)
+                        total_score += player.enhanced_score
+
+                return selected_players, total_score
+            else:
+                print("⚠️ MILP optimization failed, falling back to greedy")
+                return self._optimize_greedy_enhanced(players)
+
+        except Exception as e:
+            print(f"⚠️ MILP error: {e}, falling back to greedy")
+            return self._optimize_greedy_enhanced(players)
+
+    def _optimize_greedy_enhanced(self, players):
+        """ADDED: Enhanced greedy optimization with position flexibility"""
+
+        # Sort players by value (points per $1000)
+        players_by_value = []
+        for player in players:
+            if player.salary > 0:
+                value = player.enhanced_score / (player.salary / 1000)
+                players_by_value.append((player, value))
+
+        players_by_value.sort(key=lambda x: x[1], reverse=True)
+
+        # Position requirements
+        position_requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+
+        lineup = []
+        remaining_salary = self.salary_cap
+        filled_positions = {pos: 0 for pos in position_requirements}
+
+        # Strategy 1: Fill required positions with best available
+        for pos, required in position_requirements.items():
+            while filled_positions[pos] < required:
+                best_player = None
+                best_value = 0
+
+                for player, value in players_by_value:
+                    if (player not in lineup and 
+                        player.can_play_position(pos) and 
+                        player.salary <= remaining_salary):
+
+                        if value > best_value:
+                            best_value = value
+                            best_player = player
+
+                if best_player:
+                    lineup.append(best_player)
+                    filled_positions[pos] += 1
+                    remaining_salary -= best_player.salary
+
+                    # If player can fill multiple positions, update counts
+                    for other_pos in best_player.positions:
+                        if other_pos in filled_positions and filled_positions[other_pos] < position_requirements.get(other_pos, 0):
+                            filled_positions[other_pos] += 1
+                            break
+                else:
+                    # Can't fill this position
+                    print(f"⚠️ Cannot fill position {pos} with remaining salary ${remaining_salary}")
+                    return [], 0
+
+        # Check if we have exactly 10 players
+        total_required = sum(position_requirements.values())
+        if len(lineup) != total_required:
+            print(f"⚠️ Lineup incomplete: {len(lineup)}/{total_required} players")
+            return [], 0
+
+        total_score = sum(player.enhanced_score for player in lineup)
+        total_salary = sum(player.salary for player in lineup)
+
+        print(f"💰 Final lineup: ${total_salary:,}/{self.salary_cap:,} salary used")
+
+        return lineup, total_score
+
 # Entry point function for GUI compatibility
 def load_and_optimize_complete_pipeline(
     dk_file: str,
@@ -838,6 +1116,100 @@ LINEUP:
     else:
         return [], 0, f"{strategy} optimization failed - see suggestions above"
 
+
+# ADD THIS METHOD TO THE BulletproofDFSCore CLASS
+# Find the end of the class and paste this before the last line:
+
+
+    # Get eligible players based on mode
+    eligible_players = self.get_eligible_players_by_mode()
+
+    if not eligible_players:
+        print(f"❌ No eligible players found for {self.optimization_mode} mode")
+        if self.optimization_mode == 'bulletproof':
+            print("💡 SUGGESTION: Try 'manual_only' mode and add players manually")
+        return [], 0
+
+    print(f"✅ Found {len(eligible_players)} eligible players")
+
+    # Quick position validation
+    position_counts = {}
+    for player in eligible_players:
+        for pos in player.positions:
+            position_counts[pos] = position_counts.get(pos, 0) + 1
+
+    requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+    missing = []
+
+    for pos, needed in requirements.items():
+        available = position_counts.get(pos, 0)
+        if available < needed:
+            missing.append(f"{pos} (need {needed}, have {available})")
+
+    if missing:
+        print("❌ POSITION REQUIREMENTS NOT MET:")
+        for issue in missing:
+            print(f"   • Missing {issue}")
+        return [], 0
+
+    print("✅ Position requirements satisfied")
+
+    # Apply statistical analysis
+    self._apply_comprehensive_statistical_analysis(eligible_players)
+
+    # Simple optimization
+    lineup = self._simple_greedy_optimization(eligible_players)
+
+    if lineup and len(lineup) == 10:
+        total_score = sum(player.enhanced_score for player in lineup)
+        total_salary = sum(player.salary for player in lineup)
+
+        print(f"✅ Optimization successful!")
+        print(f"   Salary: ${total_salary:,}/{self.salary_cap:,}")
+        print(f"   Score: {total_score:.2f} points")
+
+        return lineup, total_score
+    else:
+        print("❌ Optimization failed")
+        return [], 0
+
+
+def _simple_greedy_optimization(self, players):
+    """Simple greedy optimization"""
+    players_with_value = []
+    for player in players:
+        if player.salary > 0:
+            value = player.enhanced_score / (player.salary / 1000)
+            players_with_value.append((player, value))
+
+    players_with_value.sort(key=lambda x: x[1], reverse=True)
+
+    lineup = []
+    remaining_salary = self.salary_cap
+    requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+    filled = {pos: 0 for pos in requirements}
+
+    for pos, needed in requirements.items():
+        while filled[pos] < needed and len(lineup) < 10:
+            best_player = None
+            best_value = 0
+
+            for player, value in players_with_value:
+                if (player not in lineup and
+                        pos in player.positions and
+                        player.salary <= remaining_salary):
+                    if value > best_value:
+                        best_value = value
+                        best_player = player
+
+            if best_player:
+                lineup.append(best_player)
+                remaining_salary -= best_player.salary
+                filled[pos] += 1
+            else:
+                break
+
+    return lineup if len(lineup) == 10 else []
 # Test data function
 def create_enhanced_test_data():
     """Create test data"""
