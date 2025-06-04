@@ -1,0 +1,73 @@
+[04:22:37.419] MAIN: 🚀 STARTING GUI WITH DEBUG HOOKS
+[04:22:37.420] SETUP: 🔧 INSTALLING GUI DEBUG HOOKS
+[04:22:38.255] SETUP: ✅ Optimization thread hooked
+[04:22:38.255] SETUP: ✅ Pipeline function hooked
+[04:22:38.255] SETUP: ✅ Core class hooked
+[04:22:38.255] MAIN: 🖥️ LAUNCHING GUI
+[04:22:59.652] THREAD: 🚀 OPTIMIZATION THREAD STARTED
+[04:22:59.653] THREAD:    DK File: /home/mike/Downloads/DKSalaries (71).csv
+[04:22:59.653] THREAD:    DFF File: /home/mike/Downloads/DFF_MLB_cheatsheet_2025-06-03 (3).csv
+[04:22:59.653] THREAD:    DFF Exists: True
+[04:22:59.653] THREAD:    Manual Input: ''
+[04:22:59.653] THREAD:    Contest Type: classic
+[04:22:59.653] THREAD:    Mode: bulletproof
+[04:22:59.656] THREAD:    DFF File Readable: ✅ 43 rows, 22 columns
+[04:22:59.656] THREAD:    DFF Columns: ['first_name', 'last_name', 'position', 'injury_status', 'game_date', 'slate', 'team', 'opp', 'confirmed_order', 'starting_pitcher', 'hand', 'spread', 'over_under', 'implied_team_score', 'salary', 'L5_fppg_avg', 'L10_fppg_avg', 'szn_fppg_avg', 'ppg_projection', 'value_projection', 'ppg_actual', 'value_actual']
+[04:22:59.656] CORE: 🚀 BulletproofDFSCore instance created
+[04:22:59.809] CORE: 📈 DFF RANKINGS METHOD CALLED
+[04:22:59.809] CORE:    DFF file path: /home/mike/Downloads/DFF_MLB_cheatsheet_2025-06-03 (3).csv
+[04:22:59.809] CORE:    DFF file exists: True
+[04:22:59.809] CORE:    DFF file size: 4193 bytes
+[04:22:59.820] CORE:    DFF application result: True
+[04:22:59.820] CORE:    Players with DFF data: 40
+[04:22:59.820] CORE: 💰 VEGAS LINES ENRICHMENT CALLED
+[04:22:59.974] CORE:    Players with Vegas data: 6
+[04:22:59.974] CORE: 🔬 STATCAST ENRICHMENT CALLED
+[04:23:01.325] CORE:    Players with Statcast data: 7
+[04:23:01.325] THREAD: ✅ OPTIMIZATION THREAD COMPLETED
+[04:25:21.514] THREAD: 🚀 OPTIMIZATION THREAD STARTED
+[04:25:21.514] THREAD:    DK File: /home/mike/Downloads/DKSalaries (71).csv
+[04:25:21.514] THREAD:    DFF File: /home/mike/Downloads/DFF_MLB_cheatsheet_2025-06-03 (3).csv
+[04:25:21.514] THREAD:    DFF Exists: True
+[04:25:21.514] THREAD:    Manual Input: 'Add: "Shohei Ohtani, Juan Soto, Francisco Lindor, Mookie Betts, Pete Alonso"'
+[04:25:21.514] THREAD:    Contest Type: classic
+[04:25:21.514] THREAD:    Mode: manual_only
+[04:25:21.516] THREAD:    DFF File Readable: ✅ 43 rows, 22 columns
+[04:25:21.516] THREAD:    DFF Columns: ['first_name', 'last_name', 'position', 'injury_status', 'game_date', 'slate', 'team', 'opp', 'confirmed_order', 'starting_pitcher', 'hand', 'spread', 'over_under', 'implied_team_score', 'salary', 'L5_fppg_avg', 'L10_fppg_avg', 'szn_fppg_avg', 'ppg_projection', 'value_projection', 'ppg_actual', 'value_actual']
+[04:25:21.516] CORE: 🚀 BulletproofDFSCore instance created
+[04:25:21.576] CORE: 🎯 MANUAL SELECTION CALLED
+[04:25:21.576] CORE:    Manual input: 'Add: "Shohei Ohtani, Juan Soto, Francisco Lindor, Mookie Betts, Pete Alonso"'
+[04:25:21.579] CORE:    Manual matches: 5
+[04:25:21.579] CORE:    Manual players found: 5
+[04:25:21.579] CORE:       ✅ Shohei Ohtani
+[04:25:21.579] CORE:       ✅ Francisco Lindor
+[04:25:21.579] CORE:       ✅ Juan Soto
+[04:25:21.579] CORE:       ✅ Mookie Betts
+[04:25:21.579] CORE:       ✅ Pete Alonso
+[04:25:21.579] CORE: 📈 DFF RANKINGS METHOD CALLED
+[04:25:21.579] CORE:    DFF file path: /home/mike/Downloads/DFF_MLB_cheatsheet_2025-06-03 (3).csv
+[04:25:21.579] CORE:    DFF file exists: True
+[04:25:21.579] CORE:    DFF file size: 4193 bytes
+[04:25:21.590] CORE:    DFF application result: True
+[04:25:21.591] CORE:    Players with DFF data: 40
+[04:25:21.591] CORE: 💰 VEGAS LINES ENRICHMENT CALLED
+[04:25:21.591] CORE:    Players with Vegas data: 5
+[04:25:21.591] CORE: 🔬 STATCAST ENRICHMENT CALLED
+[04:25:21.593] CORE:    Players with Statcast data: 5
+[04:25:21.594] THREAD: ✅ OPTIMIZATION THREAD COMPLETED
+[04:25:49.143] MAIN: ✅ GUI CLOSED
+
+GUI DEBUG REPORT - Session 20250604_042232
+============================================================
+
+Total log entries: 58
+Log file: gui_debug_20250604_042232.log
+
+SUMMARY:
+- Check if DFF files are being passed from GUI
+- Check if manual selections are working
+- Check if enrichment methods are being called
+- Look for any error messages
+
+============================================================
+Full log saved to: gui_debug_20250604_042232.log
