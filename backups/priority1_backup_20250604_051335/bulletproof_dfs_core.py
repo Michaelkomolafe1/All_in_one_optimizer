@@ -22,18 +22,6 @@ import random
 
 warnings.filterwarnings('ignore')
 
-# Enhanced Statistical Analysis Engine - PRIORITY 1 IMPROVEMENTS
-try:
-    from enhanced_stats_engine import apply_enhanced_statistical_analysis
-    ENHANCED_STATS_AVAILABLE = True
-    print("✅ Enhanced Statistical Analysis Engine loaded")
-except ImportError:
-    ENHANCED_STATS_AVAILABLE = False
-    print("⚠️ Enhanced stats engine not found - using basic analysis")
-    def apply_enhanced_statistical_analysis(players, verbose=False):
-        return 0
-
-
 # Import optimization
 try:
     import pulp
@@ -684,26 +672,9 @@ class BulletproofDFSCore:
             'multi_position_count': multi_position_count
         }
 
-        def _apply_comprehensive_statistical_analysis(self, players):
-            """ENHANCED: Apply comprehensive statistical analysis with PRIORITY 1 improvements"""
-        print(f"📊 ENHANCED Statistical Analysis: {len(players)} players")
-        print("🎯 PRIORITY 1 FEATURES: Variable Confidence + Enhanced Statcast + Position Weighting")
-
-        if not players:
-            return
-
-        if ENHANCED_STATS_AVAILABLE:
-            # Use enhanced statistical analysis engine (PRIORITY 1 IMPROVEMENTS)
-            adjusted_count = apply_enhanced_statistical_analysis(players, verbose=True)
-            print(f"✅ Enhanced Analysis: {adjusted_count} players optimized with Priority 1 improvements")
-        else:
-            # Fallback to basic analysis if enhanced engine not available
-            print("⚠️ Using basic analysis - enhanced engine not found")
-            self._apply_basic_statistical_analysis(players)
-
-    def _apply_basic_statistical_analysis(self, players):
-        """Fallback basic statistical analysis (original method)"""
-        print(f"📊 Basic statistical analysis: {len(players)} players")
+    def _apply_comprehensive_statistical_analysis(self, players):
+        """ADDED: Apply comprehensive statistical analysis"""
+        print(f"📊 Comprehensive statistical analysis: {len(players)} players")
 
         CONFIDENCE_THRESHOLD = 0.80
         MAX_TOTAL_ADJUSTMENT = 0.20
@@ -712,15 +683,15 @@ class BulletproofDFSCore:
         for player in players:
             total_adjustment = 0.0
 
-            # DFF Analysis (basic)
-            if hasattr(player, 'dff_data') and player.dff_data and player.dff_data.get('ppg_projection', 0) > 0:
+            # DFF Analysis
+            if player.dff_data and player.dff_data.get('ppg_projection', 0) > 0:
                 dff_projection = player.dff_data['ppg_projection']
                 if dff_projection > player.projection:
                     dff_adjustment = min((dff_projection - player.projection) / player.projection * 0.3, 0.10) * CONFIDENCE_THRESHOLD
                     total_adjustment += dff_adjustment
 
-            # Vegas Environment Analysis (basic)
-            if hasattr(player, 'vegas_data') and player.vegas_data:
+            # Vegas Environment Analysis
+            if player.vegas_data:
                 team_total = player.vegas_data.get('team_total', 4.5)
 
                 if player.primary_position == 'P':
@@ -743,7 +714,100 @@ class BulletproofDFSCore:
                 player.enhanced_score += adjustment_points
                 adjusted_count += 1
 
-        print(f"✅ Basic Analysis: {adjusted_count}/{len(players)} players adjusted")
+        print(f"✅ Adjusted {adjusted_count}/{len(players)} players with 80% confidence")
+
+    def _provide_mode_specific_suggestions(self):
+        """ADDED: Provide mode-specific suggestions"""
+        suggestions = {
+            'manual_only': [
+                "💡 Add more players to your manual selection",
+                "📝 Need 10+ manually selected players for full lineup", 
+                "🎯 Try: 'Shohei Ohtani, Kyle Tucker, Juan Soto, Mookie Betts...'",
+                "🔍 Use partial names if full names don't match"
+            ],
+            'confirmed_only': [
+                "💡 Wait for games to start (~1-7pm)",
+                "⏰ Lineups posted closer to game time",
+                "🔄 Switch to 'manual_only' for testing",
+                "🎯 Or add manual players and use 'bulletproof' mode"
+            ],
+            'bulletproof': [
+                "💡 Add manual players OR wait for confirmations",
+                "🎯 Manual players work 24/7",
+                "⏰ Confirmations available during game hours",
+                "🔄 Switch to 'manual_only' for testing"
+            ]
+        }
+
+        mode_suggestions = suggestions.get(self.optimization_mode, [])
+        for suggestion in mode_suggestions:
+            print(f"   {suggestion}")
+
+    def optimize_lineup_with_mode(self):
+        """ADDED: Optimize lineup using current mode"""
+        print(f"🎯 {self.optimization_mode.upper().replace('_', '-')} OPTIMIZATION")
+        print("=" * 60)
+
+        # Get eligible players based on mode
+        eligible_players = self.get_eligible_players_by_mode()
+
+        if len(eligible_players) < 10:
+            print(f"❌ INSUFFICIENT ELIGIBLE PLAYERS: {len(eligible_players)}/10 required")
+            self._provide_mode_specific_suggestions()
+            return [], 0
+
+        # Position validation
+        position_validation = self._validate_positions_comprehensive(eligible_players)
+        if not position_validation['valid']:
+            print("❌ INSUFFICIENT POSITION COVERAGE:")
+            for issue in position_validation['issues']:
+                print(f"   • {issue}")
+            return [], 0
+
+        print(f"✅ Using {len(eligible_players)} eligible players")
+
+        # Apply all algorithms
+        self._apply_comprehensive_statistical_analysis(eligible_players)
+        self.apply_park_factors()
+
+        # Optimize
+        return self._optimize_greedy_enhanced(eligible_players)
+
+    def _optimize_greedy_enhanced(self, players):
+        """ADDED: Enhanced greedy optimization"""
+        print(f"🎯 Enhanced greedy optimization: {len(players)} players")
+
+        # Calculate value scores
+        for player in players:
+            player.value_score = player.enhanced_score / (player.salary / 1000.0)
+
+        sorted_players = sorted(players, key=lambda x: x.value_score, reverse=True)
+
+        lineup = []
+        total_salary = 0
+        position_needs = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+
+        for player in sorted_players:
+            if len(lineup) >= 10:
+                break
+
+            if total_salary + player.salary > self.salary_cap:
+                continue
+
+            # Enhanced position matching
+            for pos in ['C', 'SS', '3B', '2B', '1B', 'OF', 'P']:  # Priority order
+                if pos in player.positions and position_needs.get(pos, 0) > 0:
+                    lineup.append(player)
+                    total_salary += player.salary
+                    position_needs[pos] -= 1
+                    break
+
+        total_score = sum(p.enhanced_score for p in lineup)
+        print(f"✅ Enhanced optimization: {len(lineup)} players, ${total_salary:,}, {total_score:.2f} score")
+
+        return lineup, total_score
+
+
 def optimized_pipeline_execution(core, dff_file):
     """FIXED: Optimal order for maximum data enrichment"""
     print("🔄 PRIORITY DATA ENRICHMENT PIPELINE")
