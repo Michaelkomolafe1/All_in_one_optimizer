@@ -33,23 +33,12 @@ class SmartConfirmationSystem:
             print(f"📊 CSV teams detected: {sorted(self.csv_teams)}")
 
     def get_all_confirmations(self) -> Tuple[int, int]:
-        """
-        Get all confirmations using multiple sources
-        Only for teams in the CSV
-
-        Returns:
-            Tuple of (lineup_count, pitcher_count)
-        """
-        print("🔍 SMART CONFIRMATION SYSTEM")
+        """Get confirmations from MLB API ONLY - NO FALLBACK"""
+        print("🔍 SMART CONFIRMATION SYSTEM - NO FALLBACK MODE")
         print("=" * 50)
 
-        # Try MLB Stats API first
+        # Try MLB Stats API - NO FALLBACK
         mlb_data = self._fetch_mlb_confirmations()
-
-        # If not enough data, use enhanced CSV analysis
-        if self._needs_more_confirmations():
-            csv_data = self._enhanced_csv_analysis()
-            self._merge_confirmations(csv_data)
 
         # Filter to only CSV teams
         self._filter_to_csv_teams()
@@ -57,29 +46,127 @@ class SmartConfirmationSystem:
         lineup_count = sum(len(lineup) for lineup in self.confirmed_lineups.values())
         pitcher_count = len(self.confirmed_pitchers)
 
-        print(f"✅ Total confirmations: {lineup_count} lineup spots, {pitcher_count} pitchers")
-        print(f"📊 Teams covered: {len(self.confirmed_lineups)} lineups, {len(self.confirmed_pitchers)} pitchers")
+        if lineup_count == 0:
+            print("\n❌ NO LINEUPS FOUND FROM MLB API")
+            print("This could mean:")
+            print("1. Games haven't started posting lineups yet")
+            print("2. Your CSV teams aren't playing today")
+            print("3. API format has changed")
+            print("\nNO FALLBACK - Using only confirmed players")
+        else:
+            print(f"✅ Found {lineup_count} real lineup spots, {pitcher_count} real pitchers")
 
         return lineup_count, pitcher_count
 
+    # In smart_confirmation_system.py, replace the _fetch_mlb_confirmations method:
+
     def _fetch_mlb_confirmations(self) -> Dict:
-        """Fetch confirmations from MLB Stats API"""
+        """Fetch confirmations from MLB Stats API - NO FALLBACK"""
         try:
             today = datetime.now().strftime('%Y-%m-%d')
-            url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}&hydrate=lineups,probablePitcher"
+            url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}&hydrate=lineups,probablePitcher,team"
+
+            print(f"🌐 Fetching real lineups from MLB API...")
+            print(f"📅 Date: {today}")
 
             response = requests.get(url, timeout=10)
             if response.status_code != 200:
+                print(f"⚠️ MLB API returned status {response.status_code}")
                 return {}
 
             data = response.json()
             confirmations = {'lineups': {}, 'pitchers': {}}
+            games_processed = 0
+
+            # Debug: save raw response
+            with open('mlb_api_response.json', 'w') as f:
+                json.dump(data, f, indent=2)
+            print("💾 Saved raw API response to mlb_api_response.json")
 
             for date_data in data.get('dates', []):
                 for game in date_data.get('games', []):
-                    self._process_game_data(game, confirmations)
+                    games_processed += 1
+                    game_pk = game.get('gamePk')
 
-            # Apply confirmations
+                    # Get detailed game data with lineups
+                    lineup_url = f"https://statsapi.mlb.com/api/v1.1/game/{game_pk}/feed/live"
+
+                    try:
+                        lineup_response = requests.get(lineup_url, timeout=10)
+                        if lineup_response.status_code == 200:
+                            game_data = lineup_response.json()
+
+                            # Extract lineups from live data
+                            lineups_data = game_data.get('liveData', {}).get('boxscore', {}).get('teams', {})
+
+                            # Away team
+                            away_data = lineups_data.get('away', {})
+                            away_team = game_data.get('gameData', {}).get('teams', {}).get('away', {}).get(
+                                'abbreviation', '')
+
+                            if away_team and 'players' in away_data:
+                                away_lineup = []
+                                for player_id, player_info in away_data['players'].items():
+                                    if player_info.get('battingOrder') and int(player_info['battingOrder']) > 0:
+                                        away_lineup.append({
+                                            'name': player_info.get('person', {}).get('fullName', ''),
+                                            'position': player_info.get('position', {}).get('abbreviation', ''),
+                                            'order': int(player_info['battingOrder']) // 100,
+                                            # Convert 100, 200 to 1, 2
+                                            'team': away_team
+                                        })
+
+                                if away_lineup:
+                                    confirmations['lineups'][away_team] = sorted(away_lineup, key=lambda x: x['order'])
+                                    print(f"✅ Found {away_team} lineup: {len(away_lineup)} players")
+
+                            # Home team
+                            home_data = lineups_data.get('home', {})
+                            home_team = game_data.get('gameData', {}).get('teams', {}).get('home', {}).get(
+                                'abbreviation', '')
+
+                            if home_team and 'players' in home_data:
+                                home_lineup = []
+                                for player_id, player_info in home_data['players'].items():
+                                    if player_info.get('battingOrder') and int(player_info['battingOrder']) > 0:
+                                        home_lineup.append({
+                                            'name': player_info.get('person', {}).get('fullName', ''),
+                                            'position': player_info.get('position', {}).get('abbreviation', ''),
+                                            'order': int(player_info['battingOrder']) // 100,
+                                            'team': home_team
+                                        })
+
+                                if home_lineup:
+                                    confirmations['lineups'][home_team] = sorted(home_lineup, key=lambda x: x['order'])
+                                    print(f"✅ Found {home_team} lineup: {len(home_lineup)} players")
+
+                            # Get probable pitchers
+                            pitchers_data = game_data.get('gameData', {}).get('probablePitchers', {})
+
+                            if 'away' in pitchers_data and away_team:
+                                confirmations['pitchers'][away_team] = {
+                                    'name': pitchers_data['away'].get('fullName', ''),
+                                    'team': away_team,
+                                    'source': 'mlb_live'
+                                }
+                                print(f"✅ Found {away_team} pitcher: {pitchers_data['away'].get('fullName', '')}")
+
+                            if 'home' in pitchers_data and home_team:
+                                confirmations['pitchers'][home_team] = {
+                                    'name': pitchers_data['home'].get('fullName', ''),
+                                    'team': home_team,
+                                    'source': 'mlb_live'
+                                }
+                                print(f"✅ Found {home_team} pitcher: {pitchers_data['home'].get('fullName', '')}")
+
+                    except Exception as e:
+                        print(f"⚠️ Error fetching lineup for game {game_pk}: {e}")
+
+            print(f"📊 Processed {games_processed} games from MLB API")
+            print(f"📋 Found lineups for: {list(confirmations['lineups'].keys())}")
+            print(f"⚾ Found pitchers for: {list(confirmations['pitchers'].keys())}")
+
+            # Apply confirmations ONLY if we have them
             for team, lineup in confirmations['lineups'].items():
                 team_abbrev = self.data_system.normalize_team(team)
                 if team_abbrev in self.csv_teams:
@@ -93,8 +180,9 @@ class SmartConfirmationSystem:
             return confirmations
 
         except Exception as e:
-            if self.verbose:
-                print(f"⚠️ MLB API error: {e}")
+            print(f"⚠️ MLB API error: {e}")
+            import traceback
+            traceback.print_exc()
             return {}
 
     def _enhanced_csv_analysis(self) -> Dict:
@@ -211,12 +299,15 @@ class SmartConfirmationSystem:
         pass
 
     def is_player_confirmed(self, player_name: str, team: str = None) -> Tuple[bool, Optional[int]]:
-        """Check if player is confirmed"""
+        """Check if player is confirmed in actual lineup"""
         if team:
             team = self.data_system.normalize_team(team)
             if team in self.confirmed_lineups:
                 for lineup_player in self.confirmed_lineups[team]:
+                    # Use the unified data system's name matching
                     if self.data_system.match_player_names(player_name, lineup_player['name']):
+                        if self.verbose:
+                            print(f"✅ Matched {player_name} to {lineup_player['name']} in {team} lineup")
                         return True, lineup_player.get('order', 1)
 
         return False, None
@@ -226,9 +317,10 @@ class SmartConfirmationSystem:
         if team:
             team = self.data_system.normalize_team(team)
             if team in self.confirmed_pitchers:
-                return self.data_system.match_player_names(
-                    pitcher_name,
-                    self.confirmed_pitchers[team]['name']
-                )
+                confirmed_pitcher = self.confirmed_pitchers[team]
+                if self.data_system.match_player_names(pitcher_name, confirmed_pitcher['name']):
+                    if self.verbose:
+                        print(f"✅ Matched pitcher {pitcher_name} to {confirmed_pitcher['name']}")
+                    return True
 
         return False

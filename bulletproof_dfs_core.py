@@ -96,31 +96,25 @@ except ImportError:
         def apply_to_players(self, players): return players
 
 try:
-    from confirmed_lineups import ConfirmedLineups
+    from smart_confirmation_system import SmartConfirmationSystem
 
     CONFIRMED_AVAILABLE = True
-    print("✅ Confirmed lineups module imported")
+    print("✅ Smart Confirmation System imported")
 except ImportError:
     CONFIRMED_AVAILABLE = False
-    print("⚠️ confirmed_lineups.py not found")
+    print("⚠️ smart_confirmation_system.py not found")
 
 
-    class ContestType(Enum):
-        GPP = "gpp"
-        CASH = "cash"
-        SINGLE_ENTRY = "single"
-        SHOWDOWN = "showdown"
+    class SmartConfirmationSystem:
+        def __init__(self, **kwargs):
+            self.confirmed_lineups = {}
+            self.confirmed_pitchers = {}
 
-    class ConfirmedLineups:
-        def __init__(self, **kwargs): pass
+        def get_all_confirmations(self): return 0, 0
 
-        def is_player_confirmed(self, name, team): return False, 0
+        def is_player_confirmed(self, name, team): return False, None
 
-        def is_pitcher_starting(self, name, team): return False
-
-        def ensure_data_loaded(self, **kwargs): return True
-
-        def set_players_data(self, players): pass
+        def is_pitcher_confirmed(self, name, team): return False
 
 try:
     from simple_statcast_fetcher import SimpleStatcastFetcher
@@ -388,7 +382,13 @@ class BulletproofDFSCore:
 
         # Initialize modules
         self.vegas_lines = VegasLines() if VEGAS_AVAILABLE else None
-        self.confirmed_lineups = ConfirmedLineups() if CONFIRMED_AVAILABLE else None
+
+        # Use SmartConfirmationSystem instead of ConfirmedLineups
+        self.confirmation_system = SmartConfirmationSystem(
+            csv_players=self.players,
+            verbose=True
+        ) if CONFIRMED_AVAILABLE else None
+
         self.statcast_fetcher = SimpleStatcastFetcher() if STATCAST_AVAILABLE else None
 
         print("🚀 Bulletproof DFS Core - ALL METHODS INCLUDED WITH ENHANCED PITCHER DETECTION")
@@ -955,94 +955,57 @@ class BulletproofDFSCore:
 
         print(f"✅ Exported {len(lineups)} lineups to {filename}")
         return filename
-    def detect_confirmed_players(self) -> int:
-        """ENHANCED: Real lineup + pitcher confirmations with enhanced pitcher detection"""
 
-        print("🔍 ENHANCED CONFIRMATION DETECTION WITH PITCHER DETECTION")
+    def detect_confirmed_players(self) -> int:
+        """Use SmartConfirmationSystem for confirmations"""
+
+        print("🔍 SMART CONFIRMATION DETECTION")
         print("=" * 60)
 
-        if not self.confirmed_lineups:
-            print("⚠️ Confirmed lineups module not available")
+        if not self.confirmation_system:
+            print("⚠️ Smart confirmation system not available")
             return 0
 
-        # STEP 1: Get lineup confirmations (existing logic)
-        print("📋 Getting lineup confirmations...")
+        # Update the confirmation system with current players
+        self.confirmation_system = SmartConfirmationSystem(
+            csv_players=self.players,
+            verbose=True
+        )
 
-        # Pass our CSV data to confirmations
-        if hasattr(self.confirmed_lineups, 'set_players_data'):
-            self.confirmed_lineups.set_players_data(self.players)
-
-        # Ensure data is loaded
-        if hasattr(self.confirmed_lineups, 'ensure_data_loaded'):
-            self.confirmed_lineups.ensure_data_loaded(max_wait_seconds=15)
+        # Get all confirmations
+        lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
 
         confirmed_count = 0
 
-        # Process lineup confirmations for position players
+        # Apply confirmations to our players
         for player in self.players:
+            # Check lineup confirmations
             if player.primary_position != 'P':
-                is_confirmed, batting_order = self.confirmed_lineups.is_player_confirmed(
+                is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
                     player.name, player.team
                 )
                 if is_confirmed:
-                    player.add_confirmation_source("robust_lineup")
+                    player.add_confirmation_source("smart_lineup")
+                    confirmed_count += 1
+            else:
+                # Check pitcher confirmations
+                is_confirmed = self.confirmation_system.is_pitcher_confirmed(
+                    player.name, player.team
+                )
+                if is_confirmed:
+                    player.add_confirmation_source("smart_pitcher")
                     confirmed_count += 1
 
-        print(f"✅ Lineup confirmations: {confirmed_count} position players")
+        print(f"✅ Total confirmations applied: {confirmed_count} players")
 
-        # STEP 2: ENHANCED PITCHER DETECTION (NEW!)
-        print("🎯 Getting enhanced pitcher confirmations...")
+        # If no confirmations during game time, show helpful message
+        if confirmed_count == 0 and lineup_count == 0:
+            print("\n📌 No confirmed lineups available. This is normal if:")
+            print("   • Games haven't started yet (lineups post ~1 hour before)")
+            print("   • It's not a game day")
+            print("   • MLB API is temporarily unavailable")
+            print("\n💡 TIP: Add manual player selections or use 'All Players' mode")
 
-        pitcher_confirmations = 0
-
-        if ENHANCED_PITCHER_AVAILABLE:
-            try:
-                # Get confirmed pitchers using enhanced detection
-                confirmed_pitchers = integrate_with_csv_players(self.players)
-
-                if confirmed_pitchers:
-                    print(f"🎯 Enhanced pitcher detection found {len(confirmed_pitchers)} confirmed starters")
-
-                    # Apply pitcher confirmations to our players
-                    for team, pitcher_info in confirmed_pitchers.items():
-                        pitcher_name = pitcher_info['name']
-
-                        # Find matching pitcher in our CSV
-                        best_match = None
-                        best_similarity = 0
-
-                        for player in self.players:
-                            if player.primary_position == 'P':
-                                similarity = self._name_similarity(pitcher_name, player.name)
-                                if similarity > best_similarity and similarity >= 0.65:
-                                    best_similarity = similarity
-                                    best_match = player
-
-                        if best_match:
-                            source = f"enhanced_pitcher_{pitcher_info['source']}"
-                            best_match.add_confirmation_source(source)
-                            pitcher_confirmations += 1
-                            print(
-                                f"🎯 ENHANCED PITCHER MATCH: {pitcher_name} → {best_match.name} ({best_similarity:.2f})")
-
-                print(f"✅ Enhanced pitcher confirmations: {pitcher_confirmations} pitchers")
-                confirmed_count += pitcher_confirmations
-
-            except Exception as e:
-                print(f"⚠️ Enhanced pitcher detection error: {e}")
-                print("🔄 Falling back to basic pitcher confirmation...")
-
-                # Fallback: Basic pitcher confirmation by salary
-                fallback_pitchers = self._basic_pitcher_fallback()
-                confirmed_count += fallback_pitchers
-
-        else:
-            # Basic pitcher confirmation if enhanced detection not available
-            print("🔄 Using basic pitcher confirmation...")
-            fallback_pitchers = self._basic_pitcher_fallback()
-            confirmed_count += fallback_pitchers
-
-        print(f"✅ TOTAL CONFIRMATIONS: {confirmed_count} players")
         return confirmed_count
 
     def _basic_pitcher_fallback(self) -> int:

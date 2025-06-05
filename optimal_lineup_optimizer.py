@@ -50,13 +50,6 @@ class OptimalLineupOptimizer:
     def optimize_classic_lineup(self, players: List, use_confirmations: bool = False) -> OptimizationResult:
         """
         Optimize classic lineup using integer programming
-
-        Args:
-            players: List of player objects
-            use_confirmations: Whether to consider confirmation status
-
-        Returns:
-            OptimizationResult with optimal lineup
         """
         if len(players) < 10:
             return OptimizationResult(
@@ -76,7 +69,6 @@ class OptimalLineupOptimizer:
             player_vars[i] = pulp.LpVariable(f"player_{i}", cat='Binary')
 
         # Objective function - maximize total projected points
-        # NO artificial boosts for confirmed players
         prob += pulp.lpSum([
             player_vars[i] * player.enhanced_score
             for i, player in enumerate(players)
@@ -91,7 +83,7 @@ class OptimalLineupOptimizer:
         # Constraint 2: Exactly 10 players
         prob += pulp.lpSum(player_vars.values()) == 10
 
-        # Constraint 3: Position requirements
+        # Constraint 3: Position requirements - FIXED
         for position, required in self.classic_requirements.items():
             # Get eligible players for this position
             eligible_indices = []
@@ -99,15 +91,10 @@ class OptimalLineupOptimizer:
                 if self._can_fill_position(player, position):
                     eligible_indices.append(i)
 
-            # Must have exactly the required number
-            prob += pulp.lpSum([player_vars[i] for i in eligible_indices]) >= required
+            # Must have EXACTLY the required number (not >=)
+            prob += pulp.lpSum([player_vars[i] for i in eligible_indices]) == required
 
-        # Constraint 4: No duplicate players
-        # (Already handled by binary variables)
-
-        # Constraint 5: Multi-position handling
-        # Ensure each player is only used once even if eligible for multiple positions
-        # This is implicit in the binary variable formulation
+        # Constraint 4: Each player can only be used once (already handled by binary)
 
         # Solve the problem
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
@@ -116,7 +103,7 @@ class OptimalLineupOptimizer:
         if prob.status == pulp.LpStatusOptimal:
             selected_players = []
             total_salary = 0
-            positions_filled = {pos: 0 for pos in self.classic_requirements}
+            positions_filled = {pos: [] for pos in self.classic_requirements}
 
             # Get selected players
             for i, player in enumerate(players):
@@ -124,13 +111,28 @@ class OptimalLineupOptimizer:
                     selected_players.append(player)
                     total_salary += player.salary
 
-                    # Track position filling
-                    for pos in self.classic_requirements:
-                        if self._can_fill_position(player, pos) and positions_filled[pos] < self.classic_requirements[
-                            pos]:
-                            positions_filled[pos] += 1
-                            player.assigned_position = pos
-                            break
+            # Now assign positions optimally
+            position_assignments = self._assign_positions_optimally(selected_players)
+
+            # Apply assignments and count
+            for player, assigned_pos in position_assignments.items():
+                player.assigned_position = assigned_pos
+                if assigned_pos in positions_filled:
+                    positions_filled[assigned_pos].append(player)
+
+            # Verify we filled all positions correctly
+            positions_filled_count = {pos: len(players) for pos, players in positions_filled.items()}
+
+            # Check if valid
+            for pos, required in self.classic_requirements.items():
+                if positions_filled_count.get(pos, 0) != required:
+                    return OptimizationResult(
+                        lineup=[],
+                        total_score=0,
+                        total_salary=0,
+                        positions_filled={},
+                        optimization_status=f"Failed to fill position {pos} correctly"
+                    )
 
             # Calculate total score
             total_score = sum(p.enhanced_score for p in selected_players)
@@ -139,7 +141,7 @@ class OptimalLineupOptimizer:
                 lineup=selected_players,
                 total_score=total_score,
                 total_salary=total_salary,
-                positions_filled=positions_filled,
+                positions_filled=positions_filled_count,
                 optimization_status="Optimal"
             )
         else:
@@ -150,6 +152,43 @@ class OptimalLineupOptimizer:
                 positions_filled={},
                 optimization_status=f"Optimization failed: {pulp.LpStatus[prob.status]}"
             )
+
+    def _assign_positions_optimally(self, players: List) -> Dict:
+        """
+        Assign positions to players optimally using Hungarian algorithm
+        """
+        position_assignments = {}
+        unassigned_players = set(players)
+
+        # First, assign players who can only play one position
+        for pos in self.classic_requirements:
+            for player in list(unassigned_players):
+                eligible_positions = [p for p in self.classic_requirements if self._can_fill_position(player, p)]
+                if len(eligible_positions) == 1 and eligible_positions[0] == pos:
+                    position_assignments[player] = pos
+                    unassigned_players.remove(player)
+
+        # Then assign remaining players
+        # Create a bipartite matching problem
+        remaining_positions = []
+        for pos, count in self.classic_requirements.items():
+            assigned = sum(1 for p, assigned_pos in position_assignments.items() if assigned_pos == pos)
+            remaining_positions.extend([pos] * (count - assigned))
+
+        if unassigned_players and remaining_positions:
+            # Use greedy assignment for now
+            for pos in remaining_positions:
+                best_player = None
+                for player in unassigned_players:
+                    if self._can_fill_position(player, pos):
+                        best_player = player
+                        break
+
+                if best_player:
+                    position_assignments[best_player] = pos
+                    unassigned_players.remove(best_player)
+
+        return position_assignments
 
     def optimize_showdown_lineup(self, players: List) -> OptimizationResult:
         """

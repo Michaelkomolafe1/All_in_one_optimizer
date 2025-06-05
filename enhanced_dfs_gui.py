@@ -1608,6 +1608,22 @@ class DFSOptimizerGUI(QMainWindow):
 
             QMessageBox.information(self, "Export Complete", f"Exported to {file_path}")
 
+    def display_single_result(self, result):
+        """Display single lineup result with better debugging"""
+        lineup = result['lineup']
+
+        # Debug: Check actual positions
+        print("\n🔍 LINEUP VALIDATION:")
+        position_count = {}
+        for player in lineup:
+            pos = getattr(player, 'assigned_position', player.primary_position)
+            position_count[pos] = position_count.get(pos, 0) + 1
+            print(f"   {player.name} - Primary: {player.primary_position}, Assigned: {pos}")
+
+        print(f"\n📊 Position counts: {position_count}")
+
+        # Continue with normal display...
+
     def export_draftkings(self):
         """Export in DraftKings upload format"""
         if not self.last_results:
