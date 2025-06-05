@@ -1,0 +1,11 @@
+{
+  "starting_bankroll": 100.0,
+  "current_bankroll": 1000,
+  "transactions": [],
+  "contest_history": [],
+  "settings": {
+    "risk_tolerance": "conservative",
+    "max_daily_risk": 0.1,
+    "kelly_multiplier": 0.25
+  }
+}
