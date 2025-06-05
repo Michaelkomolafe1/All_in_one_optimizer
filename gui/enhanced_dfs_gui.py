@@ -9,10 +9,8 @@ import sys
 import os
 import csv
 import tempfile
-
-
-import numpy as np
-from enum import Enum
+from datetime import datetime
+from typing import List, Dict, Tuple, Optional
 
 # Import PyQt5
 try:
@@ -27,34 +25,15 @@ except ImportError:
 
 # Import our core systems
 try:
-    from bulletproof_dfs_core import BulletproofDFSCore, AdvancedPlayer
-    from unified_data_system import UnifiedDataSystem
-    from optimal_lineup_optimizer import OptimalLineupOptimizer
-    from smart_confirmation_system import SmartConfirmationSystem
+    from core.bulletproof_dfs_core import BulletproofDFSCore, AdvancedPlayer
+    from core.unified_data_system import UnifiedDataSystem
+    from core.optimal_lineup_optimizer import OptimalLineupOptimizer
+    from core.smart_confirmation_system import SmartConfirmationSystem
 
     CORE_AVAILABLE = True
 except ImportError as e:
     print(f"❌ Could not import core systems: {e}")
     CORE_AVAILABLE = False
-
-# Replace your current import with this:
-try:
-    from professional_dfs_gui import (
-        ModernLineupGeneratorWidget,
-        AdvancedAnalyticsWidget,
-        LineupResultsDialog
-    )
-    PROFESSIONAL_GUI_AVAILABLE = True
-except ImportError:
-    print("⚠️ professional_dfs_gui.py not found - please save it in the same directory")
-    PROFESSIONAL_GUI_AVAILABLE = False
-    # Create dummy classes to prevent errors
-    class ModernLineupGeneratorWidget:
-        pass
-    class AdvancedAnalyticsWidget:
-        pass
-    class LineupResultsDialog:
-        pass
 
 
 class OptimizationThread(QThread):
@@ -171,122 +150,6 @@ class EnhancedDFSGUI(QMainWindow):
         self.show_welcome_message()
         self.auto_detect_files()
 
-    def quick_generate_lineups(self, contest_type, count):
-        """Quick multi-lineup generation"""
-        if not self.dk_file:
-            QMessageBox.warning(self, "No Data", "Please load a DraftKings CSV first")
-            return
-
-        # Show progress
-        progress = QProgressDialog(f"Generating {count} {contest_type.upper()} lineups...",
-                                   None, 0, 0, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        QApplication.processEvents()
-
-        try:
-            # Create core
-            core = BulletproofDFSCore()
-            core.load_draftkings_csv(self.dk_file)
-
-            # Apply manual selections
-            manual_text = self.manual_input.toPlainText()
-            if manual_text:
-                core.apply_manual_selection(manual_text)
-
-            # Detect confirmations
-            core.detect_confirmed_players()
-
-            # Generate lineups
-            lineups = core.generate_contest_lineups(count, contest_type)
-
-            progress.close()
-
-            if lineups:
-                self.show_multi_lineup_results(lineups)
-            else:
-                QMessageBox.warning(self, "Failed", "Could not generate lineups")
-
-        except Exception as e:
-            progress.close()
-            QMessageBox.critical(self, "Error", f"Error: {str(e)}")
-
-    def generate_lineups_with_settings(self, settings):
-        """Generate lineups with advanced settings"""
-        # (Use the complete method from the integration guide)
-
-    def show_multi_lineup_results(self, lineups):
-        """Show multi-lineup results"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"Generated {len(lineups)} Lineups")
-        dialog.setMinimumSize(800, 600)
-
-        layout = QVBoxLayout(dialog)
-
-        # Summary
-        scores = [l['total_score'] for l in lineups]
-        summary = QLabel(f"""
-        <h3>Generated {len(lineups)} Lineups</h3>
-        <p><b>Score Range:</b> {min(scores):.1f} - {max(scores):.1f}</p>
-        <p><b>Average Score:</b> {sum(scores) / len(scores):.1f}</p>
-        """)
-        layout.addWidget(summary)
-
-        # Lineup list
-        list_widget = QListWidget()
-        for i, lineup_data in enumerate(lineups):
-            lineup_text = f"Lineup {i + 1}: {lineup_data['total_score']:.1f} pts, ${lineup_data['total_salary']:,}"
-            list_widget.addItem(lineup_text)
-
-        list_widget.itemDoubleClicked.connect(
-            lambda item: self.show_lineup_detail(lineups[list_widget.row(item)])
-        )
-        layout.addWidget(list_widget)
-
-        # Export button
-        export_btn = QPushButton("📤 Export to CSV")
-        export_btn.clicked.connect(lambda: self.export_lineups(lineups))
-        layout.addWidget(export_btn)
-
-        # Close button
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(dialog.accept)
-        layout.addWidget(close_btn)
-
-        dialog.exec_()
-
-    def show_lineup_detail(self, lineup_data):
-        """Show detailed lineup"""
-        detail = "\\n".join([
-            f"{p.primary_position}: {p.name} (${p.salary:,}) - {p.enhanced_score:.1f}"
-            for p in lineup_data['lineup']
-        ])
-
-        QMessageBox.information(self, f"Lineup {lineup_data['lineup_id']}", detail)
-
-    def export_lineups(self, lineups):
-        """Export lineups to CSV"""
-        filename, _ = QFileDialog.getSaveFileName(self, "Export Lineups",
-                                                  "lineups.csv", "CSV Files (*.csv)")
-
-        if filename:
-            import csv
-            with open(filename, 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['Lineup', 'Player1', 'Player2', 'Player3', 'Player4',
-                                 'Player5', 'Player6', 'Player7', 'Player8', 'Player9',
-                                 'Player10', 'Score', 'Salary'])
-
-                for i, lineup_data in enumerate(lineups):
-                    row = [f"Lineup{i + 1}"]
-                    for player in lineup_data['lineup']:
-                        row.append(player.name)
-                    row.append(f"{lineup_data['total_score']:.1f}")
-                    row.append(f"${lineup_data['total_salary']}")
-                    writer.writerow(row)
-
-            QMessageBox.information(self, "Export Complete", f"Exported to {filename}")
-
     def setup_ui(self):
         """Setup the user interface"""
         central_widget = QWidget()
@@ -319,17 +182,13 @@ class EnhancedDFSGUI(QMainWindow):
         self.tab_widget.addTab(self.create_setup_tab(), "⚙️ Setup")
         self.tab_widget.addTab(self.create_optimize_tab(), "🚀 Optimize")
         self.tab_widget.addTab(self.create_results_tab(), "📊 Results")
-        # Add after your other tabs:
-        self.analytics_widget = AdvancedAnalyticsWidget(self)
-        self.tab_widget.addTab(self.analytics_widget, "📊 Analytics & Bankroll")
+
         layout.addWidget(self.tab_widget)
 
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready - Enhanced DFS Optimizer 2.0")
-
-
 
     def create_header(self, layout):
         """Create application header"""
@@ -537,44 +396,8 @@ class EnhancedDFSGUI(QMainWindow):
                 background-color: #9ca3af;
             }
         """)
-        # Replace the old multi-lineup section with:
-        self.lineup_widget = ModernLineupGeneratorWidget(self)
-        layout.addWidget(self.lineup_widget)
-
-        # Quick buttons
-        btn_layout = QHBoxLayout()
-
-        # GPP button
-        gpp_btn = QPushButton("Generate 20 GPP Lineups")
-        gpp_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #7c3aed;
-                color: white;
-                padding: 8px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #6d28d9;
-            }
-        """)
-        gpp_btn.clicked.connect(lambda: self.quick_generate_lineups('gpp', 20))
-        btn_layout.addWidget(gpp_btn)
-
-        # Cash button
-        cash_btn = QPushButton("Generate 5 Cash Lineups")
-        cash_btn.clicked.connect(lambda: self.quick_generate_lineups('cash', 5))
-        btn_layout.addWidget(cash_btn)
-
-        # Add the modern lineup generator widget
-        if PROFESSIONAL_GUI_AVAILABLE:
-            self.lineup_widget = ModernLineupGeneratorWidget(self)
-            layout.addWidget(self.lineup_widget)
-        else:
-            # Fallback to simple button
-            multi_btn = QPushButton("⚠️ Professional GUI not available")
-            multi_btn.setEnabled(False)
-            layout.addWidget(multi_btn)
+        self.run_btn.clicked.connect(self.run_optimization)
+        layout.addWidget(self.run_btn)
 
         # Progress bar
         self.progress_bar = QProgressBar()
