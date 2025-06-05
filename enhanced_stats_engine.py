@@ -231,7 +231,7 @@ class VariableConfidenceProcessor:
 
         adjustments = {
             'statcast': 0.0,
-            'vegas': 0.0, 
+            'vegas': 0.0,
             'dff': 0.0,
             'total': 0.0,
             'breakdown': {}
@@ -304,23 +304,47 @@ class VariableConfidenceProcessor:
             # 3. DFF EXPERT ANALYSIS with Variable Confidence (75%)
             if hasattr(player, 'dff_data') and player.dff_data:
                 dff_projection = player.dff_data.get('ppg_projection', 0)
-                if dff_projection > 0 and dff_projection != player.projection:
-                    # Compare DFF projection to base projection
-                    if player.projection > 0:
-                        dff_score = (dff_projection - player.projection) / player.projection
-                        # Apply conservative DFF weighting
-                        if abs(dff_score) > 0.15:  # Significant DFF deviation
-                            dff_adjustment = dff_score * 0.4 * pos_weights.get('dff', 0.2) * self.config.dff
-                            adjustments['dff'] = np.clip(dff_adjustment, -0.08, 0.08)
+                ownership = player.dff_data.get('ownership', 0)
 
-                            if abs(adjustments['dff']) > 0.02:
-                                adjustments['breakdown']['dff'] = {
-                                    'dff_projection': dff_projection,
-                                    'base_projection': player.projection,
-                                    'confidence': self.config.dff,
-                                    'position_weight': pos_weights.get('dff', 0.2),
-                                    'adjustment': adjustments['dff']
-                                }
+                # Debug output for significant differences
+                if dff_projection > 0 and abs(player.enhanced_score - dff_projection) > 2:
+                    print(
+                        f"   💡 DFF: {player.name} - Current: {player.enhanced_score:.1f} vs DFF: {dff_projection:.1f}")
+
+                # Make sure we have valid DFF projection
+                if dff_projection > 0 and player.enhanced_score > 0:
+                    # Calculate deviation from current projection
+                    dff_deviation = (dff_projection - player.enhanced_score) / player.enhanced_score
+
+                    # Apply DFF adjustment with lower threshold (5% instead of 10%)
+                    if abs(dff_deviation) > 0.05:  # Lowered threshold for more sensitivity
+                        # Scale adjustment based on:
+                        # - Deviation magnitude
+                        # - Position weight (DFF is more reliable for certain positions)
+                        # - Confidence level
+                        # - Cap at 10%
+
+                        # Higher weight for larger deviations
+                        weight_factor = 0.6 if abs(dff_deviation) > 0.15 else 0.5
+
+                        dff_adjustment = dff_deviation * weight_factor * pos_weights.get('dff', 0.2) * self.config.dff
+                        adjustments['dff'] = np.clip(dff_adjustment, -0.10, 0.10)
+
+                        adjustments['breakdown']['dff'] = {
+                            'dff_projection': dff_projection,
+                            'base_projection': player.enhanced_score,
+                            'ownership': ownership,
+                            'deviation': dff_deviation,
+                            'confidence': self.config.dff,
+                            'position_weight': pos_weights.get('dff', 0.2),
+                            'adjustment': adjustments['dff']
+                        }
+
+                        # Log significant DFF adjustments
+                        if abs(adjustments['dff']) > 0.03:
+                            ownership_str = f" | Own: {ownership}%" if ownership > 0 else ""
+                            print(
+                                f"   🎯 DFF Adjustment: {player.name} {adjustments['dff']:+.1%} ({dff_projection:.1f} proj{ownership_str})")
 
             # 4. CALCULATE TOTAL ADJUSTMENT with Smart Capping
             total_adjustment = adjustments['statcast'] + adjustments['vegas'] + adjustments['dff']
@@ -334,15 +358,39 @@ class VariableConfidenceProcessor:
                 adjustments['vegas'] *= scaling_factor
                 adjustments['dff'] *= scaling_factor
 
+                adjustments['breakdown']['capped'] = True
+                adjustments['breakdown']['scaling_factor'] = scaling_factor
+
             adjustments['total'] = total_adjustment
 
             # 5. CORRELATION ADJUSTMENT (reduce overlapping positive signals)
-            positive_sources = sum(1 for adj in [adjustments['statcast'], adjustments['vegas'], adjustments['dff']] if adj > 0.03)
+            positive_sources = sum(
+                1 for adj in [adjustments['statcast'], adjustments['vegas'], adjustments['dff']] if adj > 0.03)
             if positive_sources >= 2:
                 # Reduce total by 10% if multiple strong positive signals (avoid over-adjustment)
                 correlation_reduction = 0.90
                 adjustments['total'] *= correlation_reduction
                 adjustments['breakdown']['correlation_adjustment'] = correlation_reduction
+
+            # 6. Apply the adjustment to the player
+            if abs(adjustments['total']) > 0.01:  # Only apply meaningful adjustments
+                adjustment_points = player.enhanced_score * adjustments['total']
+                player.enhanced_score += adjustment_points
+
+                # Log significant adjustments
+                if abs(adjustments['total']) > 0.05:
+                    breakdown_str = []
+                    if abs(adjustments['statcast']) > 0.01:
+                        breakdown_str.append(f"SC:{adjustments['statcast']:+.1%}")
+                    if abs(adjustments['vegas']) > 0.01:
+                        breakdown_str.append(f"VG:{adjustments['vegas']:+.1%}")
+                    if abs(adjustments['dff']) > 0.01:
+                        breakdown_str.append(f"DFF:{adjustments['dff']:+.1%}")
+
+                    print(f"🎯 {player.name} ({player.primary_position}):")
+                    print(
+                        f"   Base: {player.base_score:.1f} → Enhanced: {player.enhanced_score:.1f} ({adjustments['total']:+.1%})")
+                    print(f"   Breakdown: {' | '.join(breakdown_str)}")
 
             return adjustments['total'], adjustments
 

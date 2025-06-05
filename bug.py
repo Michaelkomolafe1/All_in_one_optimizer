@@ -1,145 +1,101 @@
 #!/usr/bin/env python3
 """
-API VERIFICATION SCRIPT
-======================
-Tests all MLB API endpoints to ensure they're working
+FIXED DEBUG SCRIPT - Shows actual confirmations
 """
 
-import requests
-import json
-from datetime import datetime
+from bulletproof_dfs_core import BulletproofDFSCore
 
 
-def test_mlb_api():
-    """Test MLB Stats API endpoints"""
-    print("🔍 TESTING MLB STATS API")
-    print("=" * 60)
+def debug_confirmations():
+    print("🔍 DEBUGGING CONFIRMATIONS")
+    print("=" * 80)
 
-    # Test 1: Basic schedule endpoint
-    today = datetime.now().strftime('%Y-%m-%d')
+    core = BulletproofDFSCore()
 
-    print(f"\n1️⃣ Testing basic schedule for {today}...")
-    url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}"
+    # Load CSV
+    if not core.load_draftkings_csv("DKSalaries_good.csv"):
+        return
 
-    try:
-        response = requests.get(url, timeout=10)
-        print(f"   Status: {response.status_code}")
+    # Get confirmations
+    confirmed_count = core.detect_confirmed_players()
 
-        if response.status_code == 200:
-            data = response.json()
-            games = sum(len(date.get('games', [])) for date in data.get('dates', []))
-            print(f"   ✅ Success! Found {games} games")
-        else:
-            print(f"   ❌ Failed with status {response.status_code}")
+    # Now manually check each player
+    print("\n📋 PLAYER BY PLAYER CONFIRMATION CHECK:")
 
-    except Exception as e:
-        print(f"   ❌ Error: {e}")
+    confirmed_players = []
+    for player in core.players:
+        if core.confirmation_system:
+            # Check lineup
+            is_in_lineup, batting_order = core.confirmation_system.is_player_confirmed(
+                player.name, player.team
+            )
 
-    # Test 2: Schedule with lineups
-    print(f"\n2️⃣ Testing schedule with lineups...")
-    url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}&hydrate=lineups,probablePitcher"
+            # Check if pitcher
+            is_starting_pitcher = False
+            if player.primary_position == 'P':
+                is_starting_pitcher = core.confirmation_system.is_pitcher_confirmed(
+                    player.name, player.team
+                )
 
-    try:
-        response = requests.get(url, timeout=10)
-        print(f"   Status: {response.status_code}")
+            if is_in_lineup or is_starting_pitcher:
+                player.add_confirmation_source("mlb_confirmed")
+                confirmed_players.append(player)
 
-        if response.status_code == 200:
-            data = response.json()
+                status = "Starting Pitcher" if is_starting_pitcher else f"Batting {batting_order}"
+                print(f"✅ {player.name} ({player.team}) - {status}")
 
-            # Check for lineups and pitchers
-            lineups_found = 0
-            pitchers_found = 0
+    print(f"\n📊 Total confirmed: {len(confirmed_players)}")
 
-            for date in data.get('dates', []):
-                for game in date.get('games', []):
-                    if 'lineups' in game:
-                        lineups_found += 1
-                    if 'probablePitchers' in game:
-                        pitchers_found += 1
+    # Now apply analytics to confirmed only
+    if confirmed_players:
+        print("\n🔬 APPLYING ANALYTICS TO CONFIRMED PLAYERS ONLY...")
 
-            print(f"   ✅ Found {lineups_found} games with lineups")
-            print(f"   ✅ Found {pitchers_found} games with probable pitchers")
+        # Vegas
+        if core.vegas_lines:
+            print("💰 Applying Vegas to confirmed players...")
+            core.vegas_lines.apply_to_players(confirmed_players)
 
-            # Show sample game data
-            if data.get('dates') and data['dates'][0].get('games'):
-                game = data['dates'][0]['games'][0]
-                away = game.get('teams', {}).get('away', {}).get('team', {}).get('name', 'Unknown')
-                home = game.get('teams', {}).get('home', {}).get('team', {}).get('name', 'Unknown')
-                print(f"\n   Sample game: {away} @ {home}")
+        # Statcast (with parallel processing)
+        if core.statcast_fetcher:
+            print("📊 Applying Statcast to confirmed players (parallel)...")
 
-                # Check for pitcher info
-                if 'probablePitchers' in game:
-                    if 'away' in game['probablePitchers']:
-                        away_pitcher = game['probablePitchers']['away'].get('fullName', 'TBD')
-                        print(f"   Away pitcher: {away_pitcher}")
-                    if 'home' in game['probablePitchers']:
-                        home_pitcher = game['probablePitchers']['home'].get('fullName', 'TBD')
-                        print(f"   Home pitcher: {home_pitcher}")
+            # This should use your parallel fetcher
+            from simple_statcast_fetcher import FastStatcastFetcher
+            fetcher = FastStatcastFetcher(max_workers=5)
 
-    except Exception as e:
-        print(f"   ❌ Error: {e}")
+            # Fetch all confirmed players in parallel
+            statcast_data = fetcher.fetch_multiple_players_parallel(confirmed_players)
 
-    # Test 3: Alternative endpoint for live data
-    print(f"\n3️⃣ Testing live scoreboard endpoint...")
-    url = "https://statsapi.mlb.com/api/v1.1/game/scoreboard"
+            # Apply the data
+            for player in confirmed_players:
+                if player.name in statcast_data:
+                    player.apply_statcast_data(statcast_data[player.name])
+                    print(f"   ✅ Statcast applied to {player.name}")
 
-    try:
-        response = requests.get(url, timeout=10)
-        print(f"   Status: {response.status_code}")
+        # Statistical analysis
+        from enhanced_stats_engine import apply_enhanced_statistical_analysis
+        apply_enhanced_statistical_analysis(confirmed_players, verbose=True)
 
-        if response.status_code == 200:
-            print(f"   ✅ Live scoreboard endpoint working!")
-    except Exception as e:
-        print(f"   ❌ Error: {e}")
+        print(f"\n✅ Analytics applied to {len(confirmed_players)} confirmed players")
 
+    # Try optimization with confirmed players
+    print("\n🎯 OPTIMIZING WITH CONFIRMED PLAYERS...")
+    core.set_optimization_mode('confirmed_only')
+    lineup, score = core.optimize_lineup_with_mode()
 
-def test_alternative_sources():
-    """Test alternative data sources"""
-    print(f"\n\n🔍 TESTING ALTERNATIVE SOURCES")
-    print("=" * 60)
+    if lineup:
+        print(f"✅ SUCCESS! Score: {score:.2f}")
+        for player in lineup:
+            print(f"   {player.name} ({player.primary_position}) - ${player.salary}")
+    else:
+        print("❌ Optimization failed - checking why...")
 
-    # Test ESPN API (unofficial)
-    print(f"\n4️⃣ Testing ESPN endpoint...")
-    url = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
-
-    try:
-        response = requests.get(url, timeout=10)
-        print(f"   Status: {response.status_code}")
-
-        if response.status_code == 200:
-            data = response.json()
-            events = len(data.get('events', []))
-            print(f"   ✅ ESPN API working! Found {events} games")
-    except Exception as e:
-        print(f"   ❌ Error: {e}")
-
-
-def check_lineup_availability():
-    """Check when lineups are typically available"""
-    print(f"\n\n📅 LINEUP AVAILABILITY INFO")
-    print("=" * 60)
-
-    current_time = datetime.now()
-    print(f"Current time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"\n⏰ Typical lineup posting times:")
-    print("   • 1:00 PM games: Lineups by 12:00 PM")
-    print("   • 3:00 PM games: Lineups by 2:00 PM")
-    print("   • 7:00 PM games: Lineups by 6:00 PM")
-    print("   • 10:00 PM games: Lineups by 9:00 PM")
-    print(f"\n💡 Note: Lineups are usually posted 30-60 minutes before first pitch")
+        # Show position coverage
+        positions = {}
+        for p in confirmed_players:
+            positions[p.primary_position] = positions.get(p.primary_position, 0) + 1
+        print(f"Confirmed player positions: {positions}")
 
 
 if __name__ == "__main__":
-    print("🧪 MLB API VERIFICATION TOOL")
-    print("=" * 60)
-
-    # Run all tests
-    test_mlb_api()
-    test_alternative_sources()
-    check_lineup_availability()
-
-    print(f"\n\n✅ VERIFICATION COMPLETE!")
-    print("\nIf lineups aren't showing, it's likely because:")
-    print("1. Games haven't started yet (lineups post ~1 hour before)")
-    print("2. It's an off day with no games")
-    print("3. The specific teams in your CSV aren't playing today")
+    debug_confirmations()

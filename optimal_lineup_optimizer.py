@@ -83,7 +83,7 @@ class OptimalLineupOptimizer:
         # Constraint 2: Exactly 10 players
         prob += pulp.lpSum(player_vars.values()) == 10
 
-        # Constraint 3: Position requirements - FIXED
+        # Constraint 3: Position requirements
         for position, required in self.classic_requirements.items():
             # Get eligible players for this position
             eligible_indices = []
@@ -91,7 +91,7 @@ class OptimalLineupOptimizer:
                 if self._can_fill_position(player, position):
                     eligible_indices.append(i)
 
-            # Must have EXACTLY the required number (not >=)
+            # Must have EXACTLY the required number
             prob += pulp.lpSum([player_vars[i] for i in eligible_indices]) == required
 
         # Constraint 4: Each player can only be used once (already handled by binary)
@@ -137,13 +137,26 @@ class OptimalLineupOptimizer:
             # Calculate total score
             total_score = sum(p.enhanced_score for p in selected_players)
 
-            return OptimizationResult(
+            # Add stack evaluation
+            stack_info = self.evaluate_lineup_stacks(selected_players)
+
+            # Create enhanced result
+            result = OptimizationResult(
                 lineup=selected_players,
                 total_score=total_score,
                 total_salary=total_salary,
                 positions_filled=positions_filled_count,
                 optimization_status="Optimal"
             )
+
+            # Add stack info as attribute
+            result.stack_info = stack_info
+
+            # Log stack bonus if significant
+            if stack_info['correlation_bonus'] > 0:
+                print(f"   🔥 Stack correlation bonus: +{stack_info['correlation_bonus']:.1f} points")
+
+            return result
         else:
             return OptimizationResult(
                 lineup=[],
@@ -295,6 +308,8 @@ class OptimalLineupOptimizer:
                 optimization_status=f"Optimization failed: {pulp.LpStatus[prob.status]}"
             )
 
+
+
     def _can_fill_position(self, player, position: str) -> bool:
         """
         Check if player can fill a specific position
@@ -329,6 +344,72 @@ class OptimalLineupOptimizer:
         return False
 
 
+# Add this method to OptimalLineupOptimizer class:
+
+def evaluate_lineup_stacks(self, lineup: List) -> Dict[str, Any]:
+    """Evaluate stacking patterns in lineup"""
+    stack_info = {
+        'stacks': [],
+        'correlation_bonus': 0.0,
+        'largest_stack': 0,
+        'has_pitcher_stack': False
+    }
+
+    # Count players by team
+    team_counts = {}
+    team_players = {}
+
+    for player in lineup:
+        if not hasattr(player, 'team'):
+            continue
+
+        team = player.team
+        if team not in team_counts:
+            team_counts[team] = 0
+            team_players[team] = []
+
+        team_counts[team] += 1
+        team_players[team].append(player)
+
+    # Identify stacks (2+ players from same team)
+    for team, count in team_counts.items():
+        if count >= 2:
+            stack_players = team_players[team]
+
+            # Check stack quality
+            has_pitcher = any(p.primary_position == 'P' for p in stack_players)
+            has_top_hitter = any(
+                hasattr(p, 'batting_order') and p.batting_order <= 3
+                for p in stack_players if p.primary_position != 'P'
+            )
+
+            stack_data = {
+                'team': team,
+                'size': count,
+                'has_pitcher': has_pitcher,
+                'has_top_hitter': has_top_hitter,
+                'players': [p.name for p in stack_players]
+            }
+
+            # Calculate correlation bonus
+            if count >= 3:  # 3+ player stack
+                base_bonus = 1.5 * count
+                if has_top_hitter:
+                    base_bonus *= 1.2
+                if has_pitcher and count >= 4:  # Pitcher + 3 hitters
+                    base_bonus *= 1.3
+                    stack_info['has_pitcher_stack'] = True
+
+                stack_data['bonus'] = base_bonus
+                stack_info['correlation_bonus'] += base_bonus
+            else:
+                stack_data['bonus'] = 0.5 * count
+                stack_info['correlation_bonus'] += stack_data['bonus']
+
+            stack_info['stacks'].append(stack_data)
+            stack_info['largest_stack'] = max(stack_info['largest_stack'], count)
+
+    return stack_info
 def assign_positions_to_lineup(self, lineup: List) -> List:
     """
     Assign specific positions to players in lineup

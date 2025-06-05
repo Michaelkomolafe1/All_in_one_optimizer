@@ -396,7 +396,7 @@ class VegasLines:
         Apply Vegas line adjustments to player projections.
 
         Args:
-            players: List of player dictionaries
+            players: List of player objects (AdvancedPlayer instances)
 
         Returns:
             Updated player list with Vegas adjustments
@@ -410,99 +410,69 @@ class VegasLines:
             return players
 
         adjusted_count = 0
-        adjusted_players = []
 
         for player in players:
             try:
-                # Make a copy of the player to avoid modifying the original
-                adjusted_player = list(player)
-
-                team = player[3]  # Team is at index 3
-                player_name = player[1]  # Name is at index 1
-                position = player[2]  # Position is at index 2
+                # Handle AdvancedPlayer objects
+                if hasattr(player, 'team'):  # It's an object
+                    team = player.team
+                    player_name = player.name
+                    position = player.primary_position
+                else:  # Legacy list/tuple format
+                    team = player[3]
+                    player_name = player[1]
+                    position = player[2]
 
                 if not team or team not in self.lines:
-                    # Add player without adjustment
-                    adjusted_players.append(adjusted_player)
                     continue
 
                 team_data = self.lines[team]
-                opponent = team_data.get('opponent')
-
-                # Skip if opponent information is missing
-                if not opponent:
-                    # Add player without adjustment
-                    adjusted_players.append(adjusted_player)
-                    continue
-
                 team_implied = team_data.get('team_total', 0)
                 opp_implied = team_data.get('opponent_total', 0)
-                is_home = team_data.get('is_home', False)
 
                 # Apply Vegas boosts/penalties
+                boost = 0.0
                 if position != 'P':  # Batter
-                    # Higher team totals = better for batters
                     if team_implied >= 5.0:
                         boost = 2.0
-                        verbose_print(f"Vegas boost for {player_name}: +{boost} (team total: {team_implied})")
                     elif team_implied >= 4.5:
                         boost = 1.0
-                        verbose_print(f"Vegas boost for {player_name}: +{boost} (team total: {team_implied})")
                     elif team_implied <= 3.5:
                         boost = -1.0
-                        verbose_print(f"Vegas penalty for {player_name}: {boost} (team total: {team_implied})")
-                    else:
-                        boost = 0.0
-
                 else:  # Pitcher
-                    # Lower opponent totals = better for pitchers
                     if opp_implied <= 3.5:
                         boost = 2.0
-                        verbose_print(f"Vegas boost for {player_name}: +{boost} (opp total: {opp_implied})")
                     elif opp_implied <= 4.0:
                         boost = 1.0
-                        verbose_print(f"Vegas boost for {player_name}: +{boost} (opp total: {opp_implied})")
                     elif opp_implied >= 5.0:
                         boost = -1.0
-                        verbose_print(f"Vegas penalty for {player_name}: {boost} (opp total: {opp_implied})")
-                    else:
-                        boost = 0.0
 
-                # Apply the boost to player score (index 6)
-                if boost != 0.0:
-                    old_score = adjusted_player[6]
-                    adjusted_player[6] = old_score + boost
+                # Apply boost
+                if boost != 0.0 and hasattr(player, 'enhanced_score'):
+                    old_score = player.enhanced_score
+                    player.enhanced_score += boost
                     adjusted_count += 1
+                    verbose_print(f"Vegas adjustment for {player_name}: {boost:+.1f}")
 
-                # Add Vegas data to player at index 15
-                vegas_info = {
-                    "team_total": team_implied,
-                    "opp_total": opp_implied,
-                    "total": team_data.get('total', 0),
-                    "is_home": is_home
-                }
-
-                # Make sure player array is long enough
-                while len(adjusted_player) < 16:
-                    adjusted_player.append(None)
-
-                adjusted_player[15] = vegas_info
-
-                # Add to result list
-                adjusted_players.append(adjusted_player)
+                # Add Vegas data to player
+                if hasattr(player, 'apply_vegas_data'):
+                    vegas_info = {
+                        "team_total": team_implied,
+                        "opponent_total": opp_implied,
+                        "total": team_data.get('total', 0),
+                        "is_home": team_data.get('is_home', False)
+                    }
+                    player.apply_vegas_data(vegas_info)
 
             except Exception as e:
-                verbose_print(f"Error applying Vegas data to {player[1] if len(player) > 1 else 'unknown'}: {str(e)}")
-                # Add original player if there was an error
-                adjusted_players.append(player)
+                verbose_print(
+                    f"Error applying Vegas data to {player_name if 'player_name' in locals() else 'unknown'}: {str(e)}")
+                continue
 
         if adjusted_count > 0:
             print(f"Applied Vegas lines adjustments to {adjusted_count} players")
-        else:
-            print("No Vegas adjustments applied to any players")
 
-        return adjusted_players
-
+        return players
 
 # Direct usage example
 if __name__ == "__main__":

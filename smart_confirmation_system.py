@@ -312,6 +312,26 @@ class SmartConfirmationSystem:
 
         return False, None
 
+    def is_player_confirmed(self, player_name: str, team: str = None) -> Tuple[bool, Optional[int]]:
+        """Check if player is confirmed in actual lineup"""
+        if team:
+            team = self.data_system.normalize_team(team)
+            if team in self.confirmed_lineups:
+                for lineup_player in self.confirmed_lineups[team]:
+                    # Debug output
+                    if self.verbose:
+                        print(f"   Checking {player_name} vs {lineup_player['name']}")
+
+                    # Use the unified data system's name matching
+                    if self.data_system.match_player_names(player_name, lineup_player['name']):
+                        if self.verbose:
+                            print(f"✅ Matched {player_name} to {lineup_player['name']} in {team} lineup")
+                        return True, lineup_player.get('order', 1)
+            elif self.verbose:
+                print(f"   Team {team} not in confirmed lineups: {list(self.confirmed_lineups.keys())}")
+
+        return False, None
+
     def is_pitcher_confirmed(self, pitcher_name: str, team: str = None) -> bool:
         """Check if pitcher is confirmed starter"""
         if team:
