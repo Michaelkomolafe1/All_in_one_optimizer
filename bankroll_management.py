@@ -20,35 +20,53 @@ class BankrollManager:
 
     def __init__(self):
         self.data_file = "bankroll_history.json"
+        # Initialize data with defaults FIRST - this is crucial
+        self.data = {
+            'starting_bankroll': 1000,
+            'current_bankroll': 1000,
+            'transactions': [],
+            'contest_history': [],
+            'settings': {
+                'risk_tolerance': 'moderate',
+                'max_daily_risk': 0.10,  # 10% of bankroll
+                'kelly_multiplier': 0.25  # Conservative Kelly
+            }
+        }
+        # Then try to load from file
         self.load_data()
 
     def load_data(self):
         """Load bankroll history"""
-        if os.path.exists(self.data_file):
-            with open(self.data_file, 'r') as f:
-                self.data = json.load(f)
-        else:
-            self.data = {
-                'starting_bankroll': 1000,
-                'current_bankroll': 1000,
-                'transactions': [],
-                'contest_history': [],
-                'settings': {
-                    'risk_tolerance': 'moderate',
-                    'max_daily_risk': 0.10,  # 10% of bankroll
-                    'kelly_multiplier': 0.25  # Conservative Kelly
-                }
-            }
+        try:
+            if os.path.exists(self.data_file):
+                with open(self.data_file, 'r') as f:
+                    loaded_data = json.load(f)
+                    # Update existing data with loaded data
+                    if isinstance(loaded_data, dict):
+                        # Ensure all required keys exist
+                        for key in ['starting_bankroll', 'current_bankroll', 'transactions', 
+                                   'contest_history', 'settings']:
+                            if key in loaded_data:
+                                self.data[key] = loaded_data[key]
+        except Exception as e:
+            print(f"Warning: Could not load bankroll data: {e}")
+            # Data already initialized with defaults in __init__
 
     def save_data(self):
         """Save bankroll data"""
-        with open(self.data_file, 'w') as f:
-            json.dump(self.data, f, indent=2)
+        try:
+            with open(self.data_file, 'w') as f:
+                json.dump(self.data, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save bankroll data: {e}")
 
-    def get_recommendations(self, slate_info: Dict) -> Dict:
+    def get_recommendations(self, slate_info: Dict = None) -> Dict:
         """Get contest recommendations based on bankroll"""
-        bankroll = self.data['current_bankroll']
-        risk_tolerance = self.data['settings']['risk_tolerance']
+        if slate_info is None:
+            slate_info = {}
+
+        bankroll = self.data.get('current_bankroll', 1000)
+        risk_tolerance = self.data.get('settings', {}).get('risk_tolerance', 'moderate')
 
         recommendations = {
             'daily_budget': self._calculate_daily_budget(bankroll, risk_tolerance),
@@ -126,7 +144,8 @@ class BankrollManager:
     def _recommend_specific_contests(self, bankroll: float, slate_info: Dict) -> List[Dict]:
         """Recommend specific contests to enter"""
         recommendations = []
-        daily_budget = self._calculate_daily_budget(bankroll, self.data['settings']['risk_tolerance'])['total']
+        risk_tolerance = self.data.get('settings', {}).get('risk_tolerance', 'moderate')
+        daily_budget = self._calculate_daily_budget(bankroll, risk_tolerance)['total']
 
         # Cash game recommendations
         cash_budget = daily_budget * 0.6  # 60% for moderate risk
@@ -215,16 +234,19 @@ class BankrollManager:
         if bankroll < 100:
             warnings.append("⚠️ Low bankroll - consider minimum buy-in contests only")
 
-        if bankroll < self.data['starting_bankroll'] * 0.5:
+        starting = self.data.get('starting_bankroll', 1000)
+        if bankroll < starting * 0.5:
             warnings.append("⚠️ Down 50% from starting bankroll - consider reducing stakes")
 
         # Check recent performance
-        recent_contests = self.data['contest_history'][-10:]
+        recent_contests = self.data.get('contest_history', [])[-10:]
         if recent_contests:
-            recent_roi = sum(c.get('profit', 0) for c in recent_contests) / sum(
-                c.get('entry_fee', 1) for c in recent_contests)
-            if recent_roi < -0.2:
-                warnings.append("⚠️ Recent ROI below -20% - review strategy")
+            total_entry = sum(c.get('entry_fee', 0) for c in recent_contests)
+            total_profit = sum(c.get('profit', 0) for c in recent_contests)
+            if total_entry > 0:
+                recent_roi = total_profit / total_entry
+                if recent_roi < -0.2:
+                    warnings.append("⚠️ Recent ROI below -20% - review strategy")
 
         return warnings
 
@@ -239,34 +261,12 @@ class BankrollManager:
         kelly = (win_rate * avg_odds - q) / avg_odds
 
         # Apply safety multiplier
-        safe_kelly = kelly * self.data['settings']['kelly_multiplier']
+        kelly_multiplier = self.data.get('settings', {}).get('kelly_multiplier', 0.25)
+        safe_kelly = kelly * kelly_multiplier
 
         return max(0, min(0.25, safe_kelly))  # Cap at 25% of bankroll
 
 
-# !/usr/bin/env python3
-"""
-BANKROLL MANAGEMENT AND CONTEST RECOMMENDATION SYSTEM
-=====================================================
-Professional bankroll analytics and recommendations
-"""
-
-import json
-import os
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional
-import numpy as np
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-
-
-class BankrollManager:
-    """Core bankroll management logic"""
-    # ... existing BankrollManager code ...
-
-
-# ADD THIS CLASS HERE - After BankrollManager, before BankrollManagementWidget
 class SmartContestRecommendation(QWidget):
     """Smart contest recommendation widget that updates automatically"""
 
@@ -305,6 +305,7 @@ class SmartContestRecommendation(QWidget):
 
     def auto_update(self):
         """Check if bankroll changed and update recommendations"""
+        self.manager.load_data()  # Reload data
         current_bankroll = self.manager.data['current_bankroll']
 
         if current_bankroll != self.last_bankroll:
@@ -558,18 +559,7 @@ class SmartContestRecommendation(QWidget):
         )
 
 
-# THEN YOUR EXISTING BankrollManagementWidget CLASS
-class BankrollManagementWidget(QWidget):
-    """Bankroll management GUI widget"""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.parent = parent
-        self.manager = BankrollManager()
-        self.setup_ui()
-        self.refresh_data()
-
-    # ... rest of your existing code ...
+# Continue with BankrollManagementWidget...
 
 class BankrollManagementWidget(QWidget):
     """Bankroll management GUI widget"""
@@ -866,7 +856,7 @@ class BankrollManagementWidget(QWidget):
 
         layout.addWidget(risk_card)
 
-        # NEW: Starting Bankroll Settings
+        # Bankroll settings
         bankroll_card = self.create_card("💰 Bankroll Settings")
         bankroll_layout = QFormLayout(bankroll_card)
 
@@ -969,14 +959,15 @@ class BankrollManagementWidget(QWidget):
 
             # Optionally update current bankroll
             if self.adjust_current.isChecked():
+                old_current = self.manager.data['current_bankroll']
                 self.manager.data['current_bankroll'] = new_starting
 
                 # Add a transaction to record this
                 transaction = {
                     'date': datetime.now().isoformat(),
                     'type': 'Bankroll Adjustment',
-                    'amount': new_starting - old_starting,
-                    'notes': f'Starting bankroll changed from ${old_starting:.2f} to ${new_starting:.2f}',
+                    'amount': new_starting - old_current,
+                    'notes': f'Bankroll adjusted from ${old_current:.2f} to ${new_starting:.2f}',
                     'balance': new_starting
                 }
                 self.manager.data['transactions'].append(transaction)
