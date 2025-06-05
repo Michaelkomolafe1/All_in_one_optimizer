@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-CLEAN DFS OPTIMIZER GUI
-=======================
-Modern, maintainable GUI for DFS optimization
+ENHANCED DFS OPTIMIZER GUI
+==========================
+Modern, non-blocking GUI for DFS optimization
 """
 
 import sys
@@ -13,22 +13,9 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from bankroll_management import BankrollManagementWidget, update_clean_gui_with_bankroll
-# Import PyQt5
-try:
-    from bankroll_management import BankrollManagementWidget, update_clean_gui_with_bankroll
-    BANKROLL_AVAILABLE = True
-except ImportError:
-    print("⚠️ Bankroll management not found. Some features will be limited.")
-    BANKROLL_AVAILABLE = False
+from io import StringIO
 
-# Import core systems with proper error handling
-try:
-    from bulletproof_dfs_core import BulletproofDFSCore
-    CORE_AVAILABLE = True
-except ImportError:
-    print("⚠️ Core optimizer not found. Some features will be limited.")
-    CORE_AVAILABLE = False
+# Import PyQt5
 try:
     from PyQt5.QtWidgets import *
     from PyQt5.QtCore import *
@@ -37,7 +24,16 @@ except ImportError:
     print("❌ PyQt5 not available. Install with: pip install PyQt5")
     sys.exit(1)
 
-# Import core systems with proper error handling
+# Import bankroll management
+try:
+    from bankroll_management import BankrollManagementWidget, update_clean_gui_with_bankroll
+
+    BANKROLL_AVAILABLE = True
+except ImportError:
+    print("⚠️ Bankroll management not found. Some features will be limited.")
+    BANKROLL_AVAILABLE = False
+
+# Import core optimizer
 try:
     from bulletproof_dfs_core import BulletproofDFSCore
 
@@ -52,6 +48,7 @@ except ImportError:
         def __init__(self):
             self.players = []
             self.optimization_mode = 'bulletproof'
+            self.contest_type = 'classic'
 
         def load_draftkings_csv(self, path):
             return True
@@ -66,13 +63,13 @@ except ImportError:
             return 10
 
         def optimize_lineup_with_mode(self):
-            # Return mock lineup
             from types import SimpleNamespace
             mock_players = []
+            positions = ['P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'P']
             for i in range(10):
                 player = SimpleNamespace(
                     name=f"Player {i + 1}",
-                    primary_position=['P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'P'][i],
+                    primary_position=positions[i],
                     team="NYY",
                     salary=5000 - i * 100,
                     enhanced_score=10.5 + i * 0.5,
@@ -95,80 +92,128 @@ except ImportError:
             return lineups
 
 
-class OptimizationWorker(QObject):
-    """Worker for background optimization"""
+class ConsoleRedirect:
+    """Redirect console output to GUI widget"""
+
+    def __init__(self, text_widget):
+        self.text_widget = text_widget
+        self.terminal = sys.stdout
+
+    def write(self, message):
+        if message.strip():  # Only write non-empty messages
+            # Append to GUI console
+            self.text_widget.append(message.strip())
+            # Force GUI update
+            QApplication.processEvents()
+
+        # Also write to terminal for debugging
+        if self.terminal:
+            self.terminal.write(message)
+
+    def flush(self):
+        if self.terminal:
+            self.terminal.flush()
+
+
+class OptimizationWorker(QThread):
+    """Worker thread for running optimization without blocking GUI"""
 
     progress = pyqtSignal(str)
-    finished = pyqtSignal(object)
+    finished = pyqtSignal(list)
     error = pyqtSignal(str)
 
     def __init__(self, core, settings):
         super().__init__()
         self.core = core
         self.settings = settings
+        self._is_running = True
+
+    def stop(self):
+        self._is_running = False
 
     def run(self):
-        """Run optimization"""
+        """Run optimization in separate thread"""
         try:
-            self.progress.emit("Starting optimization...")
-
             # Apply settings
+            self.progress.emit("🔧 Applying optimization settings...")
             self.core.set_optimization_mode(self.settings['mode'])
 
-            if self.settings['manual_players']:
+            # Apply manual selections if any
+            if self.settings['manual_players'] and self._is_running:
+                self.progress.emit("🎯 Processing manual player selections...")
                 count = self.core.apply_manual_selection(self.settings['manual_players'])
-                self.progress.emit(f"Applied {count} manual selections")
+                self.progress.emit(f"✅ Applied {count} manual selections")
 
-            # Detect confirmations
-            if self.settings['mode'] != 'manual_only':
+            # Detect confirmations if not manual-only mode
+            if self.settings['mode'] != 'manual_only' and self._is_running:
+                self.progress.emit("🔍 Detecting confirmed players...")
                 confirmed = self.core.detect_confirmed_players()
-                self.progress.emit(f"Found {confirmed} confirmed players")
+                self.progress.emit(f"✅ Found {confirmed} confirmed players")
+
+            if not self._is_running:
+                return
 
             # Generate lineups
             if self.settings['multi_lineup']:
-                self.progress.emit(f"Generating {self.settings['lineup_count']} lineups...")
+                self.progress.emit(f"🎰 Generating {self.settings['lineup_count']} lineups...")
                 lineups = self.core.generate_contest_lineups(
                     self.settings['lineup_count'],
                     self.settings['contest_type']
                 )
-                self.finished.emit(lineups)
+                if lineups:
+                    self.finished.emit(lineups)
+                else:
+                    self.error.emit("Failed to generate lineups")
             else:
-                self.progress.emit("Optimizing single lineup...")
+                self.progress.emit("🚀 Optimizing single lineup...")
                 lineup, score = self.core.optimize_lineup_with_mode()
+
                 if lineup:
-                    self.finished.emit([{
+                    # Wrap single lineup in expected format
+                    lineup_data = [{
                         'lineup_id': 1,
                         'lineup': lineup,
                         'total_score': score,
                         'total_salary': sum(p.salary for p in lineup),
                         'contest_type': self.settings['contest_type']
-                    }])
+                    }]
+                    self.finished.emit(lineup_data)
                 else:
                     self.error.emit("No valid lineup found")
 
         except Exception as e:
-            self.error.emit(str(e))
+            self.error.emit(f"Optimization failed: {str(e)}")
 
 
 class DFSOptimizerGUI(QMainWindow):
-    """Main GUI window"""
+    """Main GUI window with non-blocking optimization"""
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("DFS Optimizer Pro")
         self.setMinimumSize(1200, 800)
 
-        # Data
+        # Initialize data
         self.dk_file = ""
         self.dff_file = ""
         self.core = None
         self.last_results = []
+        self.worker = None
+        self.console_redirect = None
 
-        # Setup
+        # Setup UI
         self.setup_ui()
         self.apply_theme()
         self.load_settings()
         self.auto_detect_files()
+
+        # Setup console redirect
+        self.setup_console_redirect()
+
+    def setup_console_redirect(self):
+        """Setup console output redirection"""
+        self.console_redirect = ConsoleRedirect(self.console)
+        sys.stdout = self.console_redirect
 
     def setup_ui(self):
         """Create UI elements"""
@@ -203,7 +248,7 @@ class DFSOptimizerGUI(QMainWindow):
         self.optimize_btn = QPushButton("🚀 Generate Optimal Lineup")
         self.optimize_btn.setMinimumHeight(60)
         self.optimize_btn.clicked.connect(self.run_optimization)
-        self.optimize_btn.setEnabled(False)
+        self.optimize_btn.setEnabled(False)  # Start disabled until CSV loaded
         left_layout.addWidget(self.optimize_btn)
 
         # Right panel - Results
@@ -229,7 +274,7 @@ class DFSOptimizerGUI(QMainWindow):
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready")
+        self.status_bar.showMessage("Ready - Load a DraftKings CSV to begin")
 
         # Progress bar in status bar
         self.progress_bar = QProgressBar()
@@ -359,365 +404,6 @@ class DFSOptimizerGUI(QMainWindow):
         layout.addStretch()
 
         return widget
-
-    def update_starting_bankroll(self):
-        """Update the starting bankroll"""
-        new_starting = self.new_starting_bankroll.value()
-
-        # Confirm the change
-        if self.adjust_current.isChecked():
-            message = (f"This will change your starting bankroll to ${new_starting:,.2f} "
-                       f"and set your current bankroll to the same amount.\n\n"
-                       f"Continue?")
-        else:
-            message = (f"This will change your starting bankroll to ${new_starting:,.2f}.\n"
-                       f"Your current bankroll will remain at ${self.manager.data['current_bankroll']:,.2f}.\n\n"
-                       f"Continue?")
-
-        reply = QMessageBox.question(
-            self, "Confirm Bankroll Change",
-            message,
-            QMessageBox.Yes | QMessageBox.No
-        )
-
-        if reply == QMessageBox.Yes:
-            # Update starting bankroll
-            old_starting = self.manager.data['starting_bankroll']
-            self.manager.data['starting_bankroll'] = new_starting
-
-            # Optionally update current bankroll
-            if self.adjust_current.isChecked():
-                old_current = self.manager.data['current_bankroll']
-                self.manager.data['current_bankroll'] = new_starting
-
-                # Add a transaction to record this
-                transaction = {
-                    'date': datetime.now().isoformat(),
-                    'type': 'Bankroll Adjustment',
-                    'amount': new_starting - old_current,
-                    'notes': f'Bankroll adjusted from ${old_current:.2f} to ${new_starting:.2f}',
-                    'balance': new_starting
-                }
-                self.manager.data['transactions'].append(transaction)
-
-            # Save and refresh
-            self.manager.save_data()
-
-            # Force refresh ALL tabs
-            self.refresh_all_tabs()
-
-            QMessageBox.information(
-                self, "Success",
-                f"Starting bankroll updated to ${new_starting:,.2f}" +
-                (f"\nCurrent bankroll updated to ${new_starting:,.2f}" if self.adjust_current.isChecked() else "")
-            )
-
-    def refresh_all_tabs(self):
-        """Force refresh all tabs"""
-        # Save current tab
-        current_tab = self.tabs.currentIndex()
-
-        # Clear and recreate all tabs
-        self.tabs.clear()
-
-        self.tabs.addTab(self.create_overview_tab(), "📊 Overview")
-        self.tabs.addTab(self.create_recommendations_tab(), "🎯 Recommendations")
-        self.tabs.addTab(self.create_calculator_tab(), "🧮 Calculators")
-        self.tabs.addTab(self.create_history_tab(), "📈 History")
-        self.tabs.addTab(self.create_settings_tab(), "⚙️ Settings")
-
-        # Restore tab
-        self.tabs.setCurrentIndex(current_tab)
-
-    class SmartContestRecommendation(QWidget):
-        """Smart contest recommendation widget that updates automatically"""
-
-        def __init__(self, parent=None):
-            super().__init__(parent)
-            self.parent = parent
-            self.manager = BankrollManager()
-            self.setup_ui()
-
-            # Auto-refresh timer
-            self.timer = QTimer()
-            self.timer.timeout.connect(self.auto_update)
-            self.timer.start(1000)  # Check every second
-
-            self.last_bankroll = self.manager.data['current_bankroll']
-
-        def setup_ui(self):
-            layout = QVBoxLayout(self)
-
-            # Live recommendations card
-            self.reco_card = QGroupBox("🎯 Live Contest Recommendations")
-            self.reco_card.setStyleSheet("""
-                QGroupBox {
-                    background-color: #f0f9ff;
-                    border: 2px solid #3b82f6;
-                    border-radius: 8px;
-                    font-weight: bold;
-                }
-            """)
-
-            self.reco_layout = QVBoxLayout(self.reco_card)
-            layout.addWidget(self.reco_card)
-
-            # Initial update
-            self.update_recommendations()
-
-        def auto_update(self):
-            """Check if bankroll changed and update recommendations"""
-            current_bankroll = self.manager.data['current_bankroll']
-
-            if current_bankroll != self.last_bankroll:
-                self.last_bankroll = current_bankroll
-                self.update_recommendations()
-                self.flash_update()  # Visual feedback
-
-        def flash_update(self):
-            """Flash the card to show it updated"""
-            self.reco_card.setStyleSheet("""
-                QGroupBox {
-                    background-color: #dbeafe;
-                    border: 3px solid #2563eb;
-                    border-radius: 8px;
-                    font-weight: bold;
-                }
-            """)
-
-            QTimer.singleShot(500, lambda: self.reco_card.setStyleSheet("""
-                QGroupBox {
-                    background-color: #f0f9ff;
-                    border: 2px solid #3b82f6;
-                    border-radius: 8px;
-                    font-weight: bold;
-                }
-            """))
-
-        def update_recommendations(self):
-            """Update recommendations based on current bankroll"""
-            # Clear current layout
-            while self.reco_layout.count():
-                child = self.reco_layout.takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
-
-            bankroll = self.manager.data['current_bankroll']
-            risk = self.manager.data['settings']['risk_tolerance']
-
-            # Bankroll status
-            status_label = QLabel(f"💰 Current Bankroll: ${bankroll:,.2f}")
-            status_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px;")
-            self.reco_layout.addWidget(status_label)
-
-            # Get smart recommendations
-            recommendations = self.get_smart_recommendations(bankroll, risk)
-
-            # Display recommendations
-            for reco in recommendations:
-                reco_widget = self.create_recommendation_widget(reco)
-                self.reco_layout.addWidget(reco_widget)
-
-            # Action button
-            action_btn = QPushButton("🚀 Generate Recommended Lineups")
-            action_btn.clicked.connect(self.execute_recommendations)
-            action_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #10b981;
-                    color: white;
-                    font-size: 14px;
-                    font-weight: bold;
-                    padding: 10px;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                }
-                QPushButton:hover {
-                    background-color: #059669;
-                }
-            """)
-            self.reco_layout.addWidget(action_btn)
-
-        def get_smart_recommendations(self, bankroll: float, risk: str) -> List[Dict]:
-            """Get smart recommendations based on current bankroll"""
-            recommendations = []
-
-            # Daily budget
-            daily_budget = bankroll * {'conservative': 0.05, 'moderate': 0.10,
-                                       'aggressive': 0.15, 'very_aggressive': 0.20}.get(risk, 0.10)
-
-            if bankroll < 50:
-                # Micro stakes
-                recommendations.append({
-                    'icon': '🎯',
-                    'title': 'Micro Stakes Strategy',
-                    'contest': 'Free Contests + $0.25 Games',
-                    'lineups': 1,
-                    'reason': 'Build bankroll risk-free',
-                    'budget': min(5, daily_budget),
-                    'warning': 'Critical: Bankroll too low for paid contests'
-                })
-
-            elif bankroll < 100:
-                # Low stakes
-                recommendations.append({
-                    'icon': '💵',
-                    'title': 'Low Stakes Cash Games',
-                    'contest': '$1-$3 50/50s',
-                    'lineups': 2,
-                    'reason': 'Steady growth with low variance',
-                    'budget': daily_budget * 0.8
-                })
-                recommendations.append({
-                    'icon': '🎰',
-                    'title': 'Micro GPPs',
-                    'contest': '$0.25-$1 Tournaments',
-                    'lineups': 5,
-                    'reason': 'Low risk upside plays',
-                    'budget': daily_budget * 0.2
-                })
-
-            elif bankroll < 500:
-                # Mid stakes
-                recommendations.append({
-                    'icon': '💰',
-                    'title': 'Cash Game Core',
-                    'contest': '$5-$10 Double-Ups',
-                    'lineups': 3,
-                    'reason': 'Consistent profits at higher stakes',
-                    'budget': daily_budget * 0.6
-                })
-                recommendations.append({
-                    'icon': '🏆',
-                    'title': 'Single Entry GPPs',
-                    'contest': '$3-$20 Single Entry',
-                    'lineups': 1,
-                    'reason': 'Better ROI than multi-entry',
-                    'budget': daily_budget * 0.3
-                })
-                recommendations.append({
-                    'icon': '🎲',
-                    'title': 'Small Multi-Entry',
-                    'contest': '$1-$3 20-max',
-                    'lineups': 10,
-                    'reason': 'Diversified tournament exposure',
-                    'budget': daily_budget * 0.1
-                })
-
-            elif bankroll < 1000:
-                # Standard stakes
-                recommendations.append({
-                    'icon': '💎',
-                    'title': 'Premium Cash Games',
-                    'contest': '$25-$50 Games',
-                    'lineups': 2,
-                    'reason': 'Lower rake percentage',
-                    'budget': daily_budget * 0.5
-                })
-                recommendations.append({
-                    'icon': '🚀',
-                    'title': 'Featured GPPs',
-                    'contest': '$5-$25 Tournaments',
-                    'lineups': 15,
-                    'reason': 'Larger prize pools available',
-                    'budget': daily_budget * 0.4
-                })
-                recommendations.append({
-                    'icon': '🎯',
-                    'title': 'Satellites',
-                    'contest': '$5-$10 Qualifiers',
-                    'lineups': 2,
-                    'reason': 'Win entries to bigger contests',
-                    'budget': daily_budget * 0.1
-                })
-
-            else:
-                # High stakes
-                recommendations.append({
-                    'icon': '👑',
-                    'title': 'High Stakes Cash',
-                    'contest': '$100+ Games',
-                    'lineups': 1,
-                    'reason': 'Minimal rake impact',
-                    'budget': daily_budget * 0.4
-                })
-                recommendations.append({
-                    'icon': '🏆',
-                    'title': 'Major GPPs',
-                    'contest': '$20+ Tournaments',
-                    'lineups': 50,
-                    'reason': 'Chase life-changing scores',
-                    'budget': daily_budget * 0.5
-                })
-                recommendations.append({
-                    'icon': '💫',
-                    'title': 'Live Finals Satellites',
-                    'contest': 'Qualifier Tournaments',
-                    'lineups': 5,
-                    'reason': 'Win trips to live events',
-                    'budget': daily_budget * 0.1
-                })
-
-            return recommendations
-
-        def create_recommendation_widget(self, reco: Dict) -> QWidget:
-            """Create a widget for a single recommendation"""
-            widget = QFrame()
-            widget.setFrameStyle(QFrame.Box)
-            widget.setStyleSheet("""
-                QFrame {
-                    background-color: white;
-                    border: 1px solid #e5e7eb;
-                    border-radius: 6px;
-                    padding: 10px;
-                    margin: 5px 0;
-                }
-            """)
-
-            layout = QVBoxLayout(widget)
-
-            # Header
-            header_layout = QHBoxLayout()
-
-            icon_label = QLabel(reco['icon'])
-            icon_label.setStyleSheet("font-size: 24px;")
-
-            title_label = QLabel(reco['title'])
-            title_label.setStyleSheet("font-size: 14px; font-weight: bold;")
-
-            budget_label = QLabel(f"${reco['budget']:.2f}")
-            budget_label.setStyleSheet("font-size: 14px; color: #10b981; font-weight: bold;")
-
-            header_layout.addWidget(icon_label)
-            header_layout.addWidget(title_label)
-            header_layout.addStretch()
-            header_layout.addWidget(budget_label)
-
-            layout.addLayout(header_layout)
-
-            # Details
-            details = QLabel(f"<b>Contest:</b> {reco['contest']}<br>"
-                             f"<b>Lineups:</b> {reco['lineups']}<br>"
-                             f"<b>Why:</b> {reco['reason']}")
-            details.setWordWrap(True)
-            details.setStyleSheet("color: #4b5563; font-size: 12px; margin-top: 5px;")
-            layout.addWidget(details)
-
-            # Warning if present
-            if 'warning' in reco:
-                warning = QLabel(f"⚠️ {reco['warning']}")
-                warning.setStyleSheet("color: #dc2626; font-size: 12px; font-weight: bold; margin-top: 5px;")
-                layout.addWidget(warning)
-
-            return widget
-
-        def execute_recommendations(self):
-            """Execute the current recommendations"""
-            # This would integrate with your optimizer
-            QMessageBox.information(
-                self, "Generate Lineups",
-                "This will generate lineups based on the recommendations.\n\n"
-                "Feature coming soon!"
-            )
 
     def create_settings_tab(self):
         """Create settings tab"""
@@ -937,30 +623,32 @@ class DFSOptimizerGUI(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
+        # Add bankroll management if available
+        if BANKROLL_AVAILABLE:
+            self.bankroll_widget = BankrollManagementWidget(self)
+            layout.addWidget(self.bankroll_widget)
+        else:
+            # Player exposure (for multi-lineup)
+            exposure_group = QGroupBox("Player Exposure")
+            exposure_layout = QVBoxLayout(exposure_group)
 
-        # Player exposure (for multi-lineup)
-        exposure_group = QGroupBox("Player Exposure")
-        exposure_layout = QVBoxLayout(exposure_group)
+            self.exposure_table = QTableWidget()
+            self.exposure_table.setColumnCount(4)
+            self.exposure_table.setHorizontalHeaderLabels([
+                "Player", "Count", "Exposure %", "Avg Score"
+            ])
 
+            exposure_layout.addWidget(self.exposure_table)
+            layout.addWidget(exposure_group)
 
+            # Stack analysis
+            stack_group = QGroupBox("Stack Analysis")
+            stack_layout = QVBoxLayout(stack_group)
 
-        self.exposure_table = QTableWidget()
-        self.exposure_table.setColumnCount(4)
-        self.exposure_table.setHorizontalHeaderLabels([
-            "Player", "Count", "Exposure %", "Avg Score"
-        ])
+            self.stack_list = QListWidget()
+            stack_layout.addWidget(self.stack_list)
 
-        exposure_layout.addWidget(self.exposure_table)
-        layout.addWidget(exposure_group)
-
-        # Stack analysis
-        stack_group = QGroupBox("Stack Analysis")
-        stack_layout = QVBoxLayout(stack_group)
-
-        self.stack_list = QListWidget()
-        stack_layout.addWidget(self.stack_list)
-
-        layout.addWidget(stack_group)
+            layout.addWidget(stack_group)
 
         return widget
 
@@ -1159,9 +847,6 @@ class DFSOptimizerGUI(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
 
-        # Restore splitter state
-        # Add more settings as needed
-
     def save_settings(self):
         """Save current settings"""
         settings = QSettings("DFSOptimizer", "Settings")
@@ -1169,6 +854,11 @@ class DFSOptimizerGUI(QMainWindow):
 
     def closeEvent(self, event):
         """Handle close event"""
+        # Stop any running optimization
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()
+            self.worker.wait()
+
         self.save_settings()
         event.accept()
 
@@ -1194,9 +884,11 @@ class DFSOptimizerGUI(QMainWindow):
             self.set_dk_file(file_path)
 
     def set_dk_file(self, path):
-        """Set DraftKings file"""
+        """Set DraftKings file and properly enable optimize button"""
         self.dk_file = path
         filename = os.path.basename(path)
+
+        # Update label to show file is loaded
         self.dk_label.setText(f"✅ {filename}")
         self.dk_label.setStyleSheet("""
             QLabel {
@@ -1208,13 +900,39 @@ class DFSOptimizerGUI(QMainWindow):
                 font-weight: bold;
             }
         """)
-        self.optimize_btn.setEnabled(True)
-        self.status_bar.showMessage(f"Loaded: {filename}")
 
-        # Initialize core
+        # Initialize core and load CSV
         if CORE_AVAILABLE:
+            try:
+                self.core = BulletproofDFSCore()
+
+                # Detect contest type from filename
+                if 'showdown' in filename.lower() or 'captain' in filename.lower():
+                    self.core.contest_type = 'showdown'
+                    self.console.append("🎯 Detected SHOWDOWN contest")
+                else:
+                    self.core.contest_type = 'classic'
+
+                # Load the CSV
+                if self.core.load_draftkings_csv(path):
+                    # Enable the optimize button
+                    self.optimize_btn.setEnabled(True)
+                    self.status_bar.showMessage(f"✅ Loaded {filename} - Ready to optimize!")
+                    self.console.append(f"✅ Successfully loaded {len(self.core.players)} players")
+                else:
+                    self.optimize_btn.setEnabled(False)
+                    self.status_bar.showMessage(f"❌ Failed to load {filename}")
+                    self.console.append("❌ Error loading CSV file")
+
+            except Exception as e:
+                self.optimize_btn.setEnabled(False)
+                self.status_bar.showMessage(f"❌ Error: {str(e)}")
+                self.console.append(f"❌ Error: {str(e)}")
+        else:
+            # Mock mode - still enable button for testing
             self.core = BulletproofDFSCore()
-            self.core.load_draftkings_csv(path)
+            self.optimize_btn.setEnabled(True)
+            self.status_bar.showMessage(f"✅ Loaded {filename} (Test mode)")
 
     def select_dff_file(self):
         """Select DFF file"""
@@ -1236,9 +954,12 @@ class DFSOptimizerGUI(QMainWindow):
                 }
             """)
 
+            # Apply DFF rankings if core is available
+            if self.core and hasattr(self.core, 'apply_dff_rankings'):
+                self.core.apply_dff_rankings(file_path)
+
     def download_dk_file(self):
         """Download latest DraftKings CSV"""
-        # This would implement actual download logic
         QMessageBox.information(
             self, "Download",
             "This feature would download the latest DraftKings CSV.\n"
@@ -1326,10 +1047,19 @@ class DFSOptimizerGUI(QMainWindow):
         self.run_optimization()
 
     def run_optimization(self):
-        """Run the optimization process"""
+        """Run optimization without blocking GUI"""
         if not self.dk_file:
             QMessageBox.warning(self, "No Data", "Please load a DraftKings CSV first")
             return
+
+        # Check if already running
+        if self.worker and self.worker.isRunning():
+            QMessageBox.warning(self, "Already Running", "Optimization is already in progress")
+            return
+
+        # Clear previous results
+        self.console.clear()
+        self.lineup_table.setRowCount(0)
 
         # Prepare settings
         settings = {
@@ -1343,50 +1073,39 @@ class DFSOptimizerGUI(QMainWindow):
             'diversity': self.diversity.value() / 100.0
         }
 
-        # Clear previous results
-        self.console.clear()
-        self.lineup_table.setRowCount(0)
-
         # Update UI
         self.optimize_btn.setEnabled(False)
+        self.optimize_btn.setText("🔄 Optimizing...")
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)  # Indeterminate
+        self.progress_bar.setRange(0, 0)  # Indeterminate progress
 
-        # Create worker thread
-        self.thread = QThread()
+        # Create and start worker thread
         self.worker = OptimizationWorker(self.core, settings)
-        self.worker.moveToThread(self.thread)
-
-        # Connect signals
-        self.thread.started.connect(self.worker.run)
         self.worker.progress.connect(self.on_progress)
-        self.worker.finished.connect(self.on_finished)
-        self.worker.error.connect(self.on_error)
-        self.worker.finished.connect(self.thread.quit)
-        self.worker.error.connect(self.thread.quit)
-        self.thread.finished.connect(self.thread.deleteLater)
-
-        # Start
-        self.thread.start()
+        self.worker.finished.connect(self.on_optimization_finished)
+        self.worker.error.connect(self.on_optimization_error)
+        self.worker.start()
 
     def on_progress(self, message):
-        """Handle progress updates"""
+        """Handle progress updates from worker thread"""
         self.console.append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+        self.status_bar.showMessage(message)
 
-    def on_finished(self, results):
-        """Handle optimization completion"""
+    def on_optimization_finished(self, results):
+        """Handle successful optimization"""
+        # Reset UI
+        self.optimize_btn.setEnabled(True)
+        self.optimize_btn.setText("🚀 Generate Optimal Lineup")
+        self.progress_bar.setVisible(False)
+
+        # Store results
         self.last_results = results
 
         if not results:
-            self.on_error("No valid lineups generated")
+            self.console.append("❌ No valid lineups generated")
             return
 
         self.console.append(f"\n✅ Generated {len(results)} lineup(s) successfully!")
-
-        # Update UI
-        self.optimize_btn.setEnabled(True)
-        self.progress_bar.setVisible(False)
-        self.status_bar.showMessage(f"Generated {len(results)} lineup(s)")
 
         # Display results
         if len(results) == 1:
@@ -1397,24 +1116,24 @@ class DFSOptimizerGUI(QMainWindow):
         # Switch to results tab
         self.results_tabs.setCurrentIndex(1)
 
-        # Show notification
-        QMessageBox.information(
-            self, "Success",
-            f"Successfully generated {len(results)} lineup(s)!\n"
-            f"Average score: {sum(r['total_score'] for r in results) / len(results):.1f}"
+        # Update status
+        avg_score = sum(r['total_score'] for r in results) / len(results)
+        self.status_bar.showMessage(
+            f"✅ Generated {len(results)} lineup(s) - Average score: {avg_score:.1f}"
         )
 
-    def on_error(self, error_message):
+    def on_optimization_error(self, error_msg):
         """Handle optimization error"""
-        self.console.append(f"\n❌ ERROR: {error_message}")
-
         # Reset UI
         self.optimize_btn.setEnabled(True)
+        self.optimize_btn.setText("🚀 Generate Optimal Lineup")
         self.progress_bar.setVisible(False)
+
+        # Show error
+        self.console.append(f"\n❌ ERROR: {error_msg}")
         self.status_bar.showMessage("Optimization failed")
 
-        # Show error dialog
-        QMessageBox.critical(self, "Optimization Failed", error_message)
+        QMessageBox.critical(self, "Optimization Failed", error_msg)
 
     def display_single_result(self, result):
         """Display single lineup result"""
@@ -1526,6 +1245,9 @@ class DFSOptimizerGUI(QMainWindow):
 
     def update_exposure_analysis(self, results):
         """Update player exposure analysis"""
+        if not hasattr(self, 'exposure_table'):
+            return
+
         player_usage = {}
 
         for result in results:
@@ -1608,22 +1330,6 @@ class DFSOptimizerGUI(QMainWindow):
 
             QMessageBox.information(self, "Export Complete", f"Exported to {file_path}")
 
-    def display_single_result(self, result):
-        """Display single lineup result with better debugging"""
-        lineup = result['lineup']
-
-        # Debug: Check actual positions
-        print("\n🔍 LINEUP VALIDATION:")
-        position_count = {}
-        for player in lineup:
-            pos = getattr(player, 'assigned_position', player.primary_position)
-            position_count[pos] = position_count.get(pos, 0) + 1
-            print(f"   {player.name} - Primary: {player.primary_position}, Assigned: {pos}")
-
-        print(f"\n📊 Position counts: {position_count}")
-
-        # Continue with normal display...
-
     def export_draftkings(self):
         """Export in DraftKings upload format"""
         if not self.last_results:
@@ -1670,9 +1376,11 @@ class DFSOptimizerGUI(QMainWindow):
             self.last_results = results
             self.export_csv()
 
-update_clean_gui_with_bankroll(DFSOptimizerGUI)
+
+# Update with bankroll management if available
 if BANKROLL_AVAILABLE:
     update_clean_gui_with_bankroll(DFSOptimizerGUI)
+
 
 def main():
     """Main entry point"""

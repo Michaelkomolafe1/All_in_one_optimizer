@@ -212,6 +212,35 @@ class AdvancedPlayer:
 
         return valid_positions if valid_positions else ['UTIL']
 
+    # Add this debug method to bulletproof_dfs_core.py
+    def debug_confirmations(self):
+        """Debug why players aren't getting confirmed"""
+        print("\n🔍 DEBUG: Why aren't players confirmed?")
+
+        # Check lineup matches
+        for player in self.players:
+            if self.confirmation_system:
+                is_confirmed, order = self.confirmation_system.is_player_confirmed(
+                    player.name, player.team
+                )
+                if is_confirmed:
+                    print(f"✅ {player.name} ({player.team}) - Confirmed, batting {order}")
+                    player.add_confirmation_source("mlb_lineup")
+                else:
+                    # Check if team has lineup
+                    if player.team in self.confirmation_system.confirmed_lineups:
+                        print(f"❌ {player.name} ({player.team}) - Team has lineup but player not in it")
+
+        # Check pitcher matches
+        pitchers = [p for p in self.players if p.primary_position == 'P']
+        for pitcher in pitchers:
+            if self.confirmation_system:
+                is_confirmed = self.confirmation_system.is_pitcher_confirmed(
+                    pitcher.name, pitcher.team
+                )
+                if is_confirmed:
+                    print(f"✅ {pitcher.name} ({pitcher.team}) - Confirmed starter")
+                    pitcher.add_confirmation_source("mlb_starter")
     def _parse_salary(self, salary_input: Any) -> int:
         """Enhanced salary parsing"""
         try:
@@ -234,6 +263,10 @@ class AdvancedPlayer:
 
     def is_eligible_for_selection(self, mode: str = 'bulletproof') -> bool:
         """Enhanced eligibility check"""
+        # SHOWDOWN: All players are eligible!
+        if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
+            return True
+
         if mode == 'manual_only':
             return self.is_manual_selected
         elif mode == 'confirmed_only':
@@ -598,28 +631,35 @@ class BulletproofDFSCore:
         name1 = name1.lower().strip()
         name2 = name2.lower().strip()
 
+        # Remove common punctuation
+        for char in ["'", ".", "-", " jr", " sr", " iii", " ii"]:
+            name1 = name1.replace(char, "")
+            name2 = name2.replace(char, "")
+
         if name1 == name2:
             return 1.0
 
+        # Check if one name contains the other
         if name1 in name2 or name2 in name1:
-            return 0.85
+            return 0.9
 
-        # Check for last name match
-        name1_parts = name1.split()
-        name2_parts = name2.split()
+        # Check last name match
+        parts1 = name1.split()
+        parts2 = name2.split()
 
-        if len(name1_parts) >= 2 and len(name2_parts) >= 2:
-            if name1_parts[-1] == name2_parts[-1]:  # Same last name
-                return 0.8
+        if parts1 and parts2:
+            # Last name exact match
+            if parts1[-1] == parts2[-1]:
+                return 0.85
 
-        # Simple character overlap
-        shorter = min(len(name1), len(name2))
-        if shorter == 0:
-            return 0.0
+            # First initial + last name match
+            if len(parts1[0]) > 0 and len(parts2[0]) > 0:
+                if parts1[0][0] == parts2[0][0] and parts1[-1] == parts2[-1]:
+                    return 0.8
 
-        overlap = sum(c1 == c2 for c1, c2 in zip(name1, name2))
-        return overlap / max(len(name1), len(name2))
-
+        # Levenshtein distance for close matches
+        from difflib import SequenceMatcher
+        return SequenceMatcher(None, name1, name2).ratio()
     # !/usr/bin/env python3
     """
     CORE OPTIMIZER UPDATES - NO ARTIFICIAL BOOSTS
@@ -977,36 +1017,101 @@ class BulletproofDFSCore:
 
         confirmed_count = 0
 
-        # Apply confirmations to our players
+        print("\n🔍 Matching players to confirmed lineups...")
+
         for player in self.players:
-            # Check lineup confirmations
-            if player.primary_position != 'P':
-                is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
+            # Check if player is in lineup
+            is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
+                player.name, player.team
+            )
+
+            if is_confirmed:
+                player.add_confirmation_source("mlb_lineup")
+                confirmed_count += 1
+                print(f"✅ Confirmed: {player.name} ({player.team}) - Batting {batting_order}")
+
+            # Check if pitcher is confirmed
+            if player.primary_position == 'P':
+                is_pitcher_confirmed = self.confirmation_system.is_pitcher_confirmed(
                     player.name, player.team
                 )
-                if is_confirmed:
-                    player.add_confirmation_source("smart_lineup")
-                    confirmed_count += 1
-            else:
-                # Check pitcher confirmations
-                is_confirmed = self.confirmation_system.is_pitcher_confirmed(
-                    player.name, player.team
-                )
-                if is_confirmed:
-                    player.add_confirmation_source("smart_pitcher")
-                    confirmed_count += 1
+                if is_pitcher_confirmed:
+                    player.add_confirmation_source("mlb_starter")
+                    if not is_confirmed:  # Don't double count
+                        confirmed_count += 1
+                    print(f"✅ Confirmed Pitcher: {player.name} ({player.team})")
 
-        print(f"✅ Total confirmations applied: {confirmed_count} players")
+        print(f"\n📊 Total confirmed: {confirmed_count} players")
 
-        # If no confirmations during game time, show helpful message
-        if confirmed_count == 0 and lineup_count == 0:
-            print("\n📌 No confirmed lineups available. This is normal if:")
-            print("   • Games haven't started yet (lineups post ~1 hour before)")
-            print("   • It's not a game day")
-            print("   • MLB API is temporarily unavailable")
-            print("\n💡 TIP: Add manual player selections or use 'All Players' mode")
+        if confirmed_count > 0:
+            print("\n📊 APPLYING ADVANCED ANALYTICS TO CONFIRMED PLAYERS...")
+
+            # 1. Vegas Lines
+            if self.vegas_lines:
+                print("💰 Enriching with Vegas lines...")
+                self.enrich_with_vegas_lines()
+
+            # 2. Statcast Data
+            if self.statcast_fetcher:
+                print("📊 Enriching with Statcast data...")
+                self.enrich_with_statcast_priority()
+
+            # 3. Park Factors
+            print("🏟️ Applying park factors...")
+            self.apply_park_factors()
+
+            # 4. Statistical Analysis
+            eligible = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
+            print("🔬 Applying enhanced statistical analysis...")
+            self._apply_comprehensive_statistical_analysis(eligible)
 
         return confirmed_count
+
+    def _can_fill_position(self, player, position: str) -> bool:
+        """Enhanced to show multi-position eligibility"""
+        can_fill = super()._can_fill_position(player, position)
+
+        # Debug output for multi-position players
+        if len(player.positions) > 1 and can_fill:
+            print(f"   🔄 {player.name} can fill {position} (positions: {'/'.join(player.positions)})")
+
+        return can_fill
+
+    def optimize_lineup_with_mode(self) -> Tuple[List[AdvancedPlayer], float]:
+        """Optimize lineup with full analytics verification"""
+        print(f"\n🎯 OPTIMAL LINEUP GENERATION - {self.optimization_mode.upper()}")
+        print("=" * 80)
+
+        # Get eligible players based on mode
+        eligible_players = self.get_eligible_players_by_mode()
+
+        if not eligible_players:
+            print("❌ No eligible players found")
+            return [], 0
+
+        print(f"📊 Optimizing with {len(eligible_players)} eligible players")
+
+        # VERIFICATION: Check what data each player has
+        print("\n🔍 DATA ENRICHMENT VERIFICATION:")
+        players_with_vegas = sum(1 for p in eligible_players if hasattr(p, 'vegas_data') and p.vegas_data)
+        players_with_statcast = sum(1 for p in eligible_players if hasattr(p, 'statcast_data') and p.statcast_data)
+        players_with_dff = sum(1 for p in eligible_players if hasattr(p, 'dff_data') and p.dff_data)
+
+        print(f"💰 Vegas data: {players_with_vegas}/{len(eligible_players)} players")
+        print(f"📊 Statcast data: {players_with_statcast}/{len(eligible_players)} players")
+        print(f"📈 DFF data: {players_with_dff}/{len(eligible_players)} players")
+
+        # Show sample player with all data
+        for player in eligible_players[:3]:  # First 3 players
+            print(f"\n🎯 {player.name} ({player.primary_position}):")
+            print(f"   Base score: {player.base_score:.2f} → Enhanced: {player.enhanced_score:.2f}")
+            if hasattr(player, 'vegas_data') and player.vegas_data:
+                print(f"   Vegas: Team Total {player.vegas_data.get('team_total', 'N/A')}")
+            if hasattr(player, 'statcast_data') and player.statcast_data:
+                print(f"   Statcast: xwOBA {player.statcast_data.get('xwOBA', 'N/A')}")
+
+        # Continue with optimization...
+
 
     def _basic_pitcher_fallback(self) -> int:
         """Basic pitcher confirmation fallback"""
