@@ -1,101 +1,173 @@
-#!/usr/bin/env python3
-"""
-FIXED DEBUG SCRIPT - Shows actual confirmations
-"""
+# IMPLEMENTATION GUIDE: Fixing Bulletproof Mode
+# =============================================
 
-from bulletproof_dfs_core import BulletproofDFSCore
+## 1. In bulletproof_dfs_core.py - Add these methods to BulletproofDFSCore class:
+
+### A. Add the reset method (place after __init__):
+```python
 
 
-def debug_confirmations():
-    print("🔍 DEBUGGING CONFIRMATIONS")
-    print("=" * 80)
+def reset_all_confirmations(self):
+    """Reset ALL confirmation status - call this at the start of each run"""
+    print("\n🔄 RESETTING ALL CONFIRMATIONS")
+    for player in self.players:
+        player.is_confirmed = False
+        player.confirmation_sources = []
+        # Don't reset manual selections
+    print(f"✅ Reset confirmations for {len(self.players)} players")
+
+
+```
+
+### B. REPLACE the entire detect_confirmed_players method with the new version
+
+### C. Add the validation method (place after detect_confirmed_players):
+```python
+
+
+def _validate_confirmations(self):
+
+
+# [Use the code from the artifact above]
+```
+
+### D. REPLACE the entire get_eligible_players_by_mode method
+
+### E. Add the debug method (place at the end of the class):
+```python
+
+
+def debug_player_confirmations(self):
+
+
+# [Use the code from the artifact above]
+```
+
+
+### F. UPDATE the beginning of optimize_lineup_with_mode to add the safety check
+
+## 2. In the AdvancedPlayer class - REPLACE is_eligible_for_selection method
+
+## 3. In load_and_optimize_complete_pipeline function - Add reset call:
+
+def load_and_optimize_complete_pipeline(
+        dk_file: str,
+        dff_file: str = None,
+        manual_input: str = "",
+        contest_type: str = 'classic',
+        strategy: str = 'bulletproof'
+):
+    """Complete pipeline with all modes including enhanced pitcher detection"""
+
+    # ... existing code ...
 
     core = BulletproofDFSCore()
+    core.set_optimization_mode(strategy)
 
-    # Load CSV
-    if not core.load_draftkings_csv("DKSalaries_good.csv"):
-        return
+    # Pipeline execution
+    if not core.load_draftkings_csv(dk_file):
+        return [], 0, "Failed to load DraftKings data"
 
-    # Get confirmations
-    confirmed_count = core.detect_confirmed_players()
+    # ADD THIS LINE - Reset confirmations before starting
+    core.reset_all_confirmations()
 
-    # Now manually check each player
-    print("\n📋 PLAYER BY PLAYER CONFIRMATION CHECK:")
-
-    confirmed_players = []
-    for player in core.players:
-        if core.confirmation_system:
-            # Check lineup
-            is_in_lineup, batting_order = core.confirmation_system.is_player_confirmed(
-                player.name, player.team
-            )
-
-            # Check if pitcher
-            is_starting_pitcher = False
-            if player.primary_position == 'P':
-                is_starting_pitcher = core.confirmation_system.is_pitcher_confirmed(
-                    player.name, player.team
-                )
-
-            if is_in_lineup or is_starting_pitcher:
-                player.add_confirmation_source("mlb_confirmed")
-                confirmed_players.append(player)
-
-                status = "Starting Pitcher" if is_starting_pitcher else f"Batting {batting_order}"
-                print(f"✅ {player.name} ({player.team}) - {status}")
-
-    print(f"\n📊 Total confirmed: {len(confirmed_players)}")
-
-    # Now apply analytics to confirmed only
-    if confirmed_players:
-        print("\n🔬 APPLYING ANALYTICS TO CONFIRMED PLAYERS ONLY...")
-
-        # Vegas
-        if core.vegas_lines:
-            print("💰 Applying Vegas to confirmed players...")
-            core.vegas_lines.apply_to_players(confirmed_players)
-
-        # Statcast (with parallel processing)
-        if core.statcast_fetcher:
-            print("📊 Applying Statcast to confirmed players (parallel)...")
-
-            # This should use your parallel fetcher
-            from simple_statcast_fetcher import FastStatcastFetcher
-            fetcher = FastStatcastFetcher(max_workers=5)
-
-            # Fetch all confirmed players in parallel
-            statcast_data = fetcher.fetch_multiple_players_parallel(confirmed_players)
-
-            # Apply the data
-            for player in confirmed_players:
-                if player.name in statcast_data:
-                    player.apply_statcast_data(statcast_data[player.name])
-                    print(f"   ✅ Statcast applied to {player.name}")
-
-        # Statistical analysis
-        from enhanced_stats_engine import apply_enhanced_statistical_analysis
-        apply_enhanced_statistical_analysis(confirmed_players, verbose=True)
-
-        print(f"\n✅ Analytics applied to {len(confirmed_players)} confirmed players")
-
-    # Try optimization with confirmed players
-    print("\n🎯 OPTIMIZING WITH CONFIRMED PLAYERS...")
-    core.set_optimization_mode('confirmed_only')
-    lineup, score = core.optimize_lineup_with_mode()
-
-    if lineup:
-        print(f"✅ SUCCESS! Score: {score:.2f}")
-        for player in lineup:
-            print(f"   {player.name} ({player.primary_position}) - ${player.salary}")
-    else:
-        print("❌ Optimization failed - checking why...")
-
-        # Show position coverage
-        positions = {}
-        for p in confirmed_players:
-            positions[p.primary_position] = positions.get(p.primary_position, 0) + 1
-        print(f"Confirmed player positions: {positions}")
+    # ... rest of existing code ...
 
 
-if __name__ == "__main__":
-    debug_confirmations()
+## 4. Optional but Recommended - Add this to your GUI:
+
+# In enhanced_dfs_gui.py, add a debug button:
+debug_btn = QPushButton("🔍 Debug Confirmations")
+debug_btn.clicked.connect(lambda: self.core.debug_player_confirmations() if self.core else None)
+
+## 5. Testing the Fix:
+
+# Create a test script:
+from bulletproof_dfs_core import BulletproofDFSCore
+
+# Load data
+core = BulletproofDFSCore()
+core.load_draftkings_csv("DKSalaries (82).csv")
+
+# Detect confirmations
+core.detect_confirmed_players()
+
+# Debug to see what's confirmed
+core.debug_player_confirmations()
+
+# Check specific player
+for player in core.players:
+    if player.name == "Bryan Woo":
+        print(f"\nBryan Woo status:")
+        print(f"  is_confirmed: {player.is_confirmed}")
+        print(f"  confirmation_sources: {player.confirmation_sources}")
+        print(f"  is_eligible: {player.is_eligible_for_selection('bulletproof')}")
+
+## KEY CHANGES SUMMARY:
+1.
+Reset
+all
+confirmations
+at
+start
+of
+each
+run
+2.
+Strict
+pitcher
+validation - must
+be in MLB
+confirmed
+starters
+3.
+Validation
+checks
+throughout
+the
+process
+4.
+Extra
+safety
+check
+before
+optimization
+5.
+Clear
+debug
+output
+to
+track
+confirmations
+6.
+Pitchers
+must
+have
+'mlb_starter' in confirmation_sources
+
+## EXPECTED BEHAVIOR AFTER FIX:
+- Only
+~15 - 20
+players
+eligible in bulletproof
+mode(not 72!)
+- Bryan
+Woo
+should
+NOT
+be
+eligible
+- Only
+confirmed
+MLB
+starters
+should
+be
+eligible
+pitchers
+- Clear
+tracking
+of
+why
+each
+player is eligible

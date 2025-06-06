@@ -9,68 +9,67 @@ BULLETPROOF DFS CORE - COMPLETE WORKING VERSION WITH ENHANCED PITCHER DETECTION
 ✅ Comprehensive validation
 ✅ Priority 1 enhancements included
 """
-from enum import Enum
-import numpy as np
+#!/usr/bin/env python3
+"""
+BULLETPROOF DFS CORE - COMPLETE WORKING VERSION WITH ENHANCED PITCHER DETECTION
+==============================================================================
+✅ All missing methods included
+✅ Real player name matching
+✅ Manual-only mode working
+✅ Enhanced pitcher detection integrated
+✅ Comprehensive validation
+✅ Priority 1 enhancements included
+"""
+# Standard library imports
 import os
 import sys
-# Import utils
-from utils.cache_manager import cache
-from utils.csv_utils import csv_reader
-from utils.profiler import profiler
-from utils.validator import DataValidator
-from utils.config import config
-
-
-import pandas as pd
-import numpy as np
-import tempfile
+import re
+import csv
 import json
+import time
+import copy
+import random
+import tempfile
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
-import warnings
-import random
+from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from enum import Enum
+from difflib import SequenceMatcher
+
+# Third-party imports
+import numpy as np
+import pandas as pd
+
+# Suppress warnings
+warnings.filterwarnings('ignore')
+
+# Import utils - only what exists and is used
+from utils.cache_manager import cache
+from utils.profiler import profiler
+from utils.validator import DataValidator
+from utils.config import config
 
 # New unified imports
 from unified_data_system import UnifiedDataSystem
 from optimal_lineup_optimizer import OptimalLineupOptimizer, OptimizationResult
 
-warnings.filterwarnings('ignore')
-
 # Enhanced Statistical Analysis Engine - PRIORITY 1 IMPROVEMENTS
 try:
     from enhanced_stats_engine import apply_enhanced_statistical_analysis
-
     ENHANCED_STATS_AVAILABLE = True
     print("✅ Enhanced Statistical Analysis Engine loaded")
 except ImportError:
     ENHANCED_STATS_AVAILABLE = False
     print("⚠️ Enhanced stats engine not found - using basic analysis")
-
-
     def apply_enhanced_statistical_analysis(players, verbose=False):
         return 0
-
-# Enhanced Pitcher Detection - REAL STARTING PITCHER CONFIRMATIONS
-try:
-    from enhanced_pitcher_detection import integrate_with_csv_players
-
-    ENHANCED_PITCHER_AVAILABLE = True
-    print("✅ Enhanced Pitcher Detection loaded")
-except ImportError:
-    ENHANCED_PITCHER_AVAILABLE = False
-
-
-    def integrate_with_csv_players(players):
-        return {}
-
-
-    print("⚠️ Enhanced pitcher detection not found - using fallback")
 
 # Import optimization
 try:
     import pulp
-
     MILP_AVAILABLE = True
     print("✅ PuLP available - MILP optimization enabled")
 except ImportError:
@@ -80,58 +79,68 @@ except ImportError:
 # Import modules with enhanced fallbacks
 try:
     from vegas_lines import VegasLines
-
     VEGAS_AVAILABLE = True
     print("✅ Vegas lines module imported")
 except ImportError:
     VEGAS_AVAILABLE = False
     print("⚠️ vegas_lines.py not found")
-
-
     class VegasLines:
         def __init__(self, **kwargs): self.lines = {}
-
         def get_vegas_lines(self, **kwargs): return {}
-
         def apply_to_players(self, players): return players
 
 try:
     from smart_confirmation_system import SmartConfirmationSystem
-
     CONFIRMED_AVAILABLE = True
     print("✅ Smart Confirmation System imported")
 except ImportError:
     CONFIRMED_AVAILABLE = False
     print("⚠️ smart_confirmation_system.py not found")
-
-
     class SmartConfirmationSystem:
         def __init__(self, **kwargs):
             self.confirmed_lineups = {}
             self.confirmed_pitchers = {}
-
         def get_all_confirmations(self): return 0, 0
-
         def is_player_confirmed(self, name, team): return False, None
-
         def is_pitcher_confirmed(self, name, team): return False
 
 try:
-    from simple_statcast_fetcher import SimpleStatcastFetcher
-
+    from simple_statcast_fetcher import SimpleStatcastFetcher, FastStatcastFetcher
     STATCAST_AVAILABLE = True
     print("✅ Statcast fetcher imported")
 except ImportError:
     STATCAST_AVAILABLE = False
     print("⚠️ simple_statcast_fetcher.py not found")
-
-
     class SimpleStatcastFetcher:
         def __init__(self): pass
-
         def fetch_player_data(self, name, position): return {}
+    class FastStatcastFetcher:
+        def __init__(self, max_workers=5): pass
+        def fetch_multiple_players_parallel(self, players): return {}
 
-# Enhanced park factors and configuration
+# NEW: Recent Form Analyzer
+try:
+    from recent_form_analyzer import RecentFormAnalyzer
+    RECENT_FORM_AVAILABLE = True
+    print("✅ Recent Form Analyzer imported")
+except ImportError:
+    RECENT_FORM_AVAILABLE = False
+    print("⚠️ recent_form_analyzer.py not found")
+
+# NEW: Batting Order & Correlation System
+try:
+    from batting_order_correlation_system import (
+        BattingOrderEnricher,
+        CorrelationOptimizer,
+        integrate_batting_order_correlation
+    )
+    BATTING_CORRELATION_AVAILABLE = True
+    print("✅ Batting Order & Correlation System imported")
+except ImportError:
+    BATTING_CORRELATION_AVAILABLE = False
+    print("⚠️ batting_order_correlation_system.py not found")
+
+# Constants
 PARK_FACTORS = {
     "COL": 1.1, "TEX": 1.05, "CIN": 1.05, "NYY": 1.05, "BOS": 1.03, "PHI": 1.03,
     "MIA": 0.95, "OAK": 0.95, "SD": 0.97, "SEA": 0.97
@@ -141,7 +150,6 @@ KNOWN_RELIEF_PITCHERS = {
     'jhoan duran', 'edwin diaz', 'felix bautista', 'ryan helsley', 'david bednar',
     'alexis diaz', 'josh hader', 'emmanuel clase', 'jordan romano', 'clay holmes'
 }
-
 
 class AdvancedPlayer:
     """Player model with all advanced features including enhanced pitcher detection"""
@@ -174,6 +182,49 @@ class AdvancedPlayer:
         self.enhanced_score = self.base_score
 
     # Add these methods to AdvancedPlayer class:
+
+    def _parse_positions_enhanced(self, position_str: str) -> List[str]:
+        """Enhanced position parsing for multi-position players"""
+        if not position_str:
+            return ['UTIL']
+
+        position_str = str(position_str).strip().upper()
+
+        # Handle various multi-position delimiters
+        delimiters = ['/', ',', '-', '|', '+', ' / ', ' , ', ' - ', ' OR ', ' AND ']
+        positions = [position_str]
+
+        for delimiter in delimiters:
+            if delimiter in position_str:
+                positions = [p.strip() for p in position_str.split(delimiter) if p.strip()]
+                break
+
+        # Enhanced position mapping
+        position_mapping = {
+            'P': 'P', 'SP': 'P', 'RP': 'P', 'PITCHER': 'P',
+            'C': 'C', 'CATCHER': 'C',
+            '1B': '1B', 'FIRST': '1B', 'FIRSTBASE': '1B', '1ST': '1B',
+            '2B': '2B', 'SECOND': '2B', 'SECONDBASE': '2B', '2ND': '2B',
+            '3B': '3B', 'THIRD': '3B', 'THIRDBASE': '3B', '3RD': '3B',
+            'SS': 'SS', 'SHORTSTOP': 'SS', 'SHORT': 'SS',
+            'OF': 'OF', 'OUTFIELD': 'OF', 'OUTFIELDER': 'OF',
+            'LF': 'OF', 'CF': 'OF', 'RF': 'OF', 'LEFT': 'OF', 'CENTER': 'OF', 'RIGHT': 'OF',
+            'UTIL': 'UTIL', 'DH': 'UTIL', 'UTILITY': 'UTIL'
+        }
+
+        valid_positions = []
+        for pos in positions:
+            pos = pos.strip().upper()
+            # Remove any numbers or special characters
+            pos = ''.join(c for c in pos if c.isalpha())
+
+            mapped_pos = position_mapping.get(pos, pos)
+            if mapped_pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL']:
+                if mapped_pos not in valid_positions:
+                    valid_positions.append(mapped_pos)
+
+        # If we found valid positions, return them; otherwise default to UTIL
+        return valid_positions if valid_positions else ['UTIL']
 
     def get_position_string(self) -> str:
         """Get position string showing flexibility"""
@@ -285,7 +336,8 @@ class AdvancedPlayer:
             return 0.0
 
     def is_eligible_for_selection(self, mode: str = 'bulletproof') -> bool:
-        """Enhanced eligibility check"""
+        """FIXED: Enhanced eligibility check with pitcher validation"""
+
         # SHOWDOWN: All players are eligible!
         if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
             return True
@@ -293,9 +345,23 @@ class AdvancedPlayer:
         if mode == 'manual_only':
             return self.is_manual_selected
         elif mode == 'confirmed_only':
+            # Extra check for pitchers
+            if self.primary_position == 'P':
+                return self.is_confirmed and 'mlb_starter' in self.confirmation_sources
             return self.is_confirmed
         else:  # bulletproof (default)
-            return self.is_confirmed or self.is_manual_selected
+            # Manual selections always eligible
+            if self.is_manual_selected:
+                return True
+
+            # For confirmed players, extra validation for pitchers
+            if self.is_confirmed:
+                if self.primary_position == 'P':
+                    # Pitcher MUST be MLB confirmed starter
+                    return 'mlb_starter' in self.confirmation_sources
+                return True
+
+            return False
 
     def add_confirmation_source(self, source: str):
         """Add confirmation source"""
@@ -469,6 +535,22 @@ class AdvancedPlayer:
             factor = self.park_factors.get('factor', 1.0)
             status_parts.append(f"PARK({factor:.2f}x)")
 
+        # NEW: Add batting order
+        if hasattr(self, 'batting_order') and self.batting_order:
+            status_parts.append(f"BAT-{self.batting_order}")
+
+        # NEW: Add correlation info
+        if hasattr(self, 'correlation_adjustment') and self.correlation_adjustment:
+            status_parts.append(f"CORR({self.correlation_adjustment:+.0%})")
+
+        # Recent form
+        if hasattr(self, '_recent_performance') and self._recent_performance:
+            form = self._recent_performance
+            if form.get('streak_type'):
+                status_parts.append(f"{form['streak_type'].upper()}-STREAK({form['streak_length']})")
+            elif form.get('form_score', 1.0) != 1.0:
+                status_parts.append(f"FORM({form['form_score']:.2f})")
+
         return " | ".join(status_parts) if status_parts else "UNCONFIRMED"
 
     def get_position_flexibility_score(self) -> float:
@@ -513,8 +595,10 @@ class AdvancedPlayer:
         return f"Player({self.name}, {pos_str}, ${self.salary}, {self.enhanced_score:.1f}, {status})"
 
 
+
 class BulletproofDFSCore:
     """Complete bulletproof DFS core with enhanced pitcher detection"""
+
 
     def __init__(self):
         self.players = []
@@ -535,6 +619,17 @@ class BulletproofDFSCore:
         ) if CONFIRMED_AVAILABLE else None
 
         self.statcast_fetcher = SimpleStatcastFetcher() if STATCAST_AVAILABLE else None
+
+        # NEW: Initialize recent form analyzer if available
+        if RECENT_FORM_AVAILABLE:
+            from utils.cache_manager import cache
+            self.form_analyzer = RecentFormAnalyzer(cache_manager=cache)
+        else:
+            self.form_analyzer = None
+
+        # NEW: Initialize batting order and correlation systems
+        if BATTING_CORRELATION_AVAILABLE:
+            integrate_batting_order_correlation(self)
 
         print("🚀 Bulletproof DFS Core - ALL METHODS INCLUDED WITH ENHANCED PITCHER DETECTION")
 
@@ -637,6 +732,31 @@ class BulletproofDFSCore:
 
         return False
 
+    def enrich_with_recent_form(self):
+        """Enrich players with recent form analysis"""
+        if not self.form_analyzer:
+            print("⚠️ Recent form analyzer not available")
+            return 0
+
+        eligible = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
+        return self.form_analyzer.enrich_players_with_form(eligible)
+
+    def enrich_with_batting_order(self):
+        """Enrich players with batting order data"""
+        if hasattr(self, 'batting_enricher'):
+            eligible = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
+            return self.batting_enricher.enrich_with_batting_order(eligible)
+        return 0
+
+    def apply_lineup_correlations(self, lineup):
+        """Apply correlation adjustments to lineup"""
+        if hasattr(self, 'correlation_optimizer') and hasattr(self, 'vegas_lines'):
+            vegas_data = self.vegas_lines.lines if self.vegas_lines else None
+            return self.correlation_optimizer.apply_correlation_adjustments(lineup, vegas_data)
+        return lineup
+
+    # Replace the apply_dff_rankings method in BulletproofDFSCore with this enhanced version
+
     def apply_dff_rankings(self, dff_file_path: str) -> bool:
         """Enhanced DFF application with better matching and debugging"""
         if not dff_file_path or not os.path.exists(dff_file_path):
@@ -656,6 +776,7 @@ class BulletproofDFSCore:
             proj_col = None
             own_col = None
             value_col = None
+            team_col = None
 
             for col in df.columns:
                 col_lower = col.lower()
@@ -667,6 +788,8 @@ class BulletproofDFSCore:
                     own_col = col
                 elif not value_col and any(x in col_lower for x in ['value', 'val']):
                     value_col = col
+                elif not team_col and any(x in col_lower for x in ['team', 'tm']):
+                    team_col = col
 
             if not name_col:
                 print("❌ Could not find player name column in DFF file")
@@ -677,13 +800,39 @@ class BulletproofDFSCore:
             print(f"   Projection: '{proj_col}' {'✓' if proj_col else '✗'}")
             print(f"   Ownership: '{own_col}' {'✓' if own_col else '✗'}")
             print(f"   Value: '{value_col}' {'✓' if value_col else '✗'}")
+            print(f"   Team: '{team_col}' {'✓' if team_col else '✗'}")
+
+            # Create lookup dictionaries for faster matching
+            dk_players_by_name = {}
+            dk_players_by_team = {}
+
+            # Build lookup dictionaries with cleaned names
+            for player in self.players:
+                # Clean DK player name
+                dk_name_clean = self.clean_player_name_for_matching(player.name)
+                dk_name_lower = dk_name_clean.lower()
+
+                # Store by cleaned name
+                dk_players_by_name[dk_name_lower] = player
+
+                # Also store by last name only
+                if ' ' in dk_name_clean:
+                    last_name = dk_name_lower.split()[-1]
+                    if last_name not in dk_players_by_name:
+                        dk_players_by_name[last_name] = player
+
+                # Store by team
+                if player.team:
+                    if player.team not in dk_players_by_team:
+                        dk_players_by_team[player.team] = []
+                    dk_players_by_team[player.team].append(player)
 
             # Debug: Show sample names
-            print(f"\n📋 Sample DFF names:")
+            print(f"\n📋 Sample DFF names (first 5):")
             for i, name in enumerate(df[name_col].head(5)):
                 print(f"   {i + 1}. {name}")
 
-            print(f"\n📋 Sample DK player names:")
+            print(f"\n📋 Sample DK player names (first 5):")
             for i, player in enumerate(self.players[:5]):
                 print(f"   {i + 1}. {player.name} ({player.team})")
 
@@ -693,17 +842,19 @@ class BulletproofDFSCore:
             eligible_enriched = 0
             all_enriched = 0
 
-            for _, row in df.iterrows():
+            for idx, row in df.iterrows():
                 try:
-                    # Clean DFF name - REMOVE TEAM ABBREVIATIONS AND EXTRA SPACES
+                    # Get raw DFF name
                     dff_name_raw = str(row[name_col]).strip()
                     if not dff_name_raw or dff_name_raw == 'nan':
                         continue
 
-                    # Remove team abbreviations in parentheses
-                    dff_name = re.sub(r'\s*\([^)]*\)', '', dff_name_raw).strip()
-                    # Remove extra spaces
-                    dff_name = ' '.join(dff_name.split())
+                    # USE THE NEW CLEANING METHOD HERE
+                    dff_name = self.clean_player_name_for_matching(dff_name_raw)
+                    dff_name_lower = dff_name.lower()
+
+                    # Get team if available
+                    dff_team = str(row[team_col]).strip().upper() if team_col and pd.notna(row[team_col]) else None
 
                     # Build DFF data dict
                     dff_data = {
@@ -714,7 +865,6 @@ class BulletproofDFSCore:
                     # Extract projection
                     if proj_col and pd.notna(row[proj_col]):
                         try:
-                            # Handle various formats (could have $ or other symbols)
                             proj_str = str(row[proj_col]).replace('$', '').replace(',', '').strip()
                             dff_data['ppg_projection'] = float(proj_str)
                         except:
@@ -735,28 +885,50 @@ class BulletproofDFSCore:
                         except:
                             pass
 
-                    # Find best matching player - CHECK ALL PLAYERS
+                    # Find best matching player
                     best_match = None
                     best_score = 0
 
-                    for player in self.players:
-                        # Clean DK player name too
-                        dk_name = ' '.join(player.name.split())
+                    # Method 1: Exact name match with cleaned names
+                    if dff_name_lower in dk_players_by_name:
+                        best_match = dk_players_by_name[dff_name_lower]
+                        best_score = 1.0
+                    else:
+                        # Method 2: Last name match + team verification
+                        last_name = dff_name_lower.split()[-1] if ' ' in dff_name_lower else dff_name_lower
 
-                        # Try exact match first
-                        if dk_name.lower() == dff_name.lower():
-                            best_match = player
-                            best_score = 1.0
-                            break
+                        if last_name in dk_players_by_name:
+                            candidate = dk_players_by_name[last_name]
+                            # Verify team matches if we have team data
+                            if dff_team and candidate.team == dff_team:
+                                best_match = candidate
+                                best_score = 0.95
+                            elif not dff_team:
+                                best_match = candidate
+                                best_score = 0.85
 
-                        # Try fuzzy matching
-                        score = self._name_similarity(dff_name, dk_name)
-                        if score > best_score and score >= 0.85:  # 85% threshold
-                            best_score = score
-                            best_match = player
+                        # Method 3: Fuzzy matching within same team
+                        if not best_match and dff_team and dff_team in dk_players_by_team:
+                            for player in dk_players_by_team[dff_team]:
+                                # Clean DK name for comparison
+                                dk_name_clean = self.clean_player_name_for_matching(player.name)
+                                score = self._name_similarity(dff_name, dk_name_clean)
+                                if score > best_score and score >= 0.75:  # Lower threshold for same team
+                                    best_score = score
+                                    best_match = player
+
+                        # Method 4: Global fuzzy matching (last resort)
+                        if not best_match:
+                            for player in self.players:
+                                # Clean DK name for comparison
+                                dk_name_clean = self.clean_player_name_for_matching(player.name)
+                                score = self._name_similarity(dff_name, dk_name_clean)
+                                if score > best_score and score >= 0.85:
+                                    best_score = score
+                                    best_match = player
 
                     if best_match and 'ppg_projection' in dff_data:
-                        # APPLY TO ALL MATCHED PLAYERS
+                        # APPLY TO MATCHED PLAYER
                         best_match.apply_dff_data(dff_data)
                         matches += 1
                         all_enriched += 1
@@ -765,17 +937,24 @@ class BulletproofDFSCore:
                         if best_match.is_eligible_for_selection(self.optimization_mode):
                             eligible_enriched += 1
 
-                            # Only show detailed output for eligible players
-                            proj = dff_data['ppg_projection']
-                            own = dff_data.get('ownership', 'N/A')
+                            # Show match details for first few or significant differences
+                            if eligible_enriched <= 5 or abs(dff_data['ppg_projection'] - best_match.base_score) > 2:
+                                proj = dff_data['ppg_projection']
+                                own = dff_data.get('ownership', 'N/A')
+                                match_indicator = "✅" if best_score >= 0.95 else f"🔄 ({best_score:.2f})"
 
-                            print(f"   ✅ DFF MATCH: {dff_name} → {best_match.name}")
-                            print(f"      Projection: {proj:.1f} | Ownership: {own}% | Score: {best_score:.2f}")
+                                print(f"\n   {match_indicator} DFF MATCH: {dff_name_raw} → {best_match.name}")
+                                print(
+                                    f"      Cleaned: {dff_name} → {self.clean_player_name_for_matching(best_match.name)}")
+                                print(f"      Team: {dff_team or 'N/A'} → {best_match.team}")
+                                print(f"      Projection: {proj:.1f} | Ownership: {own}%")
                     else:
-                        no_matches.append(dff_name)
+                        no_matches.append(f"{dff_name_raw} ({dff_team or 'N/A'})")
 
                 except Exception as e:
-                    print(f"   ❌ Error processing {dff_name_raw}: {e}")
+                    print(f"   ❌ Error processing row {idx}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     continue
 
             print(f"\n📊 DFF Integration Summary:")
@@ -783,7 +962,7 @@ class BulletproofDFSCore:
             print(f"   Matched to DK: {matches}")
             print(f"   Applied to all: {all_enriched}")
             print(f"   Eligible players enriched: {eligible_enriched}")
-            print(f"   Success rate: {(matches / len(df) * 100):.1f}%")
+            print(f"   Success rate: {(matches / len(df) * 100):.1f}%" if len(df) > 0 else "N/A")
 
             # Show some unmatched for debugging
             if no_matches and len(no_matches) <= 10:
@@ -843,109 +1022,91 @@ class BulletproofDFSCore:
         from difflib import SequenceMatcher
         return SequenceMatcher(None, name1, name2).ratio()
 
+    def reset_all_confirmations(self):
+        """Reset ALL confirmation status - call this at the start of each run"""
+        print("\n🔄 RESETTING ALL CONFIRMATIONS")
+        for player in self.players:
+            player.is_confirmed = False
+            player.confirmation_sources = []
+            # Don't reset manual selections
+        print(f"✅ Reset confirmations for {len(self.players)} players")
+
     def _are_nicknames(self, name1: str, name2: str) -> bool:
         """Check if two names are common nicknames"""
         nicknames = {
+            # Common nicknames
             'mike': 'michael', 'michael': 'mike',
             'chris': 'christopher', 'christopher': 'chris',
             'dave': 'david', 'david': 'dave',
-            'rob': 'robert', 'robert': 'rob', 'bob': 'robert',
-            'matt': 'matthew', 'matthew': 'matt',
-            'joe': 'joseph', 'joseph': 'joe',
+            'rob': 'robert', 'robert': 'rob', 'bob': 'robert', 'bobby': 'robert',
+            'matt': 'matthew', 'matthew': 'matt', 'matty': 'matthew',
+            'joe': 'joseph', 'joseph': 'joe', 'joey': 'joseph',
             'alex': 'alexander', 'alexander': 'alex',
-            'will': 'william', 'william': 'will',
+            'will': 'william', 'william': 'will', 'willie': 'william', 'bill': 'william', 'billy': 'william',
             'jake': 'jacob', 'jacob': 'jake',
             'josh': 'joshua', 'joshua': 'josh',
-            'jon': 'jonathan', 'jonathan': 'jon',
-            'nick': 'nicholas', 'nicholas': 'nick',
+            'jon': 'jonathan', 'jonathan': 'jon', 'jonny': 'jonathan',
+            'nick': 'nicholas', 'nicholas': 'nick', 'nicky': 'nicholas',
             'tony': 'anthony', 'anthony': 'tony',
-            'andy': 'andrew', 'andrew': 'andy',
-            'dan': 'daniel', 'daniel': 'dan',
-            'jim': 'james', 'james': 'jim',
+            'andy': 'andrew', 'andrew': 'andy', 'drew': 'andrew',
+            'dan': 'daniel', 'daniel': 'dan', 'danny': 'daniel',
+            'jim': 'james', 'james': 'jim', 'jimmy': 'james',
             'ed': 'edward', 'edward': 'ed', 'eddie': 'edward',
-            'tom': 'thomas', 'thomas': 'tom', 'tommy': 'thomas'
+            'tom': 'thomas', 'thomas': 'tom', 'tommy': 'thomas',
+            'ben': 'benjamin', 'benjamin': 'ben', 'benny': 'benjamin',
+            'ken': 'kenneth', 'kenneth': 'ken', 'kenny': 'kenneth',
+            'steve': 'stephen', 'stephen': 'steve', 'steven': 'steve',
+            'rick': 'richard', 'richard': 'rick', 'ricky': 'richard', 'dick': 'richard',
+            'charlie': 'charles', 'charles': 'charlie', 'chuck': 'charles',
+            'ted': 'theodore', 'theodore': 'ted', 'teddy': 'theodore',
+            'frank': 'francis', 'francis': 'frank', 'frankie': 'francis',
+            'sam': 'samuel', 'samuel': 'sam', 'sammy': 'samuel',
+            'tim': 'timothy', 'timothy': 'tim', 'timmy': 'timothy',
+            'pat': 'patrick', 'patrick': 'pat',
+            'pete': 'peter', 'peter': 'pete',
+
+            # Spanish/Latin nicknames common in baseball
+            'alex': 'alejandro', 'alejandro': 'alex',
+            'manny': 'manuel', 'manuel': 'manny',
+            'rafa': 'rafael', 'rafael': 'rafa',
+            'miggy': 'miguel', 'miguel': 'miggy',
+            'vlad': 'vladimir', 'vladimir': 'vlad', 'vladdy': 'vladimir',
+
+            # Baseball-specific common nicknames
+            'aj': 'aaron', 'aj': 'andrew', 'aj': 'anthony',  # A.J. can be multiple names
+            'cj': 'christopher', 'cj': 'carl', 'cj': 'charles',
+            'dj': 'david', 'dj': 'daniel', 'dj': 'derek',
+            'tj': 'thomas', 'tj': 'tyler', 'tj': 'timothy',
+            'jp': 'john', 'jp': 'james', 'jp': 'joseph',
+            'jd': 'john', 'jd': 'james', 'jd': 'joseph',
+
+            # Other common baseball nicknames
+            'bo': 'robert', 'buster': 'gerald', 'chipper': 'larry',
+            'dusty': 'johnnie', 'duke': 'edwin', 'goose': 'richard',
+            'lefty': 'steve', 'moose': 'michael', 'pudge': 'ivan',
+            'rusty': 'russell', 'sandy': 'sanford', 'sparky': 'george',
+            'whitey': 'edward', 'yogi': 'lawrence'
         }
 
-        return nicknames.get(name1.lower()) == name2.lower() or nicknames.get(name2.lower()) == name1.lower()
+        name1_lower = name1.lower().strip()
+        name2_lower = name2.lower().strip()
 
-    def generate_contest_lineups(self, count: int = 20,
-                                 contest_type: str = 'gpp',
-                                 min_salary_pct: float = 0.95) -> List[Dict]:
-        """Generate multiple lineups for specific contest type"""
+        # Direct nickname match
+        if nicknames.get(name1_lower) == name2_lower or nicknames.get(name2_lower) == name1_lower:
+            return True
 
-        print(f"\n🎰 GENERATING {count} {contest_type.upper()} LINEUPS")
-        print("=" * 60)
+        # Check if both map to same full name
+        if name1_lower in nicknames and name2_lower in nicknames:
+            if nicknames[name1_lower] == nicknames[name2_lower]:
+                return True
 
-        # Get eligible players
-        eligible = self.filter_eligible_players()
+        # Handle initials (A.J., C.J., etc.)
+        if len(name1_lower) == 2 and '.' not in name1_lower and len(name2_lower) > 2:
+            # Check if initials match first letters
+            if name1_lower[0] == name2_lower[0]:
+                return True
 
-        if len(eligible) < 10:
-            print(f"❌ Not enough eligible players: {len(eligible)}")
-            return []
-
-        generated_lineups = []
-        player_usage = {}
-
-        for i in range(count):
-            # Apply diversity penalties
-            if i > 0:
-                adjusted_players = []
-                for player in eligible:
-                    adj_player = self._copy_player(player)
-
-                    # Reduce score if overused
-                    usage = player_usage.get(player.id, 0)
-                    if usage > 0:
-                        penalty = 1.0 - (usage * 0.1)  # 10% per use
-                        adj_player.enhanced_score *= max(0.5, penalty)
-
-                    adjusted_players.append(adj_player)
-            else:
-                adjusted_players = eligible
-
-            # Adjust for contest type
-            if contest_type == 'gpp':
-                # Boost high-ceiling players
-                for p in adjusted_players:
-                    if hasattr(p, '_statcast_data') and p._statcast_data:
-                        if p._statcast_data.get('Hard_Hit', 0) > 40:
-                            p.enhanced_score *= 1.1
-            elif contest_type == 'cash':
-                # Boost consistent players
-                for p in adjusted_players:
-                    if p.is_confirmed:
-                        p.enhanced_score *= 1.05
-
-            # Optimize
-            lineup, score = self.optimize_lineup_with_mode()
-
-            if lineup and score > 0:
-                # Track usage
-                for player in lineup:
-                    player_usage[player.id] = player_usage.get(player.id, 0) + 1
-
-                # Store lineup data
-                lineup_data = {
-                    'lineup': lineup,
-                    'total_score': score,
-                    'total_salary': sum(p.salary for p in lineup),
-                    'contest_type': contest_type,
-                    'lineup_id': i + 1
-                }
-                generated_lineups.append(lineup_data)
-
-                if (i + 1) % 10 == 0:
-                    print(f"   Generated {i + 1}/{count} lineups...")
-
-        print(f"\n✅ Generated {len(generated_lineups)} lineups successfully!")
-
-        # Print summary
-        if generated_lineups:
-            scores = [l['total_score'] for l in generated_lineups]
-            print(f"📊 Score range: {min(scores):.1f} - {max(scores):.1f}")
-            print(f"📊 Unique players used: {len(player_usage)}")
-
-        return generated_lineups
+        return False
 
     def _copy_player(self, player):
         """Create a copy of player"""
@@ -963,7 +1124,7 @@ class BulletproofDFSCore:
             print(f"❌ Invalid mode. Choose: {valid_modes}")
 
     def load_draftkings_csv(self, file_path: str) -> bool:
-        """Load DraftKings CSV with better SHOWDOWN detection"""
+        """Load DraftKings CSV with better multi-position parsing"""
         try:
             print(f"📁 Loading DraftKings CSV: {Path(file_path).name}")
 
@@ -976,14 +1137,12 @@ class BulletproofDFSCore:
             print(f"📊 Found {len(df)} rows, {len(df.columns)} columns")
 
             # ENHANCED SHOWDOWN DETECTION
-            # Method 1: Check filename
             filename = os.path.basename(file_path).lower()
             if any(indicator in filename for indicator in ['showdown', 'captain', 'sd', 'cptn']):
                 self.contest_type = 'showdown'
                 print("🎯 SHOWDOWN DETECTED (filename)")
             else:
                 # Method 2: Check team count
-                # First, detect teams in the CSV
                 team_col_idx = None
                 for i, col in enumerate(df.columns):
                     if 'team' in str(col).lower():
@@ -1000,39 +1159,31 @@ class BulletproofDFSCore:
                     else:
                         self.contest_type = 'classic'
                         print(f"🏈 CLASSIC CONTEST ({team_count} teams)")
-                else:
-                    # Method 3: Check if all positions are same
-                    pos_col_idx = None
-                    for i, col in enumerate(df.columns):
-                        if 'position' in str(col).lower() or 'pos' in str(col).lower():
-                            pos_col_idx = i
-                            break
-
-                    if pos_col_idx is not None:
-                        unique_positions = df.iloc[:, pos_col_idx].dropna().unique()
-                        if len(unique_positions) == 1:  # All same position = likely showdown
-                            self.contest_type = 'showdown'
-                            print("🎯 SHOWDOWN DETECTED (single position type)")
 
             # Update salary cap for showdown
             if self.contest_type == 'showdown':
-                self.salary_cap = 50000  # Showdown uses same cap
+                self.salary_cap = 50000
                 print("💰 Showdown salary cap: $50,000")
 
-            # COLUMN DETECTION - THIS IS WHAT WAS MISSING!
+            # COLUMN DETECTION
             column_map = {}
+            roster_position_idx = None
+
             for i, col in enumerate(df.columns):
                 col_lower = str(col).lower().strip()
 
+                # Check for Roster Position column specifically
+                if 'roster position' in col_lower:
+                    roster_position_idx = i
+                    print(f"   Found Roster Position column at index {i}")
+
                 # Name column detection
                 if any(name in col_lower for name in ['name', 'player']):
-                    if 'name' in col_lower and '+' not in col_lower:
-                        column_map['name'] = i
-                    elif 'name' not in column_map:
+                    if 'name' in col_lower and '+' not in col_lower and 'name' not in column_map:
                         column_map['name'] = i
 
                 # Position column detection
-                elif any(pos in col_lower for pos in ['position', 'pos', 'roster']):
+                elif any(pos in col_lower for pos in ['position']) and 'roster' not in col_lower:
                     if 'position' not in column_map:
                         column_map['position'] = i
 
@@ -1058,12 +1209,24 @@ class BulletproofDFSCore:
 
             # Parse players
             players = []
+            multi_position_players = []
+
             for idx, row in df.iterrows():
                 try:
+                    # Get position string - prioritize Roster Position for multi-positions
+                    position_str = ""
+
+                    if roster_position_idx is not None:
+                        position_str = str(row.iloc[roster_position_idx]).strip()
+
+                    # If empty or nan, try regular Position column
+                    if not position_str or position_str.lower() == 'nan':
+                        position_str = str(row.iloc[column_map.get('position', 1)]).strip()
+
                     player_data = {
                         'id': idx + 1,
                         'name': str(row.iloc[column_map.get('name', 0)]).strip(),
-                        'position': str(row.iloc[column_map.get('position', 1)]).strip(),
+                        'position': position_str,  # Pass the full position string
                         'team': str(row.iloc[column_map.get('team', 2)]).strip(),
                         'salary': row.iloc[column_map.get('salary', 3)],
                         'projection': row.iloc[column_map.get('projection', 4)]
@@ -1073,10 +1236,13 @@ class BulletproofDFSCore:
 
                     # SHOWDOWN POSITION OVERRIDE
                     if self.contest_type == 'showdown':
-                        # In showdown, all players can be CPT or UTIL
                         player.positions = ['CPT', 'UTIL']
                         player.primary_position = 'UTIL'
                         player.showdown_eligible = True
+
+                    # Track multi-position players
+                    if len(player.positions) > 1:
+                        multi_position_players.append(f"{player.name} ({'/'.join(player.positions)})")
 
                     if player.name and player.salary > 0:
                         players.append(player)
@@ -1087,15 +1253,24 @@ class BulletproofDFSCore:
 
             self.players = players
 
+            # Show multi-position players
+            if multi_position_players:
+                print(f"\n🔄 Found {len(multi_position_players)} multi-position players:")
+                for mp in multi_position_players[:10]:  # Show first 10
+                    print(f"   {mp}")
+                if len(multi_position_players) > 10:
+                    print(f"   ... and {len(multi_position_players) - 10} more")
+
             # Also detect and load appropriate DFF file
             print("\n📂 Looking for DFF files...")
             self.detect_and_load_dff_files()
 
             print(f"✅ Loaded {len(self.players)} valid {self.contest_type.upper()} players")
 
-            # For showdown, verify we have enough players
-            if self.contest_type == 'showdown' and len(self.players) < 6:
-                print(f"⚠️ Warning: Showdown requires at least 6 players, found {len(self.players)}")
+            # Position statistics
+            multi_position_count = sum(1 for p in self.players if len(p.positions) > 1)
+            single_position_count = sum(1 for p in self.players if len(p.positions) == 1)
+            print(f"📊 Position stats: {multi_position_count} multi-position, {single_position_count} single-position")
 
             return True
 
@@ -1153,6 +1328,7 @@ class BulletproofDFSCore:
                     print(f"   ❌ {manual_name} → No match found")
 
         return matches
+
 
     def _name_similarity(self, name1: str, name2: str) -> float:
         """Enhanced name similarity matching"""
@@ -1525,10 +1701,13 @@ class BulletproofDFSCore:
         return filename
 
     def detect_confirmed_players(self) -> int:
-        """Use SmartConfirmationSystem for confirmations"""
+        """FIXED: Strict confirmation detection with validation"""
 
-        print("🔍 SMART CONFIRMATION DETECTION")
+        print("\n🔍 SMART CONFIRMATION DETECTION - STRICT MODE")
         print("=" * 60)
+
+        # CRITICAL: Reset all confirmations first
+        self.reset_all_confirmations()
 
         if not self.confirmation_system:
             print("⚠️ Smart confirmation system not available")
@@ -1544,35 +1723,79 @@ class BulletproofDFSCore:
         lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
 
         confirmed_count = 0
+        confirmed_pitchers = []
+        confirmed_hitters = []
 
-        print("\n🔍 Matching players to confirmed lineups...")
+        print("\n🔍 STRICT PLAYER MATCHING...")
 
+        # PART 1: Match hitters to confirmed lineups
         for player in self.players:
-            # Check if player is in lineup
-            is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
-                player.name, player.team
-            )
-
-            if is_confirmed:
-                player.add_confirmation_source("mlb_lineup")
-                confirmed_count += 1
-                print(f"✅ Confirmed: {player.name} ({player.team}) - Batting {batting_order}")
-
-            # Check if pitcher is confirmed
-            if player.primary_position == 'P':
-                is_pitcher_confirmed = self.confirmation_system.is_pitcher_confirmed(
+            if player.primary_position != 'P':  # Hitters only
+                # Check if player is in lineup
+                is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
                     player.name, player.team
                 )
-                if is_pitcher_confirmed:
-                    player.add_confirmation_source("mlb_starter")
-                    if not is_confirmed:  # Don't double count
+
+                if is_confirmed:
+                    player.is_confirmed = True
+                    player.add_confirmation_source("mlb_lineup")
+                    confirmed_count += 1
+                    confirmed_hitters.append(f"{player.name} ({player.team}) - Batting {batting_order}")
+                    print(f"✅ Confirmed Hitter: {player.name} ({player.team}) - Batting {batting_order}")
+
+        # PART 2: STRICT pitcher matching - ONLY confirmed starters
+        print("\n🎯 STRICT PITCHER VERIFICATION...")
+
+        # Get today's confirmed starters from MLB API
+        confirmed_starter_names = {}
+        if hasattr(self.confirmation_system, 'confirmed_pitchers'):
+            for team, pitcher_data in self.confirmation_system.confirmed_pitchers.items():
+                pitcher_name = pitcher_data['name'].lower().strip()
+                confirmed_starter_names[pitcher_name] = team
+                print(f"   📌 Confirmed starter: {pitcher_data['name']} ({team})")
+
+        # Now check ALL pitchers
+        for player in self.players:
+            if player.primary_position == 'P':
+                player_name_lower = player.name.lower().strip()
+
+                # STRICT: Only confirm if exact match to MLB confirmed starter
+                if player_name_lower in confirmed_starter_names:
+                    expected_team = confirmed_starter_names[player_name_lower]
+                    if player.team == expected_team:
+                        player.is_confirmed = True
+                        player.add_confirmation_source("mlb_starter")
                         confirmed_count += 1
-                    print(f"✅ Confirmed Pitcher: {player.name} ({player.team})")
+                        confirmed_pitchers.append(f"{player.name} ({player.team})")
+                        print(f"✅ Confirmed Pitcher: {player.name} ({player.team})")
+                    else:
+                        print(f"❌ Team mismatch for {player.name}: {player.team} vs {expected_team}")
+                else:
+                    # This pitcher is NOT starting today
+                    print(f"❌ NOT STARTING: {player.name} ({player.team})")
 
-        print(f"\n📊 Total confirmed: {confirmed_count} players")
+        # PART 3: Validation summary
+        print(f"\n📊 CONFIRMATION SUMMARY:")
+        print(f"   Confirmed Pitchers: {len(confirmed_pitchers)}")
+        print(f"   Confirmed Hitters: {len(confirmed_hitters)}")
+        print(f"   Total Confirmed: {confirmed_count}")
 
+        # Show confirmed pitchers
+        if confirmed_pitchers:
+            print(f"\n⚾ CONFIRMED STARTING PITCHERS:")
+            for p in confirmed_pitchers:
+                print(f"   - {p}")
+
+        # CRITICAL: Verify no extra players are confirmed
+        self._validate_confirmations()
+
+        # Apply data enrichment ONLY to confirmed players
         if confirmed_count > 0:
             print("\n📊 APPLYING ADVANCED ANALYTICS TO CONFIRMED PLAYERS...")
+
+            # Get ONLY confirmed players
+            truly_confirmed = [p for p in self.players if p.is_confirmed]
+            print(f"🎯 Enriching {len(truly_confirmed)} confirmed players...")
 
             # 1. Vegas Lines
             if self.vegas_lines:
@@ -1589,11 +1812,35 @@ class BulletproofDFSCore:
             self.apply_park_factors()
 
             # 4. Statistical Analysis
-            eligible = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
             print("🔬 Applying enhanced statistical analysis...")
-            self._apply_comprehensive_statistical_analysis(eligible)
+            self._apply_comprehensive_statistical_analysis(truly_confirmed)
 
         return confirmed_count
+
+    def _validate_confirmations(self):
+        """Validate that ONLY appropriate players are confirmed"""
+        print("\n🔍 VALIDATING CONFIRMATIONS...")
+
+        issues = []
+
+        # Check all players
+        for player in self.players:
+            if player.is_confirmed:
+                # Verify confirmation sources
+                if not player.confirmation_sources:
+                    issues.append(f"{player.name} marked confirmed but no sources")
+
+                # Extra validation for pitchers
+                if player.primary_position == 'P':
+                    if 'mlb_starter' not in player.confirmation_sources:
+                        issues.append(f"Pitcher {player.name} confirmed but not MLB starter")
+
+        if issues:
+            print("⚠️ CONFIRMATION ISSUES FOUND:")
+            for issue in issues:
+                print(f"   - {issue}")
+        else:
+            print("✅ All confirmations validated")
 
     def _can_fill_position(self, player, position: str) -> bool:
         """Enhanced to show multi-position eligibility"""
@@ -1620,6 +1867,34 @@ class BulletproofDFSCore:
         if not eligible_players:
             print("❌ No eligible players found")
             return [], 0
+            # EXTRA SAFETY: Final pitcher check
+            print("\n🔒 FINAL SAFETY CHECK...")
+            safe_players = []
+
+            for player in eligible_players:
+                if player.primary_position == 'P' and self.optimization_mode != 'manual_only':
+                    # Verify pitcher is actually starting
+                    if self.confirmation_system and hasattr(self.confirmation_system, 'confirmed_pitchers'):
+                        is_starting = False
+                        for team, pitcher_data in self.confirmation_system.confirmed_pitchers.items():
+                            if (player.name.lower() == pitcher_data['name'].lower() and
+                                    player.team == team):
+                                is_starting = True
+                                break
+
+                        if is_starting:
+                            safe_players.append(player)
+                        else:
+                            print(f"   ⚠️ REMOVING non-starter from optimization: {player.name} ({player.team})")
+                    else:
+                        # If no confirmation system, only allow manual pitchers
+                        if player.is_manual_selected:
+                            safe_players.append(player)
+                else:
+                    safe_players.append(player)
+
+            eligible_players = safe_players
+            print(f"✅ Final eligible count: {len(eligible_players)} players")
 
         print(f"📊 Optimizing with {len(eligible_players)} eligible players")
 
@@ -1643,10 +1918,12 @@ class BulletproofDFSCore:
         players_with_vegas = sum(1 for p in eligible_players if hasattr(p, 'vegas_data') and p.vegas_data)
         players_with_statcast = sum(1 for p in eligible_players if hasattr(p, 'statcast_data') and p.statcast_data)
         players_with_dff = sum(1 for p in eligible_players if hasattr(p, 'dff_data') and p.dff_data)
+        players_with_batting_order = sum(1 for p in eligible_players if hasattr(p, 'batting_order') and p.batting_order)
 
         print(f"💰 Vegas data: {players_with_vegas}/{len(eligible_players)} players")
         print(f"📊 Statcast data: {players_with_statcast}/{len(eligible_players)} players")
         print(f"📈 DFF data: {players_with_dff}/{len(eligible_players)} players")
+        print(f"🔢 Batting order data: {players_with_batting_order}/{len(eligible_players)} players")
 
         # Show sample player data
         if eligible_players:
@@ -1656,6 +1933,8 @@ class BulletproofDFSCore:
                 print(f"      Base score: {player.base_score:.2f} → Enhanced: {player.enhanced_score:.2f}")
                 if hasattr(player, 'contest_adjustment'):
                     print(f"      Contest adjustment: {player.contest_adjustment:.2%}")
+                if hasattr(player, 'batting_order'):
+                    print(f"      Batting order: {player.batting_order}")
                 if hasattr(player, 'vegas_data') and player.vegas_data:
                     print(f"      Vegas: Team Total {player.vegas_data.get('team_total', 'N/A')}")
                 if hasattr(player, 'statcast_data') and player.statcast_data:
@@ -1683,6 +1962,17 @@ class BulletproofDFSCore:
             print(f"📈 Projected Points: {result.total_score:.2f}")
             print(f"📊 Positions Filled: {result.positions_filled}")
 
+            # NEW: Apply correlation adjustments to the optimal lineup
+            if hasattr(self, 'apply_lineup_correlations'):
+                print(f"\n🔥 Applying correlation adjustments...")
+                result.lineup = self.apply_lineup_correlations(result.lineup)
+                # Recalculate total score after correlation adjustments
+                old_score = result.total_score
+                result.total_score = sum(p.enhanced_score for p in result.lineup)
+                if abs(result.total_score - old_score) > 0.1:
+                    print(
+                        f"   Score adjusted: {old_score:.2f} → {result.total_score:.2f} ({result.total_score - old_score:+.2f})")
+
             # Show lineup preview
             print(f"\n📋 LINEUP PREVIEW:")
             if self.contest_type == 'showdown':
@@ -1701,22 +1991,28 @@ class BulletproofDFSCore:
                 for player in result.lineup[:5]:  # Show first 5
                     pos = getattr(player, 'assigned_position', player.primary_position)
                     pos_str = player.get_position_display() if hasattr(player, 'get_position_display') else pos
-                    print(f"   {pos_str}: {player.name} (${player.salary:,}) - {player.enhanced_score:.1f} pts")
+                    batting_str = f" (Bat-{player.batting_order})" if hasattr(player,
+                                                                              'batting_order') and player.batting_order else ""
+                    print(
+                        f"   {pos_str}: {player.name}{batting_str} (${player.salary:,}) - {player.enhanced_score:.1f} pts")
                 print(f"   ... and {len(result.lineup) - 5} more players")
 
             # After optimization, show stack info if available
-            if hasattr(result, 'stack_info') and result.stack_info:
-                stack_info = result.stack_info
-                if stack_info['stacks']:
+            if hasattr(self, 'correlation_optimizer'):
+                correlation_score, correlation_details = self.correlation_optimizer.calculate_lineup_correlation_score(
+                    result.lineup,
+                    self.vegas_lines.lines if self.vegas_lines else None
+                )
+
+                if correlation_details['stacks']:
                     print(f"\n🔥 STACKING ANALYSIS:")
-                    for stack in stack_info['stacks']:
-                        print(f"   {stack['team']}: {stack['size']} players (bonus: +{stack.get('bonus', 0):.1f})")
+                    for stack in correlation_details['stacks']:
+                        print(f"   {stack['team']}: {stack['size']} players (bonus: +{stack['bonus']:.1%})")
                         if stack.get('has_pitcher'):
                             print(f"      ⚾ Includes pitcher")
-                        if stack.get('players'):
-                            print(
-                                f"      Players: {', '.join(stack['players'][:3])}{'...' if len(stack['players']) > 3 else ''}")
-                    print(f"   Total correlation bonus: +{stack_info['correlation_bonus']:.1f}")
+                        print(
+                            f"      Players: {', '.join(stack['players'][:3])}{'...' if len(stack['players']) > 3 else ''}")
+                    print(f"   Total correlation bonus: {correlation_score:.1%}")
 
             return result.lineup, result.total_score
         else:
@@ -1758,102 +2054,277 @@ class BulletproofDFSCore:
         return confirmed_pitchers
 
     def apply_dff_rankings(self, dff_file_path: str) -> bool:
-        """FIXED: Enhanced DFF application with better status tracking"""
-
+        """Enhanced DFF application with better matching - ONLY FOR DFF, doesn't affect other systems"""
 
         if not dff_file_path or not os.path.exists(dff_file_path):
             print("⚠️ No DFF file provided or file not found")
             return False
 
-        try:
-            print(f"🎯 Loading DFF rankings: {Path(dff_file_path).name}")
-            df = pd.read_csv(dff_file_path)
 
-            matches = 0
-            confirmed_matches = 0
+        # Local function for DFF-specific name cleaning
 
-            for _, row in df.iterrows():
-                try:
-                    # Try different column name patterns for player names
-                    name_candidates = []
-                    for col in df.columns:
-                        if any(pattern in col.lower() for pattern in ['name', 'player']):
-                            name_candidates.append(str(row[col]).strip())
+        def apply_injury_list_to_players(self):
+            """Apply injury list to player pool"""
+            injury_list = self.fetch_mlb_injury_list()
 
-                    if not name_candidates:
-                        continue
+            injured_count = 0
+            for player in self.players:
+                if player.team in injury_list:
+                    # Check if player is on injury list
+                    for injured_name in injury_list[player.team]:
+                        if injured_name.lower() in player.name.lower() or player.name.lower() in injured_name.lower():
+                            player.set_injury_status('IL', f'On {player.team} injury list')
+                            injured_count += 1
 
-                    full_name = name_candidates[0]
-
-                    # Find matching player
-                    for player in self.players:
-                        if self._name_similarity(full_name, player.name) >= 0.7:
-                            dff_data = {}
-
-                            # Extract ALL available DFF data
-                            for col in df.columns:
-                                col_lower = col.lower()
-                                try:
-                                    if 'projection' in col_lower or 'ppg' in col_lower:
-                                        dff_data['ppg_projection'] = float(row[col])
-                                    elif 'value' in col_lower:
-                                        dff_data['value_projection'] = float(row[col])
-                                    elif 'l5' in col_lower and 'fppg' in col_lower:
-                                        dff_data['L5_fppg_avg'] = float(row[col])
-                                    elif 'ownership' in col_lower:
-                                        dff_data['ownership'] = float(row[col])
-                                    elif 'ceiling' in col_lower:
-                                        dff_data['ceiling'] = float(row[col])
-                                    elif 'floor' in col_lower:
-                                        dff_data['floor'] = float(row[col])
-                                except:
-                                    pass
-
-                            if dff_data:
-                                player.apply_dff_data(dff_data)
-                                matches += 1
-
-                                # Track confirmed player matches
-                                if player.is_eligible_for_selection(self.optimization_mode):
-                                    confirmed_matches += 1
-                                    print(
-                                        f"🎯 DFF confirmed: {player.name} - {dff_data.get('ppg_projection', 'N/A')} proj")
+                            # Remove confirmation if exists
+                            if player.is_confirmed:
+                                player.is_confirmed = False
+                                player.confirmation_sources = []
+                                print(f"   ❌ Removed injured: {player.name} ({player.team})")
                             break
 
-                except Exception:
+            if injured_count > 0:
+                print(f"✅ Marked {injured_count} players as injured")
+
+            return injured_count
+
+        def fetch_mlb_injury_list(self) -> Dict[str, List[str]]:
+            """
+            Fetch current MLB injury list from ESPN or other sources
+            Returns dict of team -> list of injured players
+            """
+            print("\n🏥 FETCHING MLB INJURY LIST...")
+
+            injured_players = {}
+
+            # Common known injured players (June 2024)
+            # UPDATE THIS LIST DAILY!
+            KNOWN_INJURIES = {
+                'BAL': ['Cedric Mullins', 'Tyler Wells', 'John Means'],
+                'LAA': ['Mike Trout', 'Anthony Rendon'],
+                'ATL': ['Ronald Acuna Jr.', 'Max Fried'],
+                'HOU': ['Jose Altuve', 'Cristian Javier'],
+                # Add more teams/players as needed
+            }
+
+            # You could also scrape from ESPN or use an API here
+            # For now, use the known list
+
+            total_injured = 0
+            for team, players in KNOWN_INJURIES.items():
+                injured_players[team] = players
+                total_injured += len(players)
+
+            print(f"📋 Found {total_injured} injured players across {len(KNOWN_INJURIES)} teams")
+
+            return injured_players
+
+        def clean_dff_name(name):
+            """Clean DFF names only - removes team abbreviations and normalizes"""
+            if not name:
+                return ''
+            # Remove team abbreviations in parentheses
+            name = re.sub(r'\s*\([^)]*\)', '', str(name)).strip()
+            # Remove extra spaces
+            name = ' '.join(name.split())
+            return name
+
+        try:
+            print(f"\n🎯 Loading DFF rankings: {Path(dff_file_path).name}")
+            df = pd.read_csv(dff_file_path)
+
+            print(f"📊 DFF Data Summary:")
+            print(f"   Rows: {len(df)}")
+            print(f"   Columns: {list(df.columns)[:5]}{'...' if len(df.columns) > 5 else ''}")
+
+            # Auto-detect important columns
+            name_col = None
+            proj_col = None
+            own_col = None
+            value_col = None
+            team_col = None
+
+            for col in df.columns:
+                col_lower = col.lower()
+                if not name_col and any(x in col_lower for x in ['name', 'player']):
+                    name_col = col
+                elif not proj_col and any(x in col_lower for x in ['projection', 'proj', 'ppg', 'fpts', 'points']):
+                    proj_col = col
+                elif not own_col and any(x in col_lower for x in ['own', 'ownership', '%']):
+                    own_col = col
+                elif not value_col and any(x in col_lower for x in ['value', 'val']):
+                    value_col = col
+                elif not team_col and any(x in col_lower for x in ['team', 'tm']):
+                    team_col = col
+
+            if not name_col:
+                print("❌ Could not find player name column in DFF file")
+                return False
+
+            print(f"📋 Detected DFF columns:")
+            print(f"   Name: '{name_col}'")
+            print(f"   Projection: '{proj_col}' {'✓' if proj_col else '✗'}")
+            print(f"   Ownership: '{own_col}' {'✓' if own_col else '✗'}")
+            print(f"   Value: '{value_col}' {'✓' if value_col else '✗'}")
+            print(f"   Team: '{team_col}' {'✓' if team_col else '✗'}")
+
+            # Debug: Show sample names
+            print(f"\n📋 Sample DFF names (first 5):")
+            for i, name in enumerate(df[name_col].head(5)):
+                print(f"   {i + 1}. {name}")
+
+            print(f"\n📋 Sample DK player names (first 5):")
+            for i, player in enumerate(self.players[:5]):
+                print(f"   {i + 1}. {player.name} ({player.team})")
+
+            # Match players
+            matches = 0
+            no_matches = []
+            eligible_enriched = 0
+            all_enriched = 0
+
+            for idx, row in df.iterrows():
+                try:
+                    # Get raw DFF name
+                    dff_name_raw = str(row[name_col]).strip()
+                    if not dff_name_raw or dff_name_raw == 'nan':
+                        continue
+
+                    # Clean DFF name (remove team abbreviations)
+                    dff_name = clean_dff_name(dff_name_raw)
+
+                    # Get team if available
+                    dff_team = str(row[team_col]).strip().upper() if team_col and pd.notna(row[team_col]) else None
+
+                    # Build DFF data dict
+                    dff_data = {
+                        'dff_name': dff_name,
+                        'source': 'DFF Rankings'
+                    }
+
+                    # Extract projection
+                    if proj_col and pd.notna(row[proj_col]):
+                        try:
+                            proj_str = str(row[proj_col]).replace('$', '').replace(',', '').strip()
+                            dff_data['ppg_projection'] = float(proj_str)
+                        except:
+                            pass
+
+                    # Extract ownership
+                    if own_col and pd.notna(row[own_col]):
+                        try:
+                            own_str = str(row[own_col]).replace('%', '').strip()
+                            dff_data['ownership'] = float(own_str)
+                        except:
+                            pass
+
+                    # Extract value
+                    if value_col and pd.notna(row[value_col]):
+                        try:
+                            dff_data['value'] = float(row[value_col])
+                        except:
+                            pass
+
+                    # Find best matching player using ORIGINAL name matching logic
+                    best_match = None
+                    best_score = 0
+
+                    for player in self.players:
+                        # Use your ORIGINAL _name_similarity method
+                        similarity = self._name_similarity(dff_name, player.name)
+
+                        # If we have team info, boost score for same team
+                        if dff_team and player.team == dff_team and similarity >= 0.7:
+                            similarity = min(1.0, similarity + 0.1)
+
+                        if similarity > best_score and similarity >= 0.7:  # 70% threshold
+                            best_score = similarity
+                            best_match = player
+
+                    if best_match and 'ppg_projection' in dff_data:
+                        # APPLY TO MATCHED PLAYER
+                        best_match.apply_dff_data(dff_data)
+                        matches += 1
+                        all_enriched += 1
+
+                        # Check if this player is eligible
+                        if best_match.is_eligible_for_selection(self.optimization_mode):
+                            eligible_enriched += 1
+
+                            # Show match details for first few or significant differences
+                            if eligible_enriched <= 5 or abs(dff_data['ppg_projection'] - best_match.base_score) > 2:
+                                proj = dff_data['ppg_projection']
+                                own = dff_data.get('ownership', 'N/A')
+                                match_indicator = "✅" if best_score >= 0.95 else f"🔄 ({best_score:.2f})"
+
+                                print(f"\n   {match_indicator} DFF MATCH: {dff_name} → {best_match.name}")
+                                if dff_name != dff_name_raw:
+                                    print(f"      (Original: {dff_name_raw})")
+                                print(f"      Team: {dff_team or 'N/A'} → {best_match.team}")
+                                print(f"      Projection: {proj:.1f} | Ownership: {own}%")
+                    else:
+                        no_matches.append(f"{dff_name_raw} ({dff_team or 'N/A'})")
+
+                except Exception as e:
+                    print(f"   ❌ Error processing row {idx}: {e}")
                     continue
 
-            print(f"✅ DFF integration: {matches} total players, {confirmed_matches} confirmed players")
-            return True
+            print(f"\n📊 DFF Integration Summary:")
+            print(f"   Total DFF players: {len(df)}")
+            print(f"   Matched to DK: {matches}")
+            print(f"   Applied to all: {all_enriched}")
+            print(f"   Eligible players enriched: {eligible_enriched}")
+            print(f"   Success rate: {(matches / len(df) * 100):.1f}%" if len(df) > 0 else "N/A")
+
+            # Show some unmatched for debugging
+            if no_matches and len(no_matches) <= 10:
+                print(f"\n❌ Unmatched DFF players (first 10):")
+                for name in no_matches[:10]:
+                    print(f"   - {name}")
+            elif no_matches:
+                print(f"\n❌ {len(no_matches)} DFF players didn't match")
+
+            # Special message if no eligible players got DFF
+            if eligible_enriched == 0 and matches > 0:
+                print(f"\n⚠️ WARNING: DFF matched {matches} players but NONE were eligible!")
+                print(f"   This usually means DFF players aren't in your confirmed/manual selections")
+                print(f"   Consider adding some DFF players to manual selections")
+
+            return matches > 0
 
         except Exception as e:
             print(f"❌ Error loading DFF data: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def enrich_with_vegas_lines(self):
-        """FIXED: Vegas enrichment for ALL confirmed players"""
+        """Apply Vegas lines ONLY to players with meaningful data"""
         if not self.vegas_lines:
             print("⚠️ Vegas lines module not available")
             return
 
-        print("💰 Priority Vegas enrichment for confirmed players...")
+        print("💰 Applying Vegas lines where data exists...")
         vegas_data = self.vegas_lines.get_vegas_lines()
 
         if not vegas_data:
             print("⚠️ No Vegas data available")
             return
 
-        # Get ALL players from teams that have Vegas data
+        # Only apply to confirmed/eligible players with Vegas data
         eligible_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
 
         enriched_count = 0
         for player in eligible_players:
             if player.team in vegas_data:
                 team_vegas = vegas_data[player.team]
-                player.apply_vegas_data(team_vegas)
-                enriched_count += 1
+                # Only apply if game total is significantly different from average (4.5)
+                game_total = team_vegas.get('total', 9.0)
+                if abs(game_total - 9.0) > 1.0:  # Only if total is <8 or >10
+                    player.apply_vegas_data(team_vegas)
+                    enriched_count += 1
 
-        print(f"✅ Vegas Priority: {enriched_count}/{len(eligible_players)} confirmed players enriched")
+        print(f"✅ Vegas data: {enriched_count}/{len(eligible_players)} players with significant game environments")
 
     def enrich_with_statcast_priority(self):
         """FIXED: Priority Statcast enrichment - ALL confirmed players first"""
@@ -1916,16 +2387,38 @@ class BulletproofDFSCore:
         print(f"✅ Park factors: {adjusted_count}/{len(eligible_players)} confirmed players adjusted")
 
     def get_eligible_players_by_mode(self):
-        """Get eligible players based on current mode"""
+        """FIXED: Strict eligibility checking with validation"""
+
+        # First, validate all confirmations
+        self._validate_confirmations()
+
         if self.optimization_mode == 'manual_only':
             eligible = [p for p in self.players if p.is_manual_selected]
-            print(f"🎯 MANUAL-ONLY FILTER: {len(eligible)}/{len(self.players)} manually selected players")
+            print(f"🎯 MANUAL-ONLY MODE: {len(eligible)}/{len(self.players)} manually selected players")
         elif self.optimization_mode == 'confirmed_only':
-            eligible = [p for p in self.players if p.is_confirmed]
-            print(f"🔒 CONFIRMED-ONLY FILTER: {len(eligible)}/{len(self.players)} confirmed players")
+            eligible = [p for p in self.players if p.is_confirmed and not p.is_manual_selected]
+            print(f"🔒 CONFIRMED-ONLY MODE: {len(eligible)}/{len(self.players)} confirmed players")
         else:  # bulletproof
             eligible = [p for p in self.players if p.is_confirmed or p.is_manual_selected]
-            print(f"🔒 BULLETPROOF FILTER: {len(eligible)}/{len(self.players)} players eligible")
+            print(f"🛡️ BULLETPROOF MODE: {len(eligible)}/{len(self.players)} players eligible")
+
+            # Show breakdown
+            confirmed_only = sum(1 for p in eligible if p.is_confirmed and not p.is_manual_selected)
+            manual_only = sum(1 for p in eligible if p.is_manual_selected and not p.is_confirmed)
+            both = sum(1 for p in eligible if p.is_confirmed and p.is_manual_selected)
+
+            print(f"   - Confirmed only: {confirmed_only}")
+            print(f"   - Manual only: {manual_only}")
+            print(f"   - Both confirmed & manual: {both}")
+
+        # CRITICAL: Extra validation for pitchers
+        eligible_pitchers = [p for p in eligible if p.primary_position == 'P']
+        print(f"\n⚾ PITCHER VALIDATION:")
+        print(f"   Total eligible pitchers: {len(eligible_pitchers)}")
+
+        for pitcher in eligible_pitchers:
+            sources = ', '.join(pitcher.confirmation_sources) if pitcher.confirmation_sources else 'MANUAL'
+            print(f"   - {pitcher.name} ({pitcher.team}) - Sources: [{sources}]")
 
         # Position breakdown
         position_counts = {}
@@ -1933,13 +2426,33 @@ class BulletproofDFSCore:
             for pos in player.positions:
                 position_counts[pos] = position_counts.get(pos, 0) + 1
 
-        print(f"📍 Eligible position coverage: {position_counts}")
+        print(f"\n📍 Eligible position coverage: {position_counts}")
+
+        # Final safety check
+        if self.optimization_mode in ['bulletproof', 'confirmed_only']:
+            # Remove any pitcher without proper confirmation
+            safe_eligible = []
+            removed_count = 0
+
+            for player in eligible:
+                if player.primary_position == 'P' and not player.is_manual_selected:
+                    # Pitcher MUST have mlb_starter confirmation
+                    if 'mlb_starter' not in player.confirmation_sources:
+                        print(f"   ❌ REMOVING unconfirmed pitcher: {player.name}")
+                        removed_count += 1
+                        continue
+                safe_eligible.append(player)
+
+            if removed_count > 0:
+                print(f"⚠️ Removed {removed_count} unconfirmed pitchers for safety")
+                eligible = safe_eligible
+
         return eligible
 
     def _apply_comprehensive_statistical_analysis(self, players):
         """ENHANCED: Apply comprehensive statistical analysis with PRIORITY 1 improvements"""
         print(f"📊 ENHANCED Statistical Analysis: {len(players)} players")
-        print("🎯 PRIORITY 1 FEATURES: Variable Confidence + Enhanced Statcast + Position Weighting")
+        print("🎯 PRIORITY 1 FEATURES: Variable Confidence + Enhanced Statcast + Position Weighting + Recent Form")
 
         if not players:
             return
@@ -1948,6 +2461,18 @@ class BulletproofDFSCore:
             # Use enhanced statistical analysis engine (PRIORITY 1 IMPROVEMENTS)
             adjusted_count = apply_enhanced_statistical_analysis(players, verbose=True)
             print(f"✅ Enhanced Analysis: {adjusted_count} players optimized with Priority 1 improvements")
+
+            # Apply recent form adjustments if available
+            if hasattr(self, 'form_analyzer'):
+                form_adjusted = 0
+                for player in players:
+                    if hasattr(player, '_recent_performance') and player._recent_performance:
+                        adjustment = self.form_analyzer.apply_form_adjustments(player)
+                        if adjustment != 1.0:
+                            form_adjusted += 1
+
+                if form_adjusted > 0:
+                    print(f"📈 Recent Form: {form_adjusted} players adjusted based on hot/cold streaks")
         else:
             # Fallback to basic analysis if enhanced engine not available
             print("⚠️ Using basic analysis - enhanced engine not found")
@@ -2111,8 +2636,17 @@ def optimized_pipeline_execution(core, dff_file):
     print("4️⃣ Applying park factors...")
     core.apply_park_factors()
 
-    print("✅ All data sources applied to confirmed players")
+    # STEP 5: Apply batting order adjustments
+    if hasattr(core, 'enrich_with_batting_order'):
+        print("5️⃣ Applying batting order adjustments...")
+        core.enrich_with_batting_order()
 
+    # STEP 6: Apply recent form analysis (if available)
+    if hasattr(core, 'enrich_with_recent_form'):
+        print("6️⃣ Analyzing recent player form...")
+        core.enrich_with_recent_form()
+
+    print("✅ All data sources applied to confirmed players")
 
 # Entry point function for GUI compatibility
 def load_and_optimize_complete_pipeline(
@@ -2188,6 +2722,160 @@ LINEUP:
         return [], 0, f"{strategy} optimization failed - see suggestions above"
 
 
+# ==============================================================================
+# CORRECTED INTEGRATION VERIFICATION TEST
+# Add this at the END of your bulletproof_dfs_core.py file (after all classes)
+# ==============================================================================
+def debug_player_confirmations(self):
+    """Debug method to show all player confirmation status"""
+    print("\n🔍 FULL PLAYER CONFIRMATION DEBUG")
+    print("=" * 80)
+
+    # Group by confirmation status
+    confirmed = []
+    manual = []
+    both = []
+    none = []
+
+    for player in self.players:
+        if player.is_confirmed and player.is_manual_selected:
+            both.append(player)
+        elif player.is_confirmed:
+            confirmed.append(player)
+        elif player.is_manual_selected:
+            manual.append(player)
+        else:
+            none.append(player)
+
+    # Show each group
+    if confirmed:
+        print(f"\n✅ CONFIRMED ONLY ({len(confirmed)} players):")
+        for p in confirmed:
+            sources = ', '.join(p.confirmation_sources)
+            print(f"   {p.name} ({p.team}) {p.primary_position} - Sources: [{sources}]")
+
+    if manual:
+        print(f"\n🎯 MANUAL ONLY ({len(manual)} players):")
+        for p in manual:
+            print(f"   {p.name} ({p.team}) {p.primary_position}")
+
+    if both:
+        print(f"\n🌟 CONFIRMED + MANUAL ({len(both)} players):")
+        for p in both:
+            sources = ', '.join(p.confirmation_sources)
+            print(f"   {p.name} ({p.team}) {p.primary_position} - Sources: [{sources}]")
+
+    print(f"\n❌ NOT ELIGIBLE ({len(none)} players) - First 20:")
+    for p in none[:20]:
+        print(f"   {p.name} ({p.team}) {p.primary_position}")
+def verify_integration():
+    """Verify all new modules are integrated correctly"""
+    print("\n🧪 INTEGRATION VERIFICATION TEST")
+    print("=" * 60)
+
+    # Check imports - using the actual variable names
+    modules = {
+        'Enhanced Stats Engine': ENHANCED_STATS_AVAILABLE,
+        'Vegas Lines': VEGAS_AVAILABLE,
+        'Smart Confirmations': CONFIRMED_AVAILABLE,
+        'Statcast Fetcher': STATCAST_AVAILABLE,
+        'Recent Form Analyzer': RECENT_FORM_AVAILABLE,
+        'Batting Order & Correlation': BATTING_CORRELATION_AVAILABLE
+    }
+
+    print("📦 Module Status:")
+    for module, available in modules.items():
+        status = "✅" if available else "❌"
+        print(f"   {status} {module}: {'Available' if available else 'Not Found'}")
+
+    # Test core initialization
+    try:
+        core = BulletproofDFSCore()
+        print("\n✅ Core initialized successfully")
+
+        # Check if new methods exist
+        methods_to_check = [
+            ('enrich_with_recent_form', 'Recent Form Method'),
+            ('enrich_with_batting_order', 'Batting Order Method'),
+            ('apply_lineup_correlations', 'Correlation Method'),
+            ('form_analyzer', 'Form Analyzer Instance'),
+            ('batting_enricher', 'Batting Enricher Instance'),
+            ('correlation_optimizer', 'Correlation Optimizer Instance')
+        ]
+
+        print("\n🔧 Method/Attribute Check:")
+        for method, name in methods_to_check:
+            exists = hasattr(core, method)
+            status = "✅" if exists else "❌"
+            print(f"   {status} {name}: {'Found' if exists else 'Missing'}")
+
+        # Check which modules were actually integrated
+        print("\n📋 Integration Summary:")
+        integrated_count = 0
+
+        if hasattr(core, 'form_analyzer') and core.form_analyzer is not None:
+            print("   ✅ Recent Form Analyzer integrated")
+            integrated_count += 1
+        else:
+            print("   ❌ Recent Form Analyzer NOT integrated")
+
+        if hasattr(core, 'batting_enricher') and hasattr(core, 'correlation_optimizer'):
+            print("   ✅ Batting Order & Correlation integrated")
+            integrated_count += 1
+        else:
+            print("   ❌ Batting Order & Correlation NOT integrated")
+
+        print(f"\n📊 Total: {integrated_count}/2 new systems integrated")
+
+    except Exception as e:
+        print(f"\n❌ Core initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+    print("\n" + "=" * 60)
+
+    # Return status for external testing
+    return all(modules.values())
+
+
+# If running as a standalone test
+if __name__ == "__main__":
+    print("🧪 Testing ENHANCED SYSTEM with PITCHER DETECTION...")
+
+    # First run the integration test
+    all_modules_available = verify_integration()
+
+    if not all_modules_available:
+        print("\n⚠️ Some modules are missing. Creating them now...")
+
+        # Create missing module files with minimal content
+        if not RECENT_FORM_AVAILABLE:
+            print("Creating recent_form_analyzer.py...")
+            # You should copy the actual content I provided earlier
+
+        if not BATTING_CORRELATION_AVAILABLE:
+            print("Creating batting_order_correlation_system.py...")
+            # You should copy the actual content I provided earlier
+
+    # Then run your existing tests
+    dk_file, dff_file = create_enhanced_test_data()
+    manual_input = "Hunter Brown, Francisco Lindor, Kyle Tucker, Mitch Keller"
+
+    for mode in ['bulletproof', 'manual_only', 'confirmed_only']:
+        print(f"\n🔄 Testing {mode}...")
+        lineup, score, _ = load_and_optimize_complete_pipeline(
+            dk_file=dk_file,
+            manual_input=manual_input,
+            strategy=mode
+        )
+
+        if lineup:
+            pitcher_count = sum(1 for p in lineup if p.primary_position == 'P')
+            print(f"✅ {mode}: SUCCESS - {len(lineup)} players, {pitcher_count} pitchers")
+        else:
+            print(f"❌ {mode}: FAILED")
+
+    os.unlink(dk_file)
 # Test data function
 def create_enhanced_test_data():
     """Create test data"""

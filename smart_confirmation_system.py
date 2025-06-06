@@ -12,9 +12,9 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Set
 from unified_data_system import UnifiedDataSystem
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
-
 
 class SmartConfirmationSystem:
     """Unified confirmation system with smart filtering"""

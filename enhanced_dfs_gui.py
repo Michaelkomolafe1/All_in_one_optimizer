@@ -24,10 +24,9 @@ except ImportError:
     print("❌ PyQt5 not available. Install with: pip install PyQt5")
     sys.exit(1)
 
-# Import bankroll management
+# Import bankroll management - REMOVE IF NOT USING
 try:
     from bankroll_management import BankrollManagementWidget, update_clean_gui_with_bankroll
-
     BANKROLL_AVAILABLE = True
 except ImportError:
     print("⚠️ Bankroll management not found. Some features will be limited.")
@@ -36,14 +35,14 @@ except ImportError:
 # Import core optimizer
 try:
     from bulletproof_dfs_core import BulletproofDFSCore
-
     CORE_AVAILABLE = True
 except ImportError:
     print("⚠️ Core optimizer not found. Some features will be limited.")
     CORE_AVAILABLE = False
-
-
+    # Mock class remains the same
     # Mock class for testing
+
+
     class BulletproofDFSCore:
         def __init__(self):
             self.players = []
@@ -98,13 +97,24 @@ class ConsoleRedirect:
     def __init__(self, text_widget):
         self.text_widget = text_widget
         self.terminal = sys.stdout
+        self._closed = False
 
     def write(self, message):
+        if self._closed:
+            # GUI is closed, only write to terminal
+            if self.terminal:
+                self.terminal.write(message)
+            return
+
         if message.strip():  # Only write non-empty messages
-            # Append to GUI console
-            self.text_widget.append(message.strip())
-            # Force GUI update
-            QApplication.processEvents()
+            try:
+                # Append to GUI console
+                self.text_widget.append(message.strip())
+                # Remove the processEvents call - this can cause crashes
+                # QApplication.processEvents()
+            except:
+                # Widget was deleted or not accessible
+                self._closed = True
 
         # Also write to terminal for debugging
         if self.terminal:
@@ -113,6 +123,10 @@ class ConsoleRedirect:
     def flush(self):
         if self.terminal:
             self.terminal.flush()
+
+    def close(self):
+        """Mark as closed to prevent further GUI updates"""
+        self._closed = True
 
 
 class OptimizationWorker(QThread):
@@ -854,6 +868,11 @@ class DFSOptimizerGUI(QMainWindow):
 
     def closeEvent(self, event):
         """Handle close event"""
+        # Stop console redirect first
+        if hasattr(self, 'console_redirect') and self.console_redirect:
+            self.console_redirect.close()
+            sys.stdout = self.console_redirect.terminal  # Restore original stdout
+
         # Stop any running optimization
         if self.worker and self.worker.isRunning():
             self.worker.stop()
@@ -935,23 +954,14 @@ class DFSOptimizerGUI(QMainWindow):
             self.status_bar.showMessage(f"✅ Loaded {filename} (Test mode)")
 
     def select_dff_file(self):
-        """Select DFF file with auto-detection"""
+        """Select DFF file"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select DFF Rankings", "", "CSV Files (*.csv)"
         )
-
         if file_path:
+            self.dff_file = file_path
             filename = os.path.basename(file_path)
-
-            # Detect type
-            if 'showdown' in filename.lower() or 'sd' in filename.lower():
-                self.dff_showdown_file = file_path
-                label_text = f"🎰 Showdown: {filename}"
-            else:
-                self.dff_classic_file = file_path
-                label_text = f"🏈 Classic: {filename}"
-
-            self.dff_label.setText(label_text)
+            self.dff_label.setText(f"✅ {filename}")
             self.dff_label.setStyleSheet("""
                 QLabel {
                     padding: 15px;
@@ -963,10 +973,9 @@ class DFSOptimizerGUI(QMainWindow):
                 }
             """)
 
-            # Apply to core if available
-            if self.core:
-                self.core.detect_and_load_dff_files(file_path)
-
+            # Apply DFF rankings if core is available
+            if self.core and hasattr(self.core, 'apply_dff_rankings'):
+                self.core.apply_dff_rankings(file_path)
     def auto_detect_files(self):
         """Auto-detect both DK and DFF files"""
         import glob
@@ -1208,26 +1217,19 @@ class DFSOptimizerGUI(QMainWindow):
         # Update table
         self.lineup_table.setRowCount(len(lineup))
 
-        # Update table
-        self.lineup_table.setRowCount(len(lineup))
-
         for i, player in enumerate(lineup):
-            # Position with flex indicator
-            pos_display = player.get_position_display() if hasattr(player,
-                                                                   'get_position_display') else player.primary_position
-            pos_item = QTableWidgetItem(pos_display)
+            # Position
+            pos_item = QTableWidgetItem(player.primary_position)
             pos_item.setTextAlignment(Qt.AlignCenter)
-
-            # Add tooltip showing all eligible positions
-            if hasattr(player, 'positions') and len(player.positions) > 1:
-                pos_item.setToolTip(f"Eligible: {'/'.join(player.positions)}")
-                # Bold if using flex position
-                if hasattr(player, 'is_using_flex_position') and player.is_using_flex_position():
-                    font = pos_item.font()
-                    font.setBold(True)
-                    pos_item.setFont(font)
-
             self.lineup_table.setItem(i, 0, pos_item)
+
+            # Name
+            self.lineup_table.setItem(i, 1, QTableWidgetItem(player.name))
+
+            # Team
+            team_item = QTableWidgetItem(player.team)
+            team_item.setTextAlignment(Qt.AlignCenter)
+            self.lineup_table.setItem(i, 2, team_item)
 
             # Salary
             salary_item = QTableWidgetItem(f"${player.salary:,}")
@@ -1245,17 +1247,19 @@ class DFSOptimizerGUI(QMainWindow):
             value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.lineup_table.setItem(i, 5, value_item)
 
-            # Color code by position
+            # Color code by position - FIXED VERSION
             if player.primary_position == 'P':
-                for j in range(6):
-                    self.lineup_table.item(i, j).setBackground(QColor(219, 234, 254))
+                color = QColor(219, 234, 254)  # Light blue
             elif player.primary_position in ['C', '1B', '2B', '3B', 'SS']:
-                for j in range(6):
-                    self.lineup_table.item(i, j).setBackground(QColor(254, 215, 215))
+                color = QColor(254, 215, 215)  # Light red
             else:  # OF
-                for j in range(6):
-                    self.lineup_table.item(i, j).setBackground(QColor(209, 250, 229))
+                color = QColor(209, 250, 229)  # Light green
 
+            # Apply color to all cells in the row
+            for j in range(6):
+                item = self.lineup_table.item(i, j)
+                if item:  # Check if item exists before setting background
+                    item.setBackground(color)
     def display_multi_results(self, results):
         """Display multiple lineup results"""
         # Show summary dialog
