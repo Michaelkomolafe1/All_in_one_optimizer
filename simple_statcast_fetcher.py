@@ -16,16 +16,60 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+import os
+import sys
+import io
 
+# CRITICAL: Disable progress bars BEFORE importing pybaseball
+os.environ['PYBASEBALL_NO_PROGRESS'] = '1'
+os.environ['PYBASEBALL_CACHE'] = '1'
+
+# Suppress tqdm if used
 try:
+    import tqdm
+
+    tqdm.tqdm.disable = True
+except:
+    pass
+
+# Now import pybaseball AFTER setting environment
+try:
+    # Temporarily suppress output during import
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    sys.stdout = io.StringIO()
+    sys.stderr = io.StringIO()
+
     import pybaseball
+
+    # Restore output
+    sys.stdout = old_stdout
+    sys.stderr = old_stderr
+
+    # Enable cache but disable any progress indicators
     pybaseball.cache.enable()
+
+    # Try to disable progress bar if method exists
+    if hasattr(pybaseball, 'disable_progress_bar'):
+        pybaseball.disable_progress_bar()
+
+    # Disable any verbose output
+    if hasattr(pybaseball, 'set_verbose'):
+        pybaseball.set_verbose(False)
+
     PYBASEBALL_AVAILABLE = True
+
 except ImportError:
     PYBASEBALL_AVAILABLE = False
+    sys.stdout = old_stdout if 'old_stdout' in locals() else sys.stdout
+    sys.stderr = old_stderr if 'old_stderr' in locals() else sys.stderr
 
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# Rest of your class implementation continues here...
 
 class FastStatcastFetcher:
     """Ultra-fast parallel Statcast fetcher for confirmed players only"""

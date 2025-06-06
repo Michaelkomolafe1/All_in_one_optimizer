@@ -1,101 +1,47 @@
 #!/usr/bin/env python3
-"""
-FIXED DEBUG SCRIPT - Shows actual confirmations
-"""
+"""Test what's failing to import"""
 
-from bulletproof_dfs_core import BulletproofDFSCore
+print("Testing imports...")
 
+try:
+    from bulletproof_dfs_core import BulletproofDFSCore
 
-def debug_confirmations():
-    print("🔍 DEBUGGING CONFIRMATIONS")
-    print("=" * 80)
+    print("✅ bulletproof_dfs_core imported successfully!")
+except Exception as e:
+    print(f"❌ bulletproof_dfs_core failed: {e}")
 
-    core = BulletproofDFSCore()
+    # Test individual imports
+    try:
+        import pulp
 
-    # Load CSV
-    if not core.load_draftkings_csv("DKSalaries_good.csv"):
-        return
+        print("  ✅ pulp OK")
+    except:
+        print("  ❌ pulp MISSING - install with: pip install pulp")
 
-    # Get confirmations
-    confirmed_count = core.detect_confirmed_players()
+    try:
+        import pandas
 
-    # Now manually check each player
-    print("\n📋 PLAYER BY PLAYER CONFIRMATION CHECK:")
+        print("  ✅ pandas OK")
+    except:
+        print("  ❌ pandas MISSING - install with: pip install pandas")
 
-    confirmed_players = []
-    for player in core.players:
-        if core.confirmation_system:
-            # Check lineup
-            is_in_lineup, batting_order = core.confirmation_system.is_player_confirmed(
-                player.name, player.team
-            )
+    try:
+        import numpy
 
-            # Check if pitcher
-            is_starting_pitcher = False
-            if player.primary_position == 'P':
-                is_starting_pitcher = core.confirmation_system.is_pitcher_confirmed(
-                    player.name, player.team
-                )
+        print("  ✅ numpy OK")
+    except:
+        print("  ❌ numpy MISSING - install with: pip install numpy")
 
-            if is_in_lineup or is_starting_pitcher:
-                player.add_confirmation_source("mlb_confirmed")
-                confirmed_players.append(player)
+    try:
+        from unified_data_system import UnifiedDataSystem
 
-                status = "Starting Pitcher" if is_starting_pitcher else f"Batting {batting_order}"
-                print(f"✅ {player.name} ({player.team}) - {status}")
+        print("  ✅ unified_data_system OK")
+    except Exception as e:
+        print(f"  ❌ unified_data_system failed: {e}")
 
-    print(f"\n📊 Total confirmed: {len(confirmed_players)}")
+    try:
+        from optimal_lineup_optimizer import OptimalLineupOptimizer
 
-    # Now apply analytics to confirmed only
-    if confirmed_players:
-        print("\n🔬 APPLYING ANALYTICS TO CONFIRMED PLAYERS ONLY...")
-
-        # Vegas
-        if core.vegas_lines:
-            print("💰 Applying Vegas to confirmed players...")
-            core.vegas_lines.apply_to_players(confirmed_players)
-
-        # Statcast (with parallel processing)
-        if core.statcast_fetcher:
-            print("📊 Applying Statcast to confirmed players (parallel)...")
-
-            # This should use your parallel fetcher
-            from simple_statcast_fetcher import FastStatcastFetcher
-            fetcher = FastStatcastFetcher(max_workers=5)
-
-            # Fetch all confirmed players in parallel
-            statcast_data = fetcher.fetch_multiple_players_parallel(confirmed_players)
-
-            # Apply the data
-            for player in confirmed_players:
-                if player.name in statcast_data:
-                    player.apply_statcast_data(statcast_data[player.name])
-                    print(f"   ✅ Statcast applied to {player.name}")
-
-        # Statistical analysis
-        from enhanced_stats_engine import apply_enhanced_statistical_analysis
-        apply_enhanced_statistical_analysis(confirmed_players, verbose=True)
-
-        print(f"\n✅ Analytics applied to {len(confirmed_players)} confirmed players")
-
-    # Try optimization with confirmed players
-    print("\n🎯 OPTIMIZING WITH CONFIRMED PLAYERS...")
-    core.set_optimization_mode('confirmed_only')
-    lineup, score = core.optimize_lineup_with_mode()
-
-    if lineup:
-        print(f"✅ SUCCESS! Score: {score:.2f}")
-        for player in lineup:
-            print(f"   {player.name} ({player.primary_position}) - ${player.salary}")
-    else:
-        print("❌ Optimization failed - checking why...")
-
-        # Show position coverage
-        positions = {}
-        for p in confirmed_players:
-            positions[p.primary_position] = positions.get(p.primary_position, 0) + 1
-        print(f"Confirmed player positions: {positions}")
-
-
-if __name__ == "__main__":
-    debug_confirmations()
+        print("  ✅ optimal_lineup_optimizer OK")
+    except Exception as e:
+        print(f"  ❌ optimal_lineup_optimizer failed: {e}")

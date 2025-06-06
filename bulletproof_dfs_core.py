@@ -9,68 +9,68 @@ BULLETPROOF DFS CORE - COMPLETE WORKING VERSION WITH ENHANCED PITCHER DETECTION
 ✅ Comprehensive validation
 ✅ Priority 1 enhancements included
 """
-from enum import Enum
-import numpy as np
+#!/usr/bin/env python3
+"""
+BULLETPROOF DFS CORE - COMPLETE WORKING VERSION WITH ENHANCED PITCHER DETECTION
+==============================================================================
+✅ All missing methods included
+✅ Real player name matching
+✅ Manual-only mode working
+✅ Enhanced pitcher detection integrated
+✅ Comprehensive validation
+✅ Priority 1 enhancements included
+"""
+
+# Standard library imports
 import os
 import sys
-# Import utils
-from utils.cache_manager import cache
-from utils.csv_utils import csv_reader
-from utils.profiler import profiler
-from utils.validator import DataValidator
-from utils.config import config
-
-
-import pandas as pd
-import numpy as np
-import tempfile
+import re
+import csv
 import json
+import time
+import copy
+import random
+import tempfile
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
-import warnings
-import random
+from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from enum import Enum
+from difflib import SequenceMatcher
+
+# Third-party imports
+import numpy as np
+import pandas as pd
+
+# Suppress warnings
+warnings.filterwarnings('ignore')
+
+# Import utils - only what exists and is used
+from utils.cache_manager import cache
+from utils.profiler import profiler
+from utils.validator import DataValidator
+from utils.config import config
 
 # New unified imports
 from unified_data_system import UnifiedDataSystem
 from optimal_lineup_optimizer import OptimalLineupOptimizer, OptimizationResult
 
-warnings.filterwarnings('ignore')
-
 # Enhanced Statistical Analysis Engine - PRIORITY 1 IMPROVEMENTS
 try:
     from enhanced_stats_engine import apply_enhanced_statistical_analysis
-
     ENHANCED_STATS_AVAILABLE = True
     print("✅ Enhanced Statistical Analysis Engine loaded")
 except ImportError:
     ENHANCED_STATS_AVAILABLE = False
     print("⚠️ Enhanced stats engine not found - using basic analysis")
-
-
     def apply_enhanced_statistical_analysis(players, verbose=False):
         return 0
-
-# Enhanced Pitcher Detection - REAL STARTING PITCHER CONFIRMATIONS
-try:
-    from enhanced_pitcher_detection import integrate_with_csv_players
-
-    ENHANCED_PITCHER_AVAILABLE = True
-    print("✅ Enhanced Pitcher Detection loaded")
-except ImportError:
-    ENHANCED_PITCHER_AVAILABLE = False
-
-
-    def integrate_with_csv_players(players):
-        return {}
-
-
-    print("⚠️ Enhanced pitcher detection not found - using fallback")
 
 # Import optimization
 try:
     import pulp
-
     MILP_AVAILABLE = True
     print("✅ PuLP available - MILP optimization enabled")
 except ImportError:
@@ -80,58 +80,46 @@ except ImportError:
 # Import modules with enhanced fallbacks
 try:
     from vegas_lines import VegasLines
-
     VEGAS_AVAILABLE = True
     print("✅ Vegas lines module imported")
 except ImportError:
     VEGAS_AVAILABLE = False
     print("⚠️ vegas_lines.py not found")
-
-
     class VegasLines:
         def __init__(self, **kwargs): self.lines = {}
-
         def get_vegas_lines(self, **kwargs): return {}
-
         def apply_to_players(self, players): return players
 
 try:
     from smart_confirmation_system import SmartConfirmationSystem
-
     CONFIRMED_AVAILABLE = True
     print("✅ Smart Confirmation System imported")
 except ImportError:
     CONFIRMED_AVAILABLE = False
     print("⚠️ smart_confirmation_system.py not found")
-
-
     class SmartConfirmationSystem:
         def __init__(self, **kwargs):
             self.confirmed_lineups = {}
             self.confirmed_pitchers = {}
-
         def get_all_confirmations(self): return 0, 0
-
         def is_player_confirmed(self, name, team): return False, None
-
         def is_pitcher_confirmed(self, name, team): return False
 
 try:
-    from simple_statcast_fetcher import SimpleStatcastFetcher
-
+    from simple_statcast_fetcher import SimpleStatcastFetcher, FastStatcastFetcher
     STATCAST_AVAILABLE = True
     print("✅ Statcast fetcher imported")
 except ImportError:
     STATCAST_AVAILABLE = False
     print("⚠️ simple_statcast_fetcher.py not found")
-
-
     class SimpleStatcastFetcher:
         def __init__(self): pass
-
         def fetch_player_data(self, name, position): return {}
+    class FastStatcastFetcher:
+        def __init__(self, max_workers=5): pass
+        def fetch_multiple_players_parallel(self, players): return {}
 
-# Enhanced park factors and configuration
+# Constants
 PARK_FACTORS = {
     "COL": 1.1, "TEX": 1.05, "CIN": 1.05, "NYY": 1.05, "BOS": 1.03, "PHI": 1.03,
     "MIA": 0.95, "OAK": 0.95, "SD": 0.97, "SEA": 0.97
@@ -141,7 +129,6 @@ KNOWN_RELIEF_PITCHERS = {
     'jhoan duran', 'edwin diaz', 'felix bautista', 'ryan helsley', 'david bednar',
     'alexis diaz', 'josh hader', 'emmanuel clase', 'jordan romano', 'clay holmes'
 }
-
 
 class AdvancedPlayer:
     """Player model with all advanced features including enhanced pitcher detection"""
@@ -174,6 +161,49 @@ class AdvancedPlayer:
         self.enhanced_score = self.base_score
 
     # Add these methods to AdvancedPlayer class:
+
+    def _parse_positions_enhanced(self, position_str: str) -> List[str]:
+        """Enhanced position parsing for multi-position players"""
+        if not position_str:
+            return ['UTIL']
+
+        position_str = str(position_str).strip().upper()
+
+        # Handle various multi-position delimiters
+        delimiters = ['/', ',', '-', '|', '+', ' / ', ' , ', ' - ', ' OR ', ' AND ']
+        positions = [position_str]
+
+        for delimiter in delimiters:
+            if delimiter in position_str:
+                positions = [p.strip() for p in position_str.split(delimiter) if p.strip()]
+                break
+
+        # Enhanced position mapping
+        position_mapping = {
+            'P': 'P', 'SP': 'P', 'RP': 'P', 'PITCHER': 'P',
+            'C': 'C', 'CATCHER': 'C',
+            '1B': '1B', 'FIRST': '1B', 'FIRSTBASE': '1B', '1ST': '1B',
+            '2B': '2B', 'SECOND': '2B', 'SECONDBASE': '2B', '2ND': '2B',
+            '3B': '3B', 'THIRD': '3B', 'THIRDBASE': '3B', '3RD': '3B',
+            'SS': 'SS', 'SHORTSTOP': 'SS', 'SHORT': 'SS',
+            'OF': 'OF', 'OUTFIELD': 'OF', 'OUTFIELDER': 'OF',
+            'LF': 'OF', 'CF': 'OF', 'RF': 'OF', 'LEFT': 'OF', 'CENTER': 'OF', 'RIGHT': 'OF',
+            'UTIL': 'UTIL', 'DH': 'UTIL', 'UTILITY': 'UTIL'
+        }
+
+        valid_positions = []
+        for pos in positions:
+            pos = pos.strip().upper()
+            # Remove any numbers or special characters
+            pos = ''.join(c for c in pos if c.isalpha())
+
+            mapped_pos = position_mapping.get(pos, pos)
+            if mapped_pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL']:
+                if mapped_pos not in valid_positions:
+                    valid_positions.append(mapped_pos)
+
+        # If we found valid positions, return them; otherwise default to UTIL
+        return valid_positions if valid_positions else ['UTIL']
 
     def get_position_string(self) -> str:
         """Get position string showing flexibility"""
@@ -511,6 +541,7 @@ class AdvancedPlayer:
         pos_str = '/'.join(self.positions)
         status = "✅" if self.is_eligible_for_selection() else "❌"
         return f"Player({self.name}, {pos_str}, ${self.salary}, {self.enhanced_score:.1f}, {status})"
+
 
 
 class BulletproofDFSCore:
@@ -963,7 +994,7 @@ class BulletproofDFSCore:
             print(f"❌ Invalid mode. Choose: {valid_modes}")
 
     def load_draftkings_csv(self, file_path: str) -> bool:
-        """Load DraftKings CSV with better SHOWDOWN detection"""
+        """Load DraftKings CSV with better multi-position parsing"""
         try:
             print(f"📁 Loading DraftKings CSV: {Path(file_path).name}")
 
@@ -976,14 +1007,12 @@ class BulletproofDFSCore:
             print(f"📊 Found {len(df)} rows, {len(df.columns)} columns")
 
             # ENHANCED SHOWDOWN DETECTION
-            # Method 1: Check filename
             filename = os.path.basename(file_path).lower()
             if any(indicator in filename for indicator in ['showdown', 'captain', 'sd', 'cptn']):
                 self.contest_type = 'showdown'
                 print("🎯 SHOWDOWN DETECTED (filename)")
             else:
                 # Method 2: Check team count
-                # First, detect teams in the CSV
                 team_col_idx = None
                 for i, col in enumerate(df.columns):
                     if 'team' in str(col).lower():
@@ -1000,39 +1029,31 @@ class BulletproofDFSCore:
                     else:
                         self.contest_type = 'classic'
                         print(f"🏈 CLASSIC CONTEST ({team_count} teams)")
-                else:
-                    # Method 3: Check if all positions are same
-                    pos_col_idx = None
-                    for i, col in enumerate(df.columns):
-                        if 'position' in str(col).lower() or 'pos' in str(col).lower():
-                            pos_col_idx = i
-                            break
-
-                    if pos_col_idx is not None:
-                        unique_positions = df.iloc[:, pos_col_idx].dropna().unique()
-                        if len(unique_positions) == 1:  # All same position = likely showdown
-                            self.contest_type = 'showdown'
-                            print("🎯 SHOWDOWN DETECTED (single position type)")
 
             # Update salary cap for showdown
             if self.contest_type == 'showdown':
-                self.salary_cap = 50000  # Showdown uses same cap
+                self.salary_cap = 50000
                 print("💰 Showdown salary cap: $50,000")
 
-            # COLUMN DETECTION - THIS IS WHAT WAS MISSING!
+            # COLUMN DETECTION
             column_map = {}
+            roster_position_idx = None
+
             for i, col in enumerate(df.columns):
                 col_lower = str(col).lower().strip()
 
+                # Check for Roster Position column specifically
+                if 'roster position' in col_lower:
+                    roster_position_idx = i
+                    print(f"   Found Roster Position column at index {i}")
+
                 # Name column detection
                 if any(name in col_lower for name in ['name', 'player']):
-                    if 'name' in col_lower and '+' not in col_lower:
-                        column_map['name'] = i
-                    elif 'name' not in column_map:
+                    if 'name' in col_lower and '+' not in col_lower and 'name' not in column_map:
                         column_map['name'] = i
 
                 # Position column detection
-                elif any(pos in col_lower for pos in ['position', 'pos', 'roster']):
+                elif any(pos in col_lower for pos in ['position']) and 'roster' not in col_lower:
                     if 'position' not in column_map:
                         column_map['position'] = i
 
@@ -1058,12 +1079,24 @@ class BulletproofDFSCore:
 
             # Parse players
             players = []
+            multi_position_players = []
+
             for idx, row in df.iterrows():
                 try:
+                    # Get position string - prioritize Roster Position for multi-positions
+                    position_str = ""
+
+                    if roster_position_idx is not None:
+                        position_str = str(row.iloc[roster_position_idx]).strip()
+
+                    # If empty or nan, try regular Position column
+                    if not position_str or position_str.lower() == 'nan':
+                        position_str = str(row.iloc[column_map.get('position', 1)]).strip()
+
                     player_data = {
                         'id': idx + 1,
                         'name': str(row.iloc[column_map.get('name', 0)]).strip(),
-                        'position': str(row.iloc[column_map.get('position', 1)]).strip(),
+                        'position': position_str,  # Pass the full position string
                         'team': str(row.iloc[column_map.get('team', 2)]).strip(),
                         'salary': row.iloc[column_map.get('salary', 3)],
                         'projection': row.iloc[column_map.get('projection', 4)]
@@ -1073,10 +1106,13 @@ class BulletproofDFSCore:
 
                     # SHOWDOWN POSITION OVERRIDE
                     if self.contest_type == 'showdown':
-                        # In showdown, all players can be CPT or UTIL
                         player.positions = ['CPT', 'UTIL']
                         player.primary_position = 'UTIL'
                         player.showdown_eligible = True
+
+                    # Track multi-position players
+                    if len(player.positions) > 1:
+                        multi_position_players.append(f"{player.name} ({'/'.join(player.positions)})")
 
                     if player.name and player.salary > 0:
                         players.append(player)
@@ -1087,15 +1123,24 @@ class BulletproofDFSCore:
 
             self.players = players
 
+            # Show multi-position players
+            if multi_position_players:
+                print(f"\n🔄 Found {len(multi_position_players)} multi-position players:")
+                for mp in multi_position_players[:10]:  # Show first 10
+                    print(f"   {mp}")
+                if len(multi_position_players) > 10:
+                    print(f"   ... and {len(multi_position_players) - 10} more")
+
             # Also detect and load appropriate DFF file
             print("\n📂 Looking for DFF files...")
             self.detect_and_load_dff_files()
 
             print(f"✅ Loaded {len(self.players)} valid {self.contest_type.upper()} players")
 
-            # For showdown, verify we have enough players
-            if self.contest_type == 'showdown' and len(self.players) < 6:
-                print(f"⚠️ Warning: Showdown requires at least 6 players, found {len(self.players)}")
+            # Position statistics
+            multi_position_count = sum(1 for p in self.players if len(p.positions) > 1)
+            single_position_count = sum(1 for p in self.players if len(p.positions) == 1)
+            print(f"📊 Position stats: {multi_position_count} multi-position, {single_position_count} single-position")
 
             return True
 
@@ -1831,29 +1876,32 @@ class BulletproofDFSCore:
             return False
 
     def enrich_with_vegas_lines(self):
-        """FIXED: Vegas enrichment for ALL confirmed players"""
+        """Apply Vegas lines ONLY to players with meaningful data"""
         if not self.vegas_lines:
             print("⚠️ Vegas lines module not available")
             return
 
-        print("💰 Priority Vegas enrichment for confirmed players...")
+        print("💰 Applying Vegas lines where data exists...")
         vegas_data = self.vegas_lines.get_vegas_lines()
 
         if not vegas_data:
             print("⚠️ No Vegas data available")
             return
 
-        # Get ALL players from teams that have Vegas data
+        # Only apply to confirmed/eligible players with Vegas data
         eligible_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
 
         enriched_count = 0
         for player in eligible_players:
             if player.team in vegas_data:
                 team_vegas = vegas_data[player.team]
-                player.apply_vegas_data(team_vegas)
-                enriched_count += 1
+                # Only apply if game total is significantly different from average (4.5)
+                game_total = team_vegas.get('total', 9.0)
+                if abs(game_total - 9.0) > 1.0:  # Only if total is <8 or >10
+                    player.apply_vegas_data(team_vegas)
+                    enriched_count += 1
 
-        print(f"✅ Vegas Priority: {enriched_count}/{len(eligible_players)} confirmed players enriched")
+        print(f"✅ Vegas data: {enriched_count}/{len(eligible_players)} players with significant game environments")
 
     def enrich_with_statcast_priority(self):
         """FIXED: Priority Statcast enrichment - ALL confirmed players first"""
