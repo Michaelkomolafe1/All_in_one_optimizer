@@ -374,6 +374,8 @@ class AdvancedPlayer:
 
             return False
 
+
+
     def add_confirmation_source(self, source: str):
         """Add confirmation source"""
         if source not in self.confirmation_sources:
@@ -610,7 +612,6 @@ class AdvancedPlayer:
 class BulletproofDFSCore:
     """Complete bulletproof DFS core with enhanced pitcher detection"""
 
-
     def __init__(self):
         self.players = []
         self.contest_type = 'classic'
@@ -620,14 +621,26 @@ class BulletproofDFSCore:
         self.dff_showdown_file = None
         self.current_dff_file = None
 
+        # Set game date
+        self.game_date = datetime.now().strftime('%Y-%m-%d')
+
         # Initialize modules
         self.vegas_lines = VegasLines() if VEGAS_AVAILABLE else None
 
-        # Use SmartConfirmationSystem instead of ConfirmedLineups
-        self.confirmation_system = SmartConfirmationSystem(
-            csv_players=self.players,
-            verbose=True
-        ) if CONFIRMED_AVAILABLE else None
+        # Fix SmartConfirmationSystem initialization
+        if CONFIRMED_AVAILABLE:
+            try:
+                self.confirmation_system = SmartConfirmationSystem(
+                    csv_players=self.players,
+                    verbose=True
+                )
+                print("✅ Smart Confirmation System initialized")
+            except Exception as e:
+                print(f"❌ Failed to initialize SmartConfirmationSystem: {e}")
+                self.confirmation_system = None
+        else:
+            self.confirmation_system = None
+            print("⚠️ SmartConfirmationSystem not available")
 
         self.statcast_fetcher = SimpleStatcastFetcher() if STATCAST_AVAILABLE else None
 
@@ -643,7 +656,6 @@ class BulletproofDFSCore:
             integrate_batting_order_correlation(self)
 
         print("🚀 Bulletproof DFS Core - ALL METHODS INCLUDED WITH ENHANCED PITCHER DETECTION")
-
     # ==================== DFS UPGRADE METHODS ====================
 
     def get_cached_data(self, key: str, fetch_func, category: str = 'default'):
@@ -1186,15 +1198,30 @@ class BulletproofDFSCore:
         import copy
         return copy.deepcopy(player)
 
-
     def set_optimization_mode(self, mode: str):
         """Set optimization mode with validation"""
-        valid_modes = ['bulletproof', 'manual_only', 'confirmed_only']
+        valid_modes = ['bulletproof', 'manual_only', 'confirmed_only', 'all']
+
+        # Handle different mode names from GUI
+        mode_mapping = {
+            'all players': 'all',
+            'all_players': 'all',
+            'manual only': 'manual_only',
+            'confirmed only': 'confirmed_only',
+            'bulletproof (confirmed + manual)': 'bulletproof'
+        }
+
+        # Normalize the mode
+        mode_lower = mode.lower()
+        if mode_lower in mode_mapping:
+            mode = mode_mapping[mode_lower]
+
         if mode in valid_modes:
             self.optimization_mode = mode
-            print(f"⚙️ Optimization mode: {mode}")
+            print(f"⚙️ Optimization mode set to: {mode}")
         else:
-            print(f"❌ Invalid mode. Choose: {valid_modes}")
+            print(f"❌ Invalid mode '{mode}'. Choose from: {valid_modes}")
+            print(f"   Keeping current mode: {self.optimization_mode}")
 
     def load_draftkings_csv(self, file_path: str) -> bool:
         """Load DraftKings CSV with better multi-position parsing"""
@@ -1334,9 +1361,7 @@ class BulletproofDFSCore:
                 if len(multi_position_players) > 10:
                     print(f"   ... and {len(multi_position_players) - 10} more")
 
-            # Also detect and load appropriate DFF file
-            print("\n📂 Looking for DFF files...")
-            self.detect_and_load_dff_files()
+
 
             print(f"✅ Loaded {len(self.players)} valid {self.contest_type.upper()} players")
 
@@ -1774,8 +1799,7 @@ class BulletproofDFSCore:
         return filename
 
     def detect_confirmed_players(self) -> int:
-        """FIXED: Strict confirmation detection with validation"""
-
+        """FIXED: Apply confirmations to player objects"""
         print("\n🔍 SMART CONFIRMATION DETECTION - STRICT MODE")
         print("=" * 60)
 
@@ -1786,113 +1810,116 @@ class BulletproofDFSCore:
             print("⚠️ Smart confirmation system not available")
             return 0
 
-        # Update the confirmation system with current players
-        self.confirmation_system = SmartConfirmationSystem(
-            csv_players=self.players,
-            verbose=True
-        )
+        # Update CSV players
+        if hasattr(self.confirmation_system, 'csv_players'):
+            self.confirmation_system.csv_players = self.players
+            self.confirmation_system.csv_teams = set(p.team for p in self.players if p.team)
 
         # Get all confirmations
-        lineup_count, pitcher_count = self.get_cached_data(
-        f"confirmations_{self.game_date}",
-        self.confirmation_system.get_all_confirmations(),
-        "mlb_lineups"
-    )
+        lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
 
+        # CRITICAL FIX: Actually apply confirmations to players!
         confirmed_count = 0
-        confirmed_pitchers = []
-        confirmed_hitters = []
 
-        print("\n🔍 STRICT PLAYER MATCHING...")
-
-        # PART 1: Match hitters to confirmed lineups
+        # Process regular players
         for player in self.players:
-            if player.primary_position != 'P':  # Hitters only
-                # Check if player is in lineup
+            if player.primary_position != 'P':  # Non-pitchers
                 is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
                     player.name, player.team
                 )
-
                 if is_confirmed:
                     player.is_confirmed = True
                     player.add_confirmation_source("mlb_lineup")
+                    if batting_order:
+                        player.batting_order = batting_order
                     confirmed_count += 1
-                    confirmed_hitters.append(f"{player.name} ({player.team}) - Batting {batting_order}")
-                    print(f"✅ Confirmed Hitter: {player.name} ({player.team}) - Batting {batting_order}")
+                    print(f"✅ Confirmed: {player.name} ({player.team}) - Batting {batting_order}")
 
-        # PART 2: STRICT pitcher matching - ONLY confirmed starters
-        print("\n🎯 STRICT PITCHER VERIFICATION...")
-
-        # Get today's confirmed starters from MLB API
-        confirmed_starter_names = {}
-        if hasattr(self.confirmation_system, 'confirmed_pitchers'):
-            for team, pitcher_data in self.confirmation_system.confirmed_pitchers.items():
-                pitcher_name = pitcher_data['name'].lower().strip()
-                confirmed_starter_names[pitcher_name] = team
-                print(f"   📌 Confirmed starter: {pitcher_data['name']} ({team})")
-
-        # Now check ALL pitchers
+        # Process pitchers
         for player in self.players:
             if player.primary_position == 'P':
-                player_name_lower = player.name.lower().strip()
+                is_confirmed = self.confirmation_system.is_pitcher_confirmed(
+                    player.name, player.team
+                )
+                if is_confirmed:
+                    player.is_confirmed = True
+                    player.add_confirmation_source("mlb_starter")
+                    confirmed_count += 1
+                    print(f"✅ Confirmed pitcher: {player.name} ({player.team})")
 
-                # STRICT: Only confirm if exact match to MLB confirmed starter
-                if player_name_lower in confirmed_starter_names:
-                    expected_team = confirmed_starter_names[player_name_lower]
-                    if player.team == expected_team:
-                        player.is_confirmed = True
-                        player.add_confirmation_source("mlb_starter")
-                        confirmed_count += 1
-                        confirmed_pitchers.append(f"{player.name} ({player.team})")
-                        print(f"✅ Confirmed Pitcher: {player.name} ({player.team})")
-                    else:
-                        print(f"❌ Team mismatch for {player.name}: {player.team} vs {expected_team}")
-                else:
-                    # This pitcher is NOT starting today
-                    print(f"❌ NOT STARTING: {player.name} ({player.team})")
+        print(f"\n📊 Total confirmed: {confirmed_count} players")
 
-        # PART 3: Validation summary
-        print(f"\n📊 CONFIRMATION SUMMARY:")
-        print(f"   Confirmed Pitchers: {len(confirmed_pitchers)}")
-        print(f"   Confirmed Hitters: {len(confirmed_hitters)}")
-        print(f"   Total Confirmed: {confirmed_count}")
+        # Apply DFF if available
+        if hasattr(self, 'current_dff_file') and self.current_dff_file:
+            print("\n🎯 APPLYING DFF RANKINGS...")
+            self.apply_dff_rankings(self.current_dff_file)
 
-        # Show confirmed pitchers
-        if confirmed_pitchers:
-            print(f"\n⚾ CONFIRMED STARTING PITCHERS:")
-            for p in confirmed_pitchers:
-                print(f"   - {p}")
-
-        # CRITICAL: Verify no extra players are confirmed
-        self._validate_confirmations()
-
-        # Apply data enrichment ONLY to confirmed players
+        # Apply enrichments only to confirmed players
         if confirmed_count > 0:
-            print("\n📊 APPLYING ADVANCED ANALYTICS TO CONFIRMED PLAYERS...")
-
-            # Get ONLY confirmed players
-            truly_confirmed = [p for p in self.players if p.is_confirmed]
-            print(f"🎯 Enriching {len(truly_confirmed)} confirmed players...")
-
-            # 1. Vegas Lines
-            if self.vegas_lines:
-                print("💰 Enriching with Vegas lines...")
-                self.enrich_with_vegas_lines()
-
-            # 2. Statcast Data
-            if self.statcast_fetcher:
-                print("📊 Enriching with Statcast data...")
-                self.enrich_with_statcast_priority()
-
-            # 3. Park Factors
-            print("🏟️ Applying park factors...")
-            self.apply_park_factors()
-
-            # 4. Statistical Analysis
-            print("🔬 Applying enhanced statistical analysis...")
-            self._apply_comprehensive_statistical_analysis(truly_confirmed)
+            print("\n📊 APPLYING ADVANCED ANALYTICS...")
+            self._apply_enrichments_to_confirmed_players()
+        else:
+            print("\n⚠️ NO PLAYERS CONFIRMED!")
+            print("💡 Try:")
+            print("1. Add manual players")
+            print("2. Check name matching between CSV and MLB data")
+            print("3. Use 'All Players' mode for testing")
 
         return confirmed_count
+
+    def _apply_enrichments_to_confirmed_players(self):
+        """Apply all enrichments to confirmed players (DFF already applied)"""
+        # Get only confirmed players
+        truly_confirmed = [p for p in self.players if p.is_confirmed]
+        print(f"🎯 Enriching {len(truly_confirmed)} confirmed players...")
+
+        if not truly_confirmed:
+            print("⚠️ No confirmed players to enrich")
+            return
+
+        # Note: DFF data was already applied in detect_confirmed_players()
+
+        # 1. Vegas Lines
+        if self.vegas_lines:
+            print("💰 Enriching with Vegas lines...")
+            self.enrich_with_vegas_lines()
+
+        # 2. Statcast Data (this can take a while)
+        if self.statcast_fetcher:
+            print("📊 Enriching with Statcast data...")
+            self.enrich_with_statcast_priority()
+
+        # 3. Park Factors
+        print("🏟️ Applying park factors...")
+        self.apply_park_factors()
+
+        # 4. Batting Order (if available)
+        if hasattr(self, 'enrich_with_batting_order'):
+            print("🔢 Enriching with batting order...")
+            self.enrich_with_batting_order()
+
+        # 5. Recent Form (if available)
+        if hasattr(self, 'enrich_with_recent_form'):
+            print("📈 Analyzing recent form...")
+            self.enrich_with_recent_form()
+
+        # 6. Statistical Analysis (combines all data sources)
+        print("🔬 Applying enhanced statistical analysis...")
+        self._apply_comprehensive_statistical_analysis(truly_confirmed)
+
+        # Show summary of enrichments
+        enrichment_summary = {
+            'DFF': sum(1 for p in truly_confirmed if hasattr(p, 'dff_data') and p.dff_data),
+            'Vegas': sum(1 for p in truly_confirmed if hasattr(p, 'vegas_data') and p.vegas_data),
+            'Statcast': sum(1 for p in truly_confirmed if hasattr(p, 'statcast_data') and p.statcast_data),
+            'Batting Order': sum(1 for p in truly_confirmed if hasattr(p, 'batting_order') and p.batting_order)
+        }
+
+        print(f"\n📊 Enrichment Summary:")
+        for source, count in enrichment_summary.items():
+            print(f"   {source}: {count}/{len(truly_confirmed)} players")
+
+        print("✅ All enrichments applied")
 
     def _validate_confirmations(self):
         """Validate that ONLY appropriate players are confirmed"""
@@ -1929,107 +1956,48 @@ class BulletproofDFSCore:
 
         return can_fill
 
+    # Add this method to your BulletproofDFSCore class to fix lineup display:
+
     def optimize_lineup_with_mode(self) -> Tuple[List[AdvancedPlayer], float]:
         """
-        Optimize lineup with contest type awareness
-        Handles both CLASSIC and SHOWDOWN modes with contest-specific adjustments
+        FIXED: Optimize lineup with proper result display
         """
         print(f"\n🎯 OPTIMAL LINEUP GENERATION - {self.optimization_mode.upper()}")
-        print(f"🎰 Contest Type: {self.contest_type.upper()}")
         print("=" * 80)
 
-        # Get eligible players based on mode
+        # Get eligible players
         eligible_players = self.get_eligible_players_by_mode()
-
         if not eligible_players:
             print("❌ No eligible players found")
             return [], 0
-            # EXTRA SAFETY: Final pitcher check
-            print("\n🔒 FINAL SAFETY CHECK...")
-            safe_players = []
-
-            for player in eligible_players:
-                if player.primary_position == 'P' and self.optimization_mode != 'manual_only':
-                    # Verify pitcher is actually starting
-                    if self.confirmation_system and hasattr(self.confirmation_system, 'confirmed_pitchers'):
-                        is_starting = False
-                        for team, pitcher_data in self.confirmation_system.confirmed_pitchers.items():
-                            if (player.name.lower() == pitcher_data['name'].lower() and
-                                    player.team == team):
-                                is_starting = True
-                                break
-
-                        if is_starting:
-                            safe_players.append(player)
-                        else:
-                            print(f"   ⚠️ REMOVING non-starter from optimization: {player.name} ({player.team})")
-                    else:
-                        # If no confirmation system, only allow manual pitchers
-                        if player.is_manual_selected:
-                            safe_players.append(player)
-                else:
-                    safe_players.append(player)
-
-            eligible_players = safe_players
-            print(f"✅ Final eligible count: {len(eligible_players)} players")
 
         print(f"📊 Optimizing with {len(eligible_players)} eligible players")
 
-        # APPLY CONTEST-SPECIFIC ADJUSTMENTS
-        if hasattr(self, 'optimization_contest_type'):
-            # Apply adjustments to eligible players only
-            self.apply_contest_specific_adjustments(self.optimization_contest_type)
+        # Detect contest type from player positions
+        showdown_players = sum(1 for p in eligible_players
+                               if hasattr(p, 'positions') and ('CPT' in p.positions or 'UTIL' in p.positions))
+        classic_players = sum(1 for p in eligible_players
+                              if hasattr(p, 'positions') and
+                              any(pos in p.positions for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']))
 
-        # Show position breakdown for debugging
-        if self.contest_type == 'showdown':
-            print(f"🎯 Showdown mode: All {len(eligible_players)} players can be CPT or UTIL")
+        # Force contest type detection
+        if showdown_players > classic_players:
+            self.contest_type = 'showdown'
+            print(f"🎰 DETECTED: Showdown contest")
         else:
-            position_counts = {}
-            for player in eligible_players:
-                for pos in player.positions:
-                    position_counts[pos] = position_counts.get(pos, 0) + 1
-            print(f"📍 Position coverage: {position_counts}")
-
-        # DATA VERIFICATION: Check what data each player has
-        print("\n🔍 DATA ENRICHMENT VERIFICATION:")
-        players_with_vegas = sum(1 for p in eligible_players if hasattr(p, 'vegas_data') and p.vegas_data)
-        players_with_statcast = sum(1 for p in eligible_players if hasattr(p, 'statcast_data') and p.statcast_data)
-        players_with_dff = sum(1 for p in eligible_players if hasattr(p, 'dff_data') and p.dff_data)
-        players_with_batting_order = sum(1 for p in eligible_players if hasattr(p, 'batting_order') and p.batting_order)
-
-        print(f"💰 Vegas data: {players_with_vegas}/{len(eligible_players)} players")
-        print(f"📊 Statcast data: {players_with_statcast}/{len(eligible_players)} players")
-        print(f"📈 DFF data: {players_with_dff}/{len(eligible_players)} players")
-        print(f"🔢 Batting order data: {players_with_batting_order}/{len(eligible_players)} players")
-
-        # Show sample player data
-        if eligible_players:
-            print(f"\n🎯 Sample player data:")
-            for player in eligible_players[:3]:  # First 3 players
-                print(f"   {player.name} ({player.get_position_string()}):")
-                print(f"      Base score: {player.base_score:.2f} → Enhanced: {player.enhanced_score:.2f}")
-                if hasattr(player, 'contest_adjustment'):
-                    print(f"      Contest adjustment: {player.contest_adjustment:.2%}")
-                if hasattr(player, 'batting_order'):
-                    print(f"      Batting order: {player.batting_order}")
-                if hasattr(player, 'vegas_data') and player.vegas_data:
-                    print(f"      Vegas: Team Total {player.vegas_data.get('team_total', 'N/A')}")
-                if hasattr(player, 'statcast_data') and player.statcast_data:
-                    print(f"      Statcast: xwOBA {player.statcast_data.get('xwOBA', 'N/A')}")
-                if hasattr(player, 'dff_data') and player.dff_data:
-                    print(f"      DFF: {player.dff_data.get('ppg_projection', 'N/A')} proj")
+            self.contest_type = 'classic'
+            print(f"🏈 DETECTED: Classic contest")
 
         # Create optimizer
+        from optimal_lineup_optimizer import OptimalLineupOptimizer
         optimizer = OptimalLineupOptimizer(salary_cap=self.salary_cap)
 
-        # Run optimization based on contest type
+        # Run optimization
         if self.contest_type == 'showdown':
             print("\n🎰 Running SHOWDOWN optimization (1 CPT + 5 UTIL)")
-            print(f"   Captain gets 1.5x points but costs 1.5x salary")
             result = optimizer.optimize_showdown_lineup(eligible_players)
         else:
-            print("\n🏈 Running CLASSIC optimization (10 players)")
-            print(f"   Need: 2 P, 1 C, 1 1B, 1 2B, 1 3B, 1 SS, 3 OF")
+            print("\n🏈 Running CLASSIC optimization (2P + 1C + 1B + 2B + 3B + SS + 3OF)")
             result = optimizer.optimize_classic_lineup(eligible_players)
 
         if result.optimization_status == "Optimal" and result.lineup:
@@ -2037,69 +2005,80 @@ class BulletproofDFSCore:
             print(f"💰 Total Salary: ${result.total_salary:,} / ${self.salary_cap:,}")
             print(f"💵 Remaining: ${self.salary_cap - result.total_salary:,}")
             print(f"📈 Projected Points: {result.total_score:.2f}")
-            print(f"📊 Positions Filled: {result.positions_filled}")
 
-            # NEW: Apply correlation adjustments to the optimal lineup
-            if hasattr(self, 'apply_lineup_correlations'):
-                print(f"\n🔥 Applying correlation adjustments...")
-                result.lineup = self.apply_lineup_correlations(result.lineup)
-                # Recalculate total score after correlation adjustments
-                old_score = result.total_score
-                result.total_score = sum(p.enhanced_score for p in result.lineup)
-                if abs(result.total_score - old_score) > 0.1:
-                    print(
-                        f"   Score adjusted: {old_score:.2f} → {result.total_score:.2f} ({result.total_score - old_score:+.2f})")
+            # FIXED: Actually show the lineup players!
+            print(f"\n📋 OPTIMAL LINEUP DETAILS:")
+            print("=" * 60)
 
-            # Show lineup preview
-            print(f"\n📋 LINEUP PREVIEW:")
             if self.contest_type == 'showdown':
                 # Show captain first
-                captain = \
-                [p for p in result.lineup if hasattr(p, 'assigned_position') and p.assigned_position == 'CPT'][0]
-                print(
-                    f"   👑 CPT: {captain.name} (${int(captain.salary * 1.5):,}) - {captain.enhanced_score * 1.5:.1f} pts")
+                captain = None
+                utils = []
 
-                # Show UTIL players
-                utils = [p for p in result.lineup if hasattr(p, 'assigned_position') and p.assigned_position == 'UTIL']
+                for player in result.lineup:
+                    pos = getattr(player, 'assigned_position', 'UTIL')
+                    if pos == 'CPT':
+                        captain = player
+                    else:
+                        utils.append(player)
+
+                # Display captain
+                if captain:
+                    multiplier = getattr(captain, 'multiplier', 1.5)
+                    salary_cost = int(captain.salary * multiplier)
+                    points_proj = captain.enhanced_score * multiplier
+                    print(f"   👑 CPT: {captain.name:<20} ${salary_cost:>7,} -> {points_proj:>6.1f} pts")
+
+                # Display utility players
                 for i, player in enumerate(utils, 1):
-                    print(f"   {i}. UTIL: {player.name} (${player.salary:,}) - {player.enhanced_score:.1f} pts")
+                    print(f"   {i}. UTIL: {player.name:<20} ${player.salary:>7,} -> {player.enhanced_score:>6.1f} pts")
+
             else:
-                # Classic lineup
-                for player in result.lineup[:5]:  # Show first 5
-                    pos = getattr(player, 'assigned_position', player.primary_position)
-                    pos_str = player.get_position_display() if hasattr(player, 'get_position_display') else pos
-                    batting_str = f" (Bat-{player.batting_order})" if hasattr(player,
-                                                                              'batting_order') and player.batting_order else ""
+                # Classic lineup display
+                position_order = ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']
+                position_counts = {pos: 0 for pos in position_order}
+
+                for player in result.lineup:
+                    assigned_pos = getattr(player, 'assigned_position', player.primary_position)
+                    if assigned_pos in position_counts:
+                        position_counts[assigned_pos] += 1
+                        pos_display = f"{assigned_pos}{position_counts[assigned_pos]}" if assigned_pos in ['P',
+                                                                                                           'OF'] else assigned_pos
+                    else:
+                        pos_display = assigned_pos
+
+                    # Check for multi-position flexibility
+                    flex_indicator = "*" if len(getattr(player, 'positions', [])) > 1 else " "
+
                     print(
-                        f"   {pos_str}: {player.name}{batting_str} (${player.salary:,}) - {player.enhanced_score:.1f} pts")
-                print(f"   ... and {len(result.lineup) - 5} more players")
+                        f"   {pos_display:<4}: {player.name:<20}{flex_indicator} ${player.salary:>7,} -> {player.enhanced_score:>6.1f} pts")
 
-            # After optimization, show stack info if available
-            if hasattr(self, 'correlation_optimizer'):
-                correlation_score, correlation_details = self.correlation_optimizer.calculate_lineup_correlation_score(
-                    result.lineup,
-                    self.vegas_lines.lines if self.vegas_lines else None
-                )
+            # Show team breakdown
+            team_counts = {}
+            for player in result.lineup:
+                team = getattr(player, 'team', 'UNK')
+                team_counts[team] = team_counts.get(team, 0) + 1
 
-                if correlation_details['stacks']:
-                    print(f"\n🔥 STACKING ANALYSIS:")
-                    for stack in correlation_details['stacks']:
-                        print(f"   {stack['team']}: {stack['size']} players (bonus: +{stack['bonus']:.1%})")
-                        if stack.get('has_pitcher'):
-                            print(f"      ⚾ Includes pitcher")
-                        print(
-                            f"      Players: {', '.join(stack['players'][:3])}{'...' if len(stack['players']) > 3 else ''}")
-                    print(f"   Total correlation bonus: {correlation_score:.1%}")
+            print(f"\n🏈 Team Breakdown:")
+            for team, count in sorted(team_counts.items()):
+                print(f"   {team}: {count} players")
+
+            # Show any stacks
+            stacks = [(team, count) for team, count in team_counts.items() if count >= 3]
+            if stacks:
+                print(f"\n🔥 Stacks Detected:")
+                for team, count in stacks:
+                    print(f"   💪 {team} {count}-stack")
 
             return result.lineup, result.total_score
         else:
             print(f"\n❌ Optimization failed: {result.optimization_status}")
 
-            # Provide helpful debugging info
-            if self.contest_type == 'showdown' and len(eligible_players) < 6:
-                print(f"   💡 Showdown needs at least 6 players, you have {len(eligible_players)}")
-            elif self.contest_type == 'classic':
-                print(f"   💡 Check position coverage - you may be missing required positions")
+            # Show helpful debug info
+            if len(eligible_players) < 6 and self.contest_type == 'showdown':
+                print(f"💡 Showdown needs 6 players, you have {len(eligible_players)}")
+            elif len(eligible_players) < 10 and self.contest_type == 'classic':
+                print(f"💡 Classic needs 10 players, you have {len(eligible_players)}")
 
             return [], 0
 
@@ -2469,7 +2448,11 @@ class BulletproofDFSCore:
         # First, validate all confirmations
         self._validate_confirmations()
 
-        if self.optimization_mode == 'manual_only':
+        if self.optimization_mode == 'all':
+            # ALL PLAYERS MODE - No restrictions!
+            eligible = self.players.copy()
+            print(f"🌐 ALL PLAYERS MODE: {len(eligible)}/{len(self.players)} players eligible")
+        elif self.optimization_mode == 'manual_only':
             eligible = [p for p in self.players if p.is_manual_selected]
             print(f"🎯 MANUAL-ONLY MODE: {len(eligible)}/{len(self.players)} manually selected players")
         elif self.optimization_mode == 'confirmed_only':
@@ -2488,14 +2471,15 @@ class BulletproofDFSCore:
             print(f"   - Manual only: {manual_only}")
             print(f"   - Both confirmed & manual: {both}")
 
-        # CRITICAL: Extra validation for pitchers
-        eligible_pitchers = [p for p in eligible if p.primary_position == 'P']
-        print(f"\n⚾ PITCHER VALIDATION:")
-        print(f"   Total eligible pitchers: {len(eligible_pitchers)}")
+        # CRITICAL: Extra validation for pitchers (skip in 'all' mode)
+        if self.optimization_mode != 'all':
+            eligible_pitchers = [p for p in eligible if p.primary_position == 'P']
+            print(f"\n⚾ PITCHER VALIDATION:")
+            print(f"   Total eligible pitchers: {len(eligible_pitchers)}")
 
-        for pitcher in eligible_pitchers:
-            sources = ', '.join(pitcher.confirmation_sources) if pitcher.confirmation_sources else 'MANUAL'
-            print(f"   - {pitcher.name} ({pitcher.team}) - Sources: [{sources}]")
+            for pitcher in eligible_pitchers[:5]:  # Show first 5
+                sources = ', '.join(pitcher.confirmation_sources) if pitcher.confirmation_sources else 'MANUAL'
+                print(f"   - {pitcher.name} ({pitcher.team}) - Sources: [{sources}]")
 
         # Position breakdown
         position_counts = {}
@@ -2505,8 +2489,8 @@ class BulletproofDFSCore:
 
         print(f"\n📍 Eligible position coverage: {position_counts}")
 
-        # Final safety check
-        if self.optimization_mode in ['bulletproof', 'confirmed_only']:
+        # Final safety check (skip in 'all' mode)
+        if self.optimization_mode in ['bulletproof', 'confirmed_only'] and self.optimization_mode != 'all':
             # Remove any pitcher without proper confirmation
             safe_eligible = []
             removed_count = 0
@@ -2525,6 +2509,7 @@ class BulletproofDFSCore:
                 eligible = safe_eligible
 
         return eligible
+
 
     def _apply_comprehensive_statistical_analysis(self, players):
         """ENHANCED: Apply comprehensive statistical analysis with PRIORITY 1 improvements"""
@@ -2633,7 +2618,14 @@ class BulletproofDFSCore:
             print(f"💰 Total Salary: ${result.total_salary:,} / ${self.salary_cap:,}")
             print(f"📈 Projected Points: {result.total_score:.2f}")
             print(f"📊 Positions Filled: {result.positions_filled}")
-
+            # After the line that shows positions filled, add:
+            print("\n📋 LINEUP PLAYERS:")
+            print("-" * 60)
+            for i, player in enumerate(result.lineup, 1):
+                pos = getattr(player, 'assigned_position', player.primary_position)
+                score = getattr(player, 'enhanced_score', player.projection)
+                print(f"{i:2d}. {pos:<4} {player.name:<20} {player.team:<4} ${player.salary:>6,} → {score:>6.1f} pts")
+            print("-" * 60)
             return result.lineup, result.total_score
         else:
             print(f"❌ Optimization failed: {result.optimization_status}")
@@ -2977,6 +2969,107 @@ if __name__ == "__main__":
             return
 
         tracker.print_summary(days)
+
+
+    def debug_confirmations(self):
+        """Debug why players aren't getting confirmed"""
+        print("\n🔍 DEBUG: Player Confirmation Status")
+        print("=" * 60)
+
+        # Check lineup matches
+        confirmed_count = 0
+        for player in self.players:
+            if self.confirmation_system:
+                is_confirmed, order = self.confirmation_system.is_player_confirmed(
+                    player.name, player.team
+                )
+                if is_confirmed:
+                    print(f"✅ {player.name} ({player.team}) - Confirmed, batting {order}")
+                    player.add_confirmation_source("mlb_lineup")
+                    player.is_confirmed = True
+                    confirmed_count += 1
+                else:
+                    # Check if team has lineup
+                    if hasattr(self.confirmation_system, 'confirmed_lineups'):
+                        if player.team in self.confirmation_system.confirmed_lineups:
+                            # Team has lineup but player not in it
+                            lineup_players = self.confirmation_system.confirmed_lineups[player.team]
+                            print(f"❌ {player.name} ({player.team}) - Team has lineup but player not matched")
+                            # Show what names ARE in the lineup for this team
+                            print(f"   Lineup has: {', '.join(p['name'] for p in lineup_players[:3])}...")
+
+        # Check pitcher matches
+        pitchers = [p for p in self.players if p.primary_position == 'P']
+        for pitcher in pitchers:
+            if self.confirmation_system:
+                is_confirmed = self.confirmation_system.is_pitcher_confirmed(
+                    pitcher.name, pitcher.team
+                )
+                if is_confirmed:
+                    print(f"✅ {pitcher.name} ({pitcher.team}) - Confirmed starter")
+                    pitcher.add_confirmation_source("mlb_starter")
+                    pitcher.is_confirmed = True
+                    confirmed_count += 1
+
+        print(f"\n📊 Total confirmed: {confirmed_count}/{len(self.players)} players")
+        return confirmed_count
+
+
+    # Add this debug method to your BulletproofDFSCore class:
+
+    def debug_contest_type_detection(self):
+        """Debug why contest type detection is failing"""
+        print("\n🔍 CONTEST TYPE DEBUG")
+        print("=" * 60)
+
+        print(f"Current contest_type: {self.contest_type}")
+        print(f"Total players: {len(self.players)}")
+
+        # Analyze player positions
+        position_counts = {}
+        showdown_count = 0
+        classic_count = 0
+
+        print(f"\n📊 Position Analysis (first 10 players):")
+        for i, player in enumerate(self.players[:10]):
+            positions = getattr(player, 'positions', [])
+            primary_pos = getattr(player, 'primary_position', 'Unknown')
+
+            print(f"   {i + 1}. {player.name}:")
+            print(f"      Primary: {primary_pos}")
+            print(f"      All positions: {positions}")
+
+            # Count position types
+            if 'CPT' in positions or 'UTIL' in positions:
+                showdown_count += 1
+            if any(pos in positions for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']):
+                classic_count += 1
+
+            for pos in positions:
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        print(f"\n📈 Position Summary:")
+        for pos, count in sorted(position_counts.items()):
+            print(f"   {pos}: {count} players")
+
+        print(f"\n🎯 Contest Type Indicators:")
+        print(f"   Showdown indicators (CPT/UTIL): {showdown_count}")
+        print(f"   Classic indicators (P/C/1B/etc): {classic_count}")
+
+        # Recommendation
+        if showdown_count > classic_count:
+            print(f"\n💡 RECOMMENDATION: This is a SHOWDOWN contest")
+            print(f"   Force with: core.contest_type = 'showdown'")
+        else:
+            print(f"\n💡 RECOMMENDATION: This is a CLASSIC contest")
+            print(f"   Force with: core.contest_type = 'classic'")
+
+        return {
+            'showdown_count': showdown_count,
+            'classic_count': classic_count,
+            'position_counts': position_counts,
+            'recommended_type': 'showdown' if showdown_count > classic_count else 'classic'
+        }
 
     def clear_cache(self, category: str = None):
         """Clear cache by category or all"""
