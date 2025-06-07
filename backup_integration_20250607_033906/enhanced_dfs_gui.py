@@ -322,24 +322,6 @@ class DFSOptimizerGUI(QMainWindow):
         for label, count, contest in [("5 Cash", 5, "cash"), ("20 GPP", 20, "gpp"), ("150 Max", 150, "gpp")]:
             btn = QPushButton(label)
             btn.clicked.connect(lambda checked, c=count, t=contest: self.quick_generate(c, t))
-
-        # Multi-lineup controls
-        multi_layout = QHBoxLayout()
-        multi_layout.addWidget(QLabel("Lineups:"))
-        self.lineup_count_spin = QSpinBox()
-        self.lineup_count_spin.setRange(1, 150)
-        self.lineup_count_spin.setValue(1)
-        self.lineup_count_spin.setToolTip("1=Single, 20=Small GPP, 150=Large GPP")
-        multi_layout.addWidget(self.lineup_count_spin)
-
-        # Add to whatever layout is being used
-        if 'button_layout' in locals():
-            button_layout.addLayout(multi_layout)
-        elif 'control_layout' in locals():
-            control_layout.addLayout(multi_layout)
-        else:
-            # Find the parent layout and add it
-            layout.addLayout(multi_layout)
             actions_layout.addWidget(btn)
 
         header_layout.addLayout(actions_layout)
