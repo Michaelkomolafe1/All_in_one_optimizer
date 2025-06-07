@@ -610,7 +610,6 @@ class AdvancedPlayer:
 class BulletproofDFSCore:
     """Complete bulletproof DFS core with enhanced pitcher detection"""
 
-
     def __init__(self):
         self.players = []
         self.contest_type = 'classic'
@@ -620,14 +619,26 @@ class BulletproofDFSCore:
         self.dff_showdown_file = None
         self.current_dff_file = None
 
+        # Set game date
+        self.game_date = datetime.now().strftime('%Y-%m-%d')
+
         # Initialize modules
         self.vegas_lines = VegasLines() if VEGAS_AVAILABLE else None
 
-        # Use SmartConfirmationSystem instead of ConfirmedLineups
-        self.confirmation_system = SmartConfirmationSystem(
-            csv_players=self.players,
-            verbose=True
-        ) if CONFIRMED_AVAILABLE else None
+        # Fix SmartConfirmationSystem initialization
+        if CONFIRMED_AVAILABLE:
+            try:
+                self.confirmation_system = SmartConfirmationSystem(
+                    csv_players=self.players,
+                    verbose=True
+                )
+                print("✅ Smart Confirmation System initialized")
+            except Exception as e:
+                print(f"❌ Failed to initialize SmartConfirmationSystem: {e}")
+                self.confirmation_system = None
+        else:
+            self.confirmation_system = None
+            print("⚠️ SmartConfirmationSystem not available")
 
         self.statcast_fetcher = SimpleStatcastFetcher() if STATCAST_AVAILABLE else None
 
@@ -643,7 +654,6 @@ class BulletproofDFSCore:
             integrate_batting_order_correlation(self)
 
         print("🚀 Bulletproof DFS Core - ALL METHODS INCLUDED WITH ENHANCED PITCHER DETECTION")
-
     # ==================== DFS UPGRADE METHODS ====================
 
     def get_cached_data(self, key: str, fetch_func, category: str = 'default'):
@@ -1186,15 +1196,30 @@ class BulletproofDFSCore:
         import copy
         return copy.deepcopy(player)
 
-
     def set_optimization_mode(self, mode: str):
         """Set optimization mode with validation"""
-        valid_modes = ['bulletproof', 'manual_only', 'confirmed_only']
+        valid_modes = ['bulletproof', 'manual_only', 'confirmed_only', 'all']
+
+        # Handle different mode names from GUI
+        mode_mapping = {
+            'all players': 'all',
+            'all_players': 'all',
+            'manual only': 'manual_only',
+            'confirmed only': 'confirmed_only',
+            'bulletproof (confirmed + manual)': 'bulletproof'
+        }
+
+        # Normalize the mode
+        mode_lower = mode.lower()
+        if mode_lower in mode_mapping:
+            mode = mode_mapping[mode_lower]
+
         if mode in valid_modes:
             self.optimization_mode = mode
-            print(f"⚙️ Optimization mode: {mode}")
+            print(f"⚙️ Optimization mode set to: {mode}")
         else:
-            print(f"❌ Invalid mode. Choose: {valid_modes}")
+            print(f"❌ Invalid mode '{mode}'. Choose from: {valid_modes}")
+            print(f"   Keeping current mode: {self.optimization_mode}")
 
     def load_draftkings_csv(self, file_path: str) -> bool:
         """Load DraftKings CSV with better multi-position parsing"""
@@ -1334,9 +1359,7 @@ class BulletproofDFSCore:
                 if len(multi_position_players) > 10:
                     print(f"   ... and {len(multi_position_players) - 10} more")
 
-            # Also detect and load appropriate DFF file
-            print("\n📂 Looking for DFF files...")
-            self.detect_and_load_dff_files()
+
 
             print(f"✅ Loaded {len(self.players)} valid {self.contest_type.upper()} players")
 
@@ -1786,18 +1809,46 @@ class BulletproofDFSCore:
             print("⚠️ Smart confirmation system not available")
             return 0
 
-        # Update the confirmation system with current players
-        self.confirmation_system = SmartConfirmationSystem(
-            csv_players=self.players,
-            verbose=True
-        )
+        # Update CSV players without recreating the system
+        if hasattr(self.confirmation_system, 'csv_players'):
+            self.confirmation_system.csv_players = self.players
+            # Update CSV teams too
+            self.confirmation_system.csv_teams = self.confirmation_system.data_system.get_teams_from_players(
+                self.players)
 
         # Get all confirmations
-        lineup_count, pitcher_count = self.get_cached_data(
-        f"confirmations_{self.game_date}",
-        self.confirmation_system.get_all_confirmations(),
-        "mlb_lineups"
-    )
+        lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
+
+        # ADD DEBUG INFO
+        print(f"\n🔍 DEBUG - Confirmation Status:")
+        print(f"  Current time: {datetime.now().strftime('%H:%M:%S')}")
+        print(f"  Game date: {self.game_date}")
+        print(f"  API returned: {lineup_count} lineups, {pitcher_count} pitchers")
+        print(f"  Total CSV players: {len(self.players)}")
+
+        # Check for games started
+        current_hour = datetime.now().hour
+        if current_hour >= 19:  # 7 PM or later
+            print(f"\n⚠️ WARNING: Games may have started! ({current_hour}:00)")
+            print(f"   MLB lineups lock once games begin")
+            print(f"   Consider using manual selections or 'All Players' mode")
+
+        # TEAM MATCHING DEBUG
+        if hasattr(self.confirmation_system, 'csv_teams') and hasattr(self.confirmation_system, 'confirmed_lineups'):
+            print(f"\n🔍 TEAM MATCHING DEBUG:")
+            csv_teams = set(self.confirmation_system.csv_teams)
+            mlb_teams = set(self.confirmation_system.confirmed_lineups.keys())
+            print(f"  CSV Teams ({len(csv_teams)}): {sorted(csv_teams)}")
+            print(f"  MLB Teams with lineups ({len(mlb_teams)}): {sorted(mlb_teams)}")
+
+            # Find overlap
+            overlap = csv_teams & mlb_teams
+            print(f"  Matching teams ({len(overlap)}): {sorted(overlap)}")
+
+            # Show mismatches
+            csv_only = csv_teams - mlb_teams
+            if csv_only:
+                print(f"  ❌ CSV teams NOT playing: {sorted(csv_only)}")
 
         confirmed_count = 0
         confirmed_pitchers = []
@@ -1806,8 +1857,20 @@ class BulletproofDFSCore:
         print("\n🔍 STRICT PLAYER MATCHING...")
 
         # PART 1: Match hitters to confirmed lineups
-        for player in self.players:
-            if player.primary_position != 'P':  # Hitters only
+        print("\n🔍 MATCHING PLAYERS TO LINEUPS...")
+        matched_count = 0
+        failed_matches = 0
+
+        for i, player in enumerate(self.players):
+            try:
+                # Skip pitchers
+                if player.primary_position == 'P':
+                    continue
+
+                # Show progress every 50 players
+                if i % 50 == 0 and i > 0:
+                    print(f"   Processed {i}/{len(self.players)} players...")
+
                 # Check if player is in lineup
                 is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
                     player.name, player.team
@@ -1818,7 +1881,20 @@ class BulletproofDFSCore:
                     player.add_confirmation_source("mlb_lineup")
                     confirmed_count += 1
                     confirmed_hitters.append(f"{player.name} ({player.team}) - Batting {batting_order}")
-                    print(f"✅ Confirmed Hitter: {player.name} ({player.team}) - Batting {batting_order}")
+                    matched_count += 1
+
+                    # Only show first few matches
+                    if matched_count <= 10:
+                        print(f"✅ Matched: {player.name} ({player.team}) - Batting {batting_order}")
+
+            except Exception as e:
+                failed_matches += 1
+                print(f"❌ Error matching {player.name}: {e}")
+                continue
+
+        print(f"\n✅ Matched {matched_count} hitters")
+        if failed_matches > 0:
+            print(f"⚠️ Failed to match {failed_matches} players")
 
         # PART 2: STRICT pitcher matching - ONLY confirmed starters
         print("\n🎯 STRICT PITCHER VERIFICATION...")
@@ -1827,13 +1903,16 @@ class BulletproofDFSCore:
         confirmed_starter_names = {}
         if hasattr(self.confirmation_system, 'confirmed_pitchers'):
             for team, pitcher_data in self.confirmation_system.confirmed_pitchers.items():
-                pitcher_name = pitcher_data['name'].lower().strip()
-                confirmed_starter_names[pitcher_name] = team
-                print(f"   📌 Confirmed starter: {pitcher_data['name']} ({team})")
+                if team in self.confirmation_system.csv_teams:  # Only CSV teams
+                    pitcher_name = pitcher_data['name'].lower().strip()
+                    confirmed_starter_names[pitcher_name] = team
+                    print(f"   📌 Confirmed starter: {pitcher_data['name']} ({team})")
 
         # Now check ALL pitchers
+        pitcher_check_count = 0
         for player in self.players:
             if player.primary_position == 'P':
+                pitcher_check_count += 1
                 player_name_lower = player.name.lower().strip()
 
                 # STRICT: Only confirm if exact match to MLB confirmed starter
@@ -1848,8 +1927,9 @@ class BulletproofDFSCore:
                     else:
                         print(f"❌ Team mismatch for {player.name}: {player.team} vs {expected_team}")
                 else:
-                    # This pitcher is NOT starting today
-                    print(f"❌ NOT STARTING: {player.name} ({player.team})")
+                    # Show first few non-starters
+                    if pitcher_check_count <= 20:
+                        print(f"❌ NOT STARTING: {player.name} ({player.team})")
 
         # PART 3: Validation summary
         print(f"\n📊 CONFIRMATION SUMMARY:")
@@ -1860,8 +1940,17 @@ class BulletproofDFSCore:
         # Show confirmed pitchers
         if confirmed_pitchers:
             print(f"\n⚾ CONFIRMED STARTING PITCHERS:")
-            for p in confirmed_pitchers:
+            for p in confirmed_pitchers[:10]:  # Show first 10
                 print(f"   - {p}")
+            if len(confirmed_pitchers) > 10:
+                print(f"   ... and {len(confirmed_pitchers) - 10} more")
+
+        # Show some confirmed hitters
+        if confirmed_hitters:
+            print(f"\n⚾ SAMPLE CONFIRMED HITTERS (first 5):")
+            for h in confirmed_hitters[:5]:
+                print(f"   - {h}")
+            print(f"   ... and {len(confirmed_hitters) - 5} more")
 
         # CRITICAL: Verify no extra players are confirmed
         self._validate_confirmations()
@@ -1888,9 +1977,30 @@ class BulletproofDFSCore:
             print("🏟️ Applying park factors...")
             self.apply_park_factors()
 
-            # 4. Statistical Analysis
+            # 4. Batting Order (if available)
+            if hasattr(self, 'enrich_with_batting_order'):
+                print("🔢 Enriching with batting order...")
+                self.enrich_with_batting_order()
+
+            # 5. Recent Form (if available)
+            if hasattr(self, 'enrich_with_recent_form'):
+                print("📈 Analyzing recent form...")
+                self.enrich_with_recent_form()
+
+            # 6. Statistical Analysis
             print("🔬 Applying enhanced statistical analysis...")
             self._apply_comprehensive_statistical_analysis(truly_confirmed)
+
+        else:
+            print("\n⚠️ NO PLAYERS CONFIRMED!")
+            print("💡 SUGGESTIONS:")
+            print("1. Add manual players in the GUI")
+            print("2. Check if your CSV teams are playing today")
+            print("3. Switch to 'All Players' mode")
+            print("4. Wait for lineups if games haven't started")
+
+        # CRITICAL: Don't recreate confirmation system here!
+        # The data should persist
 
         return confirmed_count
 
@@ -2469,7 +2579,11 @@ class BulletproofDFSCore:
         # First, validate all confirmations
         self._validate_confirmations()
 
-        if self.optimization_mode == 'manual_only':
+        if self.optimization_mode == 'all':
+            # ALL PLAYERS MODE - No restrictions!
+            eligible = self.players.copy()
+            print(f"🌐 ALL PLAYERS MODE: {len(eligible)}/{len(self.players)} players eligible")
+        elif self.optimization_mode == 'manual_only':
             eligible = [p for p in self.players if p.is_manual_selected]
             print(f"🎯 MANUAL-ONLY MODE: {len(eligible)}/{len(self.players)} manually selected players")
         elif self.optimization_mode == 'confirmed_only':
@@ -2488,14 +2602,15 @@ class BulletproofDFSCore:
             print(f"   - Manual only: {manual_only}")
             print(f"   - Both confirmed & manual: {both}")
 
-        # CRITICAL: Extra validation for pitchers
-        eligible_pitchers = [p for p in eligible if p.primary_position == 'P']
-        print(f"\n⚾ PITCHER VALIDATION:")
-        print(f"   Total eligible pitchers: {len(eligible_pitchers)}")
+        # CRITICAL: Extra validation for pitchers (skip in 'all' mode)
+        if self.optimization_mode != 'all':
+            eligible_pitchers = [p for p in eligible if p.primary_position == 'P']
+            print(f"\n⚾ PITCHER VALIDATION:")
+            print(f"   Total eligible pitchers: {len(eligible_pitchers)}")
 
-        for pitcher in eligible_pitchers:
-            sources = ', '.join(pitcher.confirmation_sources) if pitcher.confirmation_sources else 'MANUAL'
-            print(f"   - {pitcher.name} ({pitcher.team}) - Sources: [{sources}]")
+            for pitcher in eligible_pitchers[:5]:  # Show first 5
+                sources = ', '.join(pitcher.confirmation_sources) if pitcher.confirmation_sources else 'MANUAL'
+                print(f"   - {pitcher.name} ({pitcher.team}) - Sources: [{sources}]")
 
         # Position breakdown
         position_counts = {}
@@ -2505,8 +2620,8 @@ class BulletproofDFSCore:
 
         print(f"\n📍 Eligible position coverage: {position_counts}")
 
-        # Final safety check
-        if self.optimization_mode in ['bulletproof', 'confirmed_only']:
+        # Final safety check (skip in 'all' mode)
+        if self.optimization_mode in ['bulletproof', 'confirmed_only'] and self.optimization_mode != 'all':
             # Remove any pitcher without proper confirmation
             safe_eligible = []
             removed_count = 0
@@ -2525,6 +2640,7 @@ class BulletproofDFSCore:
                 eligible = safe_eligible
 
         return eligible
+
 
     def _apply_comprehensive_statistical_analysis(self, players):
         """ENHANCED: Apply comprehensive statistical analysis with PRIORITY 1 improvements"""
