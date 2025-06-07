@@ -164,74 +164,70 @@ class UnifiedDataSystem:
         return name
 
     def match_player_names(self, dk_name: str, other_name: str, threshold: float = 0.80) -> bool:
-        """
-        Advanced name matching between DraftKings and other sources
+        """Advanced name matching between DraftKings and other sources - MEMORY SAFE VERSION"""
+        try:
+            # Ensure we're working with strings
+            dk_name = str(dk_name) if dk_name else ""
+            other_name = str(other_name) if other_name else ""
 
-        Args:
-            dk_name: DraftKings player name
-            other_name: Name from other source (MLB API, etc.)
-            threshold: Similarity threshold (0-1)
+            # Clean both names
+            dk_clean = self.clean_player_name(dk_name)
+            other_clean = self.clean_player_name(other_name)
 
-        Returns:
-            True if names match
-        """
-        # Clean both names
-        dk_clean = self.clean_player_name(dk_name)
-        other_clean = self.clean_player_name(other_name)
-
-        # Exact match
-        if dk_clean == other_clean:
-            return True
-
-        # Split into parts
-        dk_parts = dk_clean.split()
-        other_parts = other_clean.split()
-
-        if not dk_parts or not other_parts:
-            return False
-
-        # Get first and last names
-        dk_first = dk_parts[0]
-        dk_last = dk_parts[-1]
-        other_first = other_parts[0]
-        other_last = other_parts[-1]
-
-        # Check if last names match
-        if dk_last == other_last:
-            # Check first names (exact or nickname)
-            if dk_first == other_first:
+            # Exact match
+            if dk_clean == other_clean:
                 return True
 
-            # Check nickname mappings
-            if dk_first in self.NICKNAME_MAPPINGS:
-                if isinstance(self.NICKNAME_MAPPINGS[dk_first], list):
-                    if other_first in self.NICKNAME_MAPPINGS[dk_first]:
+            # Quick length check to avoid unnecessary processing
+            if abs(len(dk_clean) - len(other_clean)) > 10:
+                return False
+
+            # Split into parts
+            dk_parts = dk_clean.split()
+            other_parts = other_clean.split()
+
+            if not dk_parts or not other_parts:
+                return False
+
+            # Get first and last names safely
+            dk_first = dk_parts[0] if dk_parts else ""
+            dk_last = dk_parts[-1] if dk_parts else ""
+            other_first = other_parts[0] if other_parts else ""
+            other_last = other_parts[-1] if other_parts else ""
+
+            # Check if last names match
+            if dk_last == other_last:
+                # Check first names (exact or nickname)
+                if dk_first == other_first:
+                    return True
+
+                # Check nickname mappings
+                if dk_first in self.NICKNAME_MAPPINGS:
+                    if isinstance(self.NICKNAME_MAPPINGS[dk_first], list):
+                        if other_first in self.NICKNAME_MAPPINGS[dk_first]:
+                            return True
+                    elif other_first == self.NICKNAME_MAPPINGS[dk_first]:
                         return True
-                elif other_first == self.NICKNAME_MAPPINGS[dk_first]:
-                    return True
 
-            if other_first in self.NICKNAME_MAPPINGS:
-                if isinstance(self.NICKNAME_MAPPINGS[other_first], list):
-                    if dk_first in self.NICKNAME_MAPPINGS[other_first]:
+                # Check initials
+                if len(dk_first) >= 1 and len(other_first) >= 1:
+                    if dk_first[0] == other_first[0]:
                         return True
-                elif dk_first == self.NICKNAME_MAPPINGS[other_first]:
-                    return True
 
-            # Check initials
-            if len(dk_first) >= 1 and len(other_first) >= 1:
-                if dk_first[0] == other_first[0]:
-                    return True
+            # Skip fuzzy matching if strings are too different in length
+            if abs(len(dk_clean) - len(other_clean)) > 5:
+                return False
 
-        # Check for common DFS abbreviations (e.g., "J.D. Martinez" vs "JD Martinez")
-        dk_initials = ''.join([p[0] for p in dk_parts if p])
-        other_initials = ''.join([p[0] for p in other_parts if p])
+            # Use try-except for fuzzy matching
+            try:
+                similarity = SequenceMatcher(None, dk_clean, other_clean).ratio()
+                return similarity >= threshold
+            except:
+                return False
 
-        if len(dk_initials) >= 2 and dk_initials == other_initials:
-            return True
-
-        # Fuzzy matching as last resort
-        similarity = SequenceMatcher(None, dk_clean, other_clean).ratio()
-        return similarity >= threshold
+        except Exception as e:
+            print(f"❌ Name matching error: {e}")
+            return False
 
     def get_teams_from_players(self, players: List) -> Set[str]:
         """

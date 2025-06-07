@@ -1,173 +1,217 @@
-# IMPLEMENTATION GUIDE: Fixing Bulletproof Mode
-# =============================================
+#!/usr/bin/env python3
+"""
+COMPLETE MODULE VERIFICATION & INTEGRATION TEST
+===============================================
+Tests all DFS modules and shows what's working
+"""
 
-## 1. In bulletproof_dfs_core.py - Add these methods to BulletproofDFSCore class:
+import os
+import sys
+from datetime import datetime
 
-### A. Add the reset method (place after __init__):
-```python
+print("🧪 DFS MODULE VERIFICATION TEST")
+print("=" * 60)
 
+# Test imports
+modules_status = {}
 
-def reset_all_confirmations(self):
-    """Reset ALL confirmation status - call this at the start of each run"""
-    print("\n🔄 RESETTING ALL CONFIRMATIONS")
-    for player in self.players:
-        player.is_confirmed = False
-        player.confirmation_sources = []
-        # Don't reset manual selections
-    print(f"✅ Reset confirmations for {len(self.players)} players")
+# 1. Core modules
+try:
+    from bulletproof_dfs_core import BulletproofDFSCore
 
+    modules_status['Core'] = '✅'
+except Exception as e:
+    modules_status['Core'] = f'❌ {str(e)}'
 
-```
+# 2. Enhanced Stats
+try:
+    from enhanced_stats_engine import apply_enhanced_statistical_analysis
 
-### B. REPLACE the entire detect_confirmed_players method with the new version
+    modules_status['Enhanced Stats'] = '✅'
+except:
+    modules_status['Enhanced Stats'] = '❌'
 
-### C. Add the validation method (place after detect_confirmed_players):
-```python
+# 3. Batting Order & Correlation
+try:
+    from batting_order_correlation_system import BattingOrderEnricher, CorrelationOptimizer
 
+    modules_status['Batting Order'] = '✅'
+except:
+    modules_status['Batting Order'] = '❌'
 
-def _validate_confirmations(self):
+# 4. Recent Form
+try:
+    from recent_form_analyzer import RecentFormAnalyzer
 
+    modules_status['Recent Form'] = '✅'
+except:
+    modules_status['Recent Form'] = '❌'
 
-# [Use the code from the artifact above]
-```
+# 5. Vegas Lines
+try:
+    from vegas_lines import VegasLines
 
-### D. REPLACE the entire get_eligible_players_by_mode method
+    modules_status['Vegas Lines'] = '✅'
+except:
+    modules_status['Vegas Lines'] = '❌'
 
-### E. Add the debug method (place at the end of the class):
-```python
+# 6. Smart Confirmations
+try:
+    from smart_confirmation_system import SmartConfirmationSystem
 
+    modules_status['Confirmations'] = '✅'
+except:
+    modules_status['Confirmations'] = '❌'
 
-def debug_player_confirmations(self):
+# 7. Statcast
+try:
+    from simple_statcast_fetcher import FastStatcastFetcher
 
+    modules_status['Statcast'] = '✅'
+except:
+    modules_status['Statcast'] = '❌'
 
-# [Use the code from the artifact above]
-```
+# 8. Multi-lineup
+try:
+    from multi_lineup_optimizer import MultiLineupOptimizer
 
+    modules_status['Multi-Lineup'] = '✅'
+except:
+    modules_status['Multi-Lineup'] = '❌'
 
-### F. UPDATE the beginning of optimize_lineup_with_mode to add the safety check
+# 9. Performance Tracker
+try:
+    from performance_tracker import tracker
 
-## 2. In the AdvancedPlayer class - REPLACE is_eligible_for_selection method
+    modules_status['Performance'] = '✅'
+except:
+    modules_status['Performance'] = '❌'
 
-## 3. In load_and_optimize_complete_pipeline function - Add reset call:
+# 10. Smart Cache
+try:
+    from smart_cache import smart_cache
 
-def load_and_optimize_complete_pipeline(
-        dk_file: str,
-        dff_file: str = None,
-        manual_input: str = "",
-        contest_type: str = 'classic',
-        strategy: str = 'bulletproof'
-):
-    """Complete pipeline with all modes including enhanced pitcher detection"""
+    modules_status['Smart Cache'] = '✅'
+except:
+    modules_status['Smart Cache'] = '❌'
 
-    # ... existing code ...
+print("\n📦 MODULE IMPORT STATUS:")
+for module, status in modules_status.items():
+    print(f"   {module}: {status}")
 
-    core = BulletproofDFSCore()
-    core.set_optimization_mode(strategy)
+# Now test actual integration
+print("\n🔧 INTEGRATION TEST:")
+print("-" * 40)
 
-    # Pipeline execution
-    if not core.load_draftkings_csv(dk_file):
-        return [], 0, "Failed to load DraftKings data"
+if modules_status['Core'] == '✅':
+    try:
+        core = BulletproofDFSCore()
 
-    # ADD THIS LINE - Reset confirmations before starting
-    core.reset_all_confirmations()
+        # Check what's actually integrated
+        integrated = []
+        missing = []
 
-    # ... rest of existing code ...
+        # Check batting order
+        if hasattr(core, 'batting_enricher'):
+            integrated.append("✅ Batting Order Enricher")
+        else:
+            missing.append("❌ Batting Order Enricher")
 
+        if hasattr(core, 'correlation_optimizer'):
+            integrated.append("✅ Correlation Optimizer")
+        else:
+            missing.append("❌ Correlation Optimizer")
 
-## 4. Optional but Recommended - Add this to your GUI:
+        # Check form analyzer
+        if hasattr(core, 'form_analyzer'):
+            integrated.append("✅ Form Analyzer")
+        else:
+            missing.append("❌ Form Analyzer")
 
-# In enhanced_dfs_gui.py, add a debug button:
-debug_btn = QPushButton("🔍 Debug Confirmations")
-debug_btn.clicked.connect(lambda: self.core.debug_player_confirmations() if self.core else None)
+        # Check enrichment methods
+        if hasattr(core, 'enrich_with_batting_order'):
+            integrated.append("✅ enrich_with_batting_order method")
+        else:
+            missing.append("❌ enrich_with_batting_order method")
 
-## 5. Testing the Fix:
+        if hasattr(core, 'enrich_with_recent_form'):
+            integrated.append("✅ enrich_with_recent_form method")
+        else:
+            missing.append("❌ enrich_with_recent_form method")
 
-# Create a test script:
-from bulletproof_dfs_core import BulletproofDFSCore
+        if hasattr(core, 'apply_lineup_correlations'):
+            integrated.append("✅ apply_lineup_correlations method")
+        else:
+            missing.append("❌ apply_lineup_correlations method")
 
-# Load data
-core = BulletproofDFSCore()
-core.load_draftkings_csv("DKSalaries (82).csv")
+        print("\n✅ INTEGRATED:")
+        for item in integrated:
+            print(f"   {item}")
 
-# Detect confirmations
-core.detect_confirmed_players()
+        if missing:
+            print("\n❌ MISSING:")
+            for item in missing:
+                print(f"   {item}")
 
-# Debug to see what's confirmed
-core.debug_player_confirmations()
+        # Test a quick pipeline
+        print("\n🚀 TESTING PIPELINE:")
 
-# Check specific player
-for player in core.players:
-    if player.name == "Bryan Woo":
-        print(f"\nBryan Woo status:")
-        print(f"  is_confirmed: {player.is_confirmed}")
-        print(f"  confirmation_sources: {player.confirmation_sources}")
-        print(f"  is_eligible: {player.is_eligible_for_selection('bulletproof')}")
+        # Load test CSV
+        csv_files = [f for f in os.listdir('.') if f.endswith('.csv') and 'DKSalaries' in f]
+        if csv_files:
+            test_csv = csv_files[0]
+            print(f"   Using: {test_csv}")
 
-## KEY CHANGES SUMMARY:
-1.
-Reset
-all
-confirmations
-at
-start
-of
-each
-run
-2.
-Strict
-pitcher
-validation - must
-be in MLB
-confirmed
-starters
-3.
-Validation
-checks
-throughout
-the
-process
-4.
-Extra
-safety
-check
-before
-optimization
-5.
-Clear
-debug
-output
-to
-track
-confirmations
-6.
-Pitchers
-must
-have
-'mlb_starter' in confirmation_sources
+            if core.load_draftkings_csv(test_csv):
+                print("   ✅ CSV loaded")
 
-## EXPECTED BEHAVIOR AFTER FIX:
-- Only
-~15 - 20
-players
-eligible in bulletproof
-mode(not 72!)
-- Bryan
-Woo
-should
-NOT
-be
-eligible
-- Only
-confirmed
-MLB
-starters
-should
-be
-eligible
-pitchers
-- Clear
-tracking
-of
-why
-each
-player is eligible
+                # Check if enrichment methods are called
+                if hasattr(core, 'detect_confirmed_players'):
+                    # Mock some confirmations
+                    for player in core.players[:5]:
+                        player.is_confirmed = True
+                        player.is_manual_selected = True
+
+                    # Test enrichments
+                    print("\n   Testing enrichments:")
+
+                    if hasattr(core, 'enrich_with_batting_order'):
+                        count = core.enrich_with_batting_order()
+                        print(f"   - Batting order: {count} players enriched")
+
+                    if hasattr(core, 'enrich_with_recent_form'):
+                        count = core.enrich_with_recent_form()
+                        print(f"   - Recent form: {count} players enriched")
+
+    except Exception as e:
+        print(f"\n❌ Integration test failed: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+# Provide fixes if needed
+print("\n" + "=" * 60)
+print("📋 RECOMMENDATIONS:")
+
+if '❌' in modules_status.values():
+    print("\n1. Some modules failed to import. Check if files exist.")
+
+if modules_status['Core'] == '✅':
+    if 'missing' in locals() and missing:
+        print("\n2. To fix missing integrations, add to BulletproofDFSCore.__init__:")
+        print("""
+# In __init__ method, after other initializations:
+
+# Batting Order & Correlation
+if BATTING_CORRELATION_AVAILABLE:
+    integrate_batting_order_correlation(self)
+
+# Recent Form Analyzer
+if RECENT_FORM_AVAILABLE:
+    from utils.cache_manager import cache
+    self.form_analyzer = RecentFormAnalyzer(cache_manager=cache)
+else:
+    self.form_analyzer = None
+""")
+
+print("\n✅ Test complete!")

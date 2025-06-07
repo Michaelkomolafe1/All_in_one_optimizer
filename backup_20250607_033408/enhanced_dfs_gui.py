@@ -61,29 +61,21 @@ except ImportError:
         def detect_confirmed_players(self):
             return 10
 
-        def optimize_lineup_with_mode(self) -> Tuple[List[AdvancedPlayer], float]:
-            """Optimize lineup with contest type awareness"""
-            print(f"\n🎯 OPTIMAL LINEUP GENERATION - {self.optimization_mode.upper()}")
-            print(f"🎰 Contest Type: {self.contest_type.upper()}")
-            print("=" * 80)
-
-            # Get eligible players based on mode
-            eligible_players = self.get_eligible_players_by_mode()
-
-            if not eligible_players:
-                print("❌ No eligible players found")
-
-                # Provide helpful suggestions
-                if self.optimization_mode == 'bulletproof':
-                    print("\n💡 SUGGESTIONS:")
-                    print("1. Add manual players in the GUI")
-                    print("2. Wait for MLB lineups to be posted (usually 2-3 hours before games)")
-                    print("3. Switch to 'All Players' mode for testing")
-                    print("4. Check if teams in your CSV are playing today")
-
-                return [], 0
-
-            # Rest of your existing code...
+        def optimize_lineup_with_mode(self):
+            from types import SimpleNamespace
+            mock_players = []
+            positions = ['P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'P']
+            for i in range(10):
+                player = SimpleNamespace(
+                    name=f"Player {i + 1}",
+                    primary_position=positions[i],
+                    team="NYY",
+                    salary=5000 - i * 100,
+                    enhanced_score=10.5 + i * 0.5,
+                    is_confirmed=True
+                )
+                mock_players.append(player)
+            return mock_players, 105.5
 
         def generate_contest_lineups(self, count, contest_type):
             lineups = []
@@ -330,24 +322,6 @@ class DFSOptimizerGUI(QMainWindow):
         for label, count, contest in [("5 Cash", 5, "cash"), ("20 GPP", 20, "gpp"), ("150 Max", 150, "gpp")]:
             btn = QPushButton(label)
             btn.clicked.connect(lambda checked, c=count, t=contest: self.quick_generate(c, t))
-
-        # Multi-lineup controls
-        multi_layout = QHBoxLayout()
-        multi_layout.addWidget(QLabel("Lineups:"))
-        self.lineup_count_spin = QSpinBox()
-        self.lineup_count_spin.setRange(1, 150)
-        self.lineup_count_spin.setValue(1)
-        self.lineup_count_spin.setToolTip("1=Single, 20=Small GPP, 150=Large GPP")
-        multi_layout.addWidget(self.lineup_count_spin)
-
-        # Add to whatever layout is being used
-        if 'button_layout' in locals():
-            button_layout.addLayout(multi_layout)
-        elif 'control_layout' in locals():
-            control_layout.addLayout(multi_layout)
-        else:
-            # Find the parent layout and add it
-            layout.addLayout(multi_layout)
             actions_layout.addWidget(btn)
 
         header_layout.addLayout(actions_layout)
@@ -427,25 +401,6 @@ class DFSOptimizerGUI(QMainWindow):
 
         sample_btn = QPushButton("Load Sample")
         sample_btn.clicked.connect(self.load_sample_players)
-
-        # ADD THIS NEW BUTTON
-        cache_clear_btn = QPushButton("🧹 Clear Lineup Cache (Keep Stats)")
-        cache_clear_btn.setToolTip("Clears only lineup/confirmation cache, keeps Statcast data")
-        cache_clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f59e0b;
-                color: white;
-            }
-            QPushButton:hover {
-                background-color: #d97706;
-            }
-        """)
-        cache_clear_btn.clicked.connect(self.clear_lineup_cache_only)
-
-        # Add all buttons to layout
-        manual_btn_layout.addWidget(clear_btn)
-        manual_btn_layout.addWidget(sample_btn)
-        manual_btn_layout.addWidget(cache_clear_btn)  # ADD THIS LINE
 
         manual_btn_layout.addWidget(clear_btn)
         manual_btn_layout.addWidget(sample_btn)
@@ -1053,76 +1008,6 @@ class DFSOptimizerGUI(QMainWindow):
         sample = "Shohei Ohtani, Mike Trout, Aaron Judge, Mookie Betts, Ronald Acuna Jr."
         self.manual_input.setPlainText(sample)
 
-    def clear_lineup_cache_only(self):
-        """Clear ONLY lineup/confirmation caches, preserve Statcast data"""
-        try:
-            # Method 1: Use smart cache if available
-            if self.core and hasattr(self.core, 'clear_cache'):
-                # Only clear specific categories - NOT statcast!
-                self.core.clear_cache('mlb_lineups')
-                self.core.clear_cache('confirmations')
-                print("✅ Cleared lineup confirmations cache")
-
-            # Method 2: Direct file deletion (more thorough)
-            import glob
-            from datetime import datetime
-
-            cache_files = glob.glob('.dfs_cache/*confirmations*.json')
-            cache_files.extend(glob.glob('.dfs_cache/*mlb_lineups*.json'))
-            cache_files.extend(glob.glob('data/cache/*confirmations*.json'))
-
-            # ADD THIS NEW SECTION - Clear today's date-based files
-            today = datetime.now().strftime('%Y-%m-%d')
-            date_patterns = [
-                f'.dfs_cache/*{today}*.json',
-                f'data/cache/*{today}*.json',
-                f'data/vegas/vegas_lines_{today}.json',
-                f'data/vegas/*{today}*.json'
-            ]
-
-            # Add date-based files to removal list
-            for pattern in date_patterns:
-                cache_files.extend(glob.glob(pattern))
-
-            # Remove duplicates
-            cache_files = list(set(cache_files))
-
-            cleared = 0
-            for file in cache_files:
-                # Skip Statcast files
-                if 'statcast' in file.lower():
-                    continue
-
-                try:
-                    os.remove(file)
-                    cleared += 1
-                    print(f"🧹 Removed: {file}")
-                except:
-                    pass
-
-            if cleared > 0:
-                print(f"🧹 Removed {cleared} lineup cache files")
-
-            # Reset confirmation system
-            if self.core and hasattr(self.core, 'confirmation_system'):
-                self.core.confirmation_system = None
-                print("🔄 Reset confirmation system")
-
-            # Show success message
-            QMessageBox.information(
-                self,
-                "Cache Cleared",
-                f"Lineup/confirmation cache cleared!\nRemoved {cleared} cache files.\nStatcast data preserved.\n\nReload your CSV to get fresh lineups."
-            )
-
-            # Clear the console
-            self.console.append(f"\n🧹 Cleared {cleared} cache files (including today's data)")
-            self.console.append("📊 Statcast data preserved")
-            self.console.append("🔄 Reload CSV for fresh MLB lineups")
-
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Error clearing cache: {str(e)}")
-
     def create_test_data(self):
         """Create test CSV data"""
         test_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False)
@@ -1227,67 +1112,11 @@ class DFSOptimizerGUI(QMainWindow):
         selected_contest = self.contest_type.currentText()
         contest_type = contest_type_mapping.get(selected_contest, "classic")
 
-        # IMPORTANT: Apply settings in correct order
-        self.core.set_optimization_mode(
-            ['bulletproof', 'manual_only', 'confirmed_only', 'all'][self.opt_mode.currentIndex()])
-
-        # 1. Apply manual selections if any
-        manual_text = self.manual_input.toPlainText().strip()
-        if manual_text:
-            self.console.append("🎯 Processing manual player selections...")
-            count = self.core.apply_manual_selection(manual_text)
-            self.console.append(f"✅ Applied {count} manual selections")
-
-        # 2. Detect confirmations if not manual-only mode
-        if self.core.optimization_mode != 'manual_only':
-            self.console.append("🔍 Detecting confirmed players...")
-            confirmed = self.core.detect_confirmed_players()
-            self.console.append(f"✅ Found {confirmed} confirmed players")
-
-        # 3. NOW APPLY DFF AFTER CONFIRMATIONS!
-        if self.dff_file and os.path.exists(self.dff_file):
-            self.console.append(f"\n🎯 Applying DFF rankings: {os.path.basename(self.dff_file)}")
-            dff_success = self.core.apply_dff_rankings(self.dff_file)
-            if dff_success:
-                self.console.append("✅ DFF rankings applied successfully")
-            else:
-                self.console.append("⚠️ DFF rankings application failed")
-
-        # 4. Apply other data enrichments
-        self.console.append("\n📊 Applying data enrichments...")
-
-        if self.use_vegas.isChecked() and self.core.vegas_lines:
-            self.console.append("💰 Enriching with Vegas lines...")
-            self.core.enrich_with_vegas_lines()
-
-        if self.use_statcast.isChecked() and self.core.statcast_fetcher:
-            self.console.append("📊 Enriching with Statcast data...")
-            self.core.enrich_with_statcast_priority()
-
-        # Apply park factors
-        self.console.append("🏟️ Applying park factors...")
-        self.core.apply_park_factors()
-
-        # Apply batting order if available
-        if hasattr(self.core, 'enrich_with_batting_order'):
-            self.console.append("🔢 Applying batting order data...")
-            self.core.enrich_with_batting_order()
-
-        # Apply recent form if available
-        if hasattr(self.core, 'enrich_with_recent_form') and self.use_trends.isChecked():
-            self.console.append("📈 Analyzing recent player form...")
-            self.core.enrich_with_recent_form()
-
-        # Apply statistical analysis
-        self.console.append("🔬 Applying statistical analysis...")
-        eligible = [p for p in self.core.players if p.is_eligible_for_selection(self.core.optimization_mode)]
-        self.core._apply_comprehensive_statistical_analysis(eligible)
-
-        # Prepare settings for worker thread
+        # Prepare settings
         settings = {
             'mode': ['bulletproof', 'manual_only', 'confirmed_only', 'all'][self.opt_mode.currentIndex()],
             'contest_type': contest_type,
-            'manual_players': manual_text,  # Already processed above
+            'manual_players': self.manual_input.toPlainText().strip(),
             'multi_lineup': self.multi_radio.isChecked(),
             'lineup_count': self.lineup_count.value() if self.multi_radio.isChecked() else 1,
             'min_salary': self.min_salary.value(),
@@ -1300,7 +1129,7 @@ class DFSOptimizerGUI(QMainWindow):
             self.core.optimization_contest_type = contest_type
 
             # Show what adjustments will be applied
-            self.console.append(f"\n🎯 Contest Type: {selected_contest}")
+            self.console.append(f"🎯 Contest Type: {selected_contest}")
             self.console.append(f"📊 Optimization Mode: {settings['mode']}")
 
             if contest_type == "gpp":

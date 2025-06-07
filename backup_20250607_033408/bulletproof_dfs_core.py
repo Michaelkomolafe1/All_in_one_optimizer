@@ -39,17 +39,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from difflib import SequenceMatcher
 
-# DFS Upgrade Modules
-try:
-    from smart_cache import smart_cache
-    from multi_lineup_optimizer import MultiLineupOptimizer
-    from performance_tracker import tracker
-    UPGRADES_AVAILABLE = True
-    print("✅ DFS upgrades loaded")
-except ImportError as e:
-    print(f"⚠️ Optional upgrades not available: {e}")
-    UPGRADES_AVAILABLE = False
-
 # Third-party imports
 import numpy as np
 import pandas as pd
@@ -643,68 +632,6 @@ class BulletproofDFSCore:
             integrate_batting_order_correlation(self)
 
         print("🚀 Bulletproof DFS Core - ALL METHODS INCLUDED WITH ENHANCED PITCHER DETECTION")
-
-    # ==================== DFS UPGRADE METHODS ====================
-
-    def get_cached_data(self, key: str, fetch_func, category: str = 'default'):
-        """Use smart caching for any data fetch"""
-        if 'UPGRADES_AVAILABLE' in globals() and UPGRADES_AVAILABLE:
-            return smart_cache.get_or_fetch(key, fetch_func, category)
-        else:
-            return fetch_func()
-
-    def generate_multiple_lineups(self, count: int = 20) -> list:
-        """Generate multiple unique lineups for GPPs"""
-        if 'UPGRADES_AVAILABLE' not in globals() or not UPGRADES_AVAILABLE:
-            print("❌ Multi-lineup module not available")
-            return []
-
-        print(f"\n🚀 Generating {count} lineups...")
-
-        optimizer = MultiLineupOptimizer(self)
-        lineups = optimizer.generate_gpp_lineups(
-            num_lineups=count,
-            max_exposure=0.5,
-            min_salary=49000
-        )
-
-        # Show summary
-        optimizer.print_summary()
-
-        # Export for upload
-        upload_file = optimizer.export_for_upload('draftkings')
-        if upload_file:
-            print(f"\n📁 Upload file: {upload_file}")
-
-        return lineups
-
-    def track_lineup_performance(self, lineup: list, contest_info: dict):
-        """Track lineup for future analysis"""
-        if 'UPGRADES_AVAILABLE' not in globals() or not UPGRADES_AVAILABLE:
-            return None
-
-        contest_id = tracker.log_contest(lineup, contest_info)
-
-        # Also save to database if available
-        if hasattr(self, 'game_date'):
-            contest_info['date'] = self.game_date
-
-        return contest_id
-
-    def get_performance_summary(self, days: int = 30):
-        """Get performance tracking summary"""
-        if 'UPGRADES_AVAILABLE' not in globals() or not UPGRADES_AVAILABLE:
-            print("Performance tracking not available")
-            return
-
-        tracker.print_summary(days)
-
-    def clear_cache(self, category: str = None):
-        """Clear cache by category or all"""
-        if 'UPGRADES_AVAILABLE' in globals() and UPGRADES_AVAILABLE:
-            smart_cache.clear(category)
-            print(f"🧹 Cleared cache: {category or 'all'}")
-
 
     def detect_and_load_dff_files(self, dff_file_path: str = None):
         """
@@ -1793,11 +1720,7 @@ class BulletproofDFSCore:
         )
 
         # Get all confirmations
-        lineup_count, pitcher_count = self.get_cached_data(
-        f"confirmations_{self.game_date}",
-        self.confirmation_system.get_all_confirmations(),
-        "mlb_lineups"
-    )
+        lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
 
         confirmed_count = 0
         confirmed_pitchers = []
@@ -2923,65 +2846,3 @@ if __name__ == "__main__":
     print("   from bulletproof_dfs_core import BulletproofDFSCore")
     print("   core = BulletproofDFSCore()")
     print("   core.load_draftkings_csv('your_file.csv')")
-    # ==================== DFS UPGRADE METHODS ====================
-
-    def get_cached_data(self, key: str, fetch_func, category: str = 'default'):
-        """Use smart caching for any data fetch"""
-        if UPGRADES_AVAILABLE:
-            return smart_cache.get_or_fetch(key, fetch_func, category)
-        else:
-            return fetch_func()
-
-    def generate_multiple_lineups(self, count: int = 20) -> list:
-        """Generate multiple unique lineups for GPPs"""
-        if not UPGRADES_AVAILABLE:
-            print("❌ Multi-lineup module not available")
-            return []
-
-        print(f"\n🚀 Generating {count} lineups...")
-
-        optimizer = MultiLineupOptimizer(self)
-        lineups = optimizer.generate_gpp_lineups(
-            num_lineups=count,
-            max_exposure=0.5,
-            min_salary=49000
-        )
-
-        # Show summary
-        optimizer.print_summary()
-
-        # Export for upload
-        upload_file = optimizer.export_for_upload('draftkings')
-        if upload_file:
-            print(f"\n📁 Upload file: {upload_file}")
-
-        return lineups
-
-    def track_lineup_performance(self, lineup: list, contest_info: dict):
-        """Track lineup for future analysis"""
-        if not UPGRADES_AVAILABLE:
-            return None
-
-        contest_id = tracker.log_contest(lineup, contest_info)
-
-        # Also save to database if available
-        if hasattr(self, 'game_date'):
-            contest_info['date'] = self.game_date
-
-        return contest_id
-
-    def get_performance_summary(self, days: int = 30):
-        """Get performance tracking summary"""
-        if not UPGRADES_AVAILABLE:
-            print("Performance tracking not available")
-            return
-
-        tracker.print_summary(days)
-
-    def clear_cache(self, category: str = None):
-        """Clear cache by category or all"""
-        if UPGRADES_AVAILABLE:
-            smart_cache.clear(category)
-            print(f"🧹 Cleared cache: {category or 'all'}")
-
-

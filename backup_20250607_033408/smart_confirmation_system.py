@@ -274,10 +274,6 @@ class SmartConfirmationSystem:
 
     def _filter_to_csv_teams(self) -> None:
         """Filter confirmations to only CSV teams"""
-        print(f"\n🔍 FILTERING DEBUG:")
-        print(f"CSV teams: {self.csv_teams}")
-        print(f"Lineup teams before filter: {list(self.confirmed_lineups.keys())}")
-
         # Remove any teams not in CSV
         self.confirmed_lineups = {
             team: lineup for team, lineup in self.confirmed_lineups.items()
@@ -287,8 +283,6 @@ class SmartConfirmationSystem:
             team: pitcher for team, pitcher in self.confirmed_pitchers.items()
             if team in self.csv_teams
         }
-
-        print(f"Lineup teams after filter: {list(self.confirmed_lineups.keys())}")
 
     def _needs_more_confirmations(self) -> bool:
         """Check if we need more confirmations"""
@@ -305,47 +299,16 @@ class SmartConfirmationSystem:
         pass
 
     def is_player_confirmed(self, player_name: str, team: str = None) -> Tuple[bool, Optional[int]]:
-        """Check if player is confirmed in actual lineup - FIXED VERSION"""
-        try:
-            if not team:
-                return False, None
-
+        """Check if player is confirmed in actual lineup"""
+        if team:
             team = self.data_system.normalize_team(team)
-            if team not in self.confirmed_lineups:
-                return False, None
-
-            # Get the lineup for this team
-            lineup = self.confirmed_lineups.get(team, [])
-            if not lineup:
-                return False, None
-
-            # Use simple string comparison first
-            player_name_lower = player_name.lower().strip()
-
-            for lineup_player in lineup:
-                lineup_name = lineup_player.get('name', '').lower().strip()
-
-                # Exact match first (fastest)
-                if player_name_lower == lineup_name:
-                    return True, lineup_player.get('order', 1)
-
-                # Only do complex matching if names are different
-                if player_name_lower != lineup_name:
-                    # Use simple contains check before complex matching
-                    if player_name_lower in lineup_name or lineup_name in player_name_lower:
+            if team in self.confirmed_lineups:
+                for lineup_player in self.confirmed_lineups[team]:
+                    # Use the unified data system's name matching
+                    if self.data_system.match_player_names(player_name, lineup_player['name']):
+                        if self.verbose:
+                            print(f"✅ Matched {player_name} to {lineup_player['name']} in {team} lineup")
                         return True, lineup_player.get('order', 1)
-
-            # If no simple matches, try the complex matcher
-            for lineup_player in lineup:
-                try:
-                    if self.data_system.match_player_names(player_name, lineup_player.get('name', '')):
-                        return True, lineup_player.get('order', 1)
-                except Exception as e:
-                    # Skip this player if matching fails
-                    continue
-
-        except Exception as e:
-            print(f"❌ Error in is_player_confirmed for {player_name}: {e}")
 
         return False, None
 
