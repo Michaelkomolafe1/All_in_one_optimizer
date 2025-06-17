@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-CLEAN DFS OPTIMIZER GUI
-=======================
-A complete rewrite with proper error handling, thread safety, and position management
+CLEAN DFS OPTIMIZER GUI - FIXED VERSION
+=======================================
+Fixed layout errors and improved stability
 """
 
 import sys
@@ -23,7 +23,7 @@ try:
         QSlider, QTabWidget, QDialog, QFileDialog, QMessageBox,
         QListWidget, QFrame, QSplitter, QStatusBar, QProgressBar,
         QFormLayout, QGridLayout, QListWidgetItem, QHeaderView,
-        QAbstractItemView, QSizePolicy, QPlainTextEdit  # ADD THIS
+        QAbstractItemView, QSizePolicy, QPlainTextEdit
     )
     from PyQt5.QtCore import *
     from PyQt5.QtGui import *
@@ -46,7 +46,7 @@ except ImportError:
         def __init__(self, name="", position="", team="", salary=0, projection=0):
             self.name = name
             self.primary_position = position
-            self.positions = [position]  # Multi-position support
+            self.positions = [position]
             self.team = team
             self.salary = salary
             self.projection = projection
@@ -62,96 +62,62 @@ except ImportError:
             self.salary_cap = 50000
 
         def load_draftkings_csv(self, path):
-            """Mock CSV loading"""
             filename = os.path.basename(path).lower()
             self.contest_type = 'showdown' if 'showdown' in filename else 'classic'
-
-            # Generate mock players
-            if self.contest_type == 'showdown':
-                self.players = self._generate_showdown_players()
-            else:
-                self.players = self._generate_classic_players()
+            self.players = self._generate_classic_players() if self.contest_type == 'classic' else self._generate_showdown_players()
             return True
 
         def _generate_classic_players(self):
-            """Generate mock classic players with some multi-position"""
             players = []
+            positions = [
+                ('P', 40, 5000), ('C', 25, 3000), ('1B', 30, 3500),
+                ('2B', 30, 3500), ('3B', 30, 3500), ('SS', 30, 3500),
+                ('OF', 60, 4000)
+            ]
 
-            # Pitchers
-            for i in range(40):
-                p = AdvancedPlayer(f"Pitcher{i + 1}", "P", ["LAD", "NYY", "HOU"][i % 3],
-                                   5000 + i * 200, 15 + i * 0.5)
-                players.append(p)
-
-            # Catchers
-            for i in range(25):
-                p = AdvancedPlayer(f"Catcher{i + 1}", "C", ["BOS", "ATL", "SF"][i % 3],
-                                   3000 + i * 100, 8 + i * 0.3)
-                players.append(p)
-
-            # Infielders with some multi-position
-            positions = ["1B", "2B", "3B", "SS"]
-            for pos in positions:
-                for i in range(30):
-                    p = AdvancedPlayer(f"{pos}_Player{i + 1}", pos, ["CHC", "MIL", "STL"][i % 3],
-                                       3500 + i * 150, 9 + i * 0.4)
-                    # Make some multi-position
-                    if i % 3 == 0 and pos == "1B":
-                        p.positions = ["1B", "3B"]
-                    elif i % 4 == 0 and pos == "2B":
-                        p.positions = ["2B", "SS"]
+            for pos, count, base_sal in positions:
+                for i in range(count):
+                    p = AdvancedPlayer(
+                        f"{pos}_Player{i + 1}", pos,
+                        ["LAD", "NYY", "HOU", "BOS", "ATL"][i % 5],
+                        base_sal + i * 150, 10 + i * 0.3
+                    )
+                    if i % 3 == 0 and pos in ['1B', '2B']:
+                        p.positions = [pos, '3B' if pos == '1B' else 'SS']
                     players.append(p)
-
-            # Outfielders
-            for i in range(60):
-                p = AdvancedPlayer(f"Outfielder{i + 1}", "OF", ["NYM", "PHI", "WSH"][i % 3],
-                                   4000 + i * 100, 10 + i * 0.3)
-                # Some with 2B/OF eligibility
-                if i % 5 == 0:
-                    p.positions = ["OF", "2B"]
-                players.append(p)
-
             return players
 
         def _generate_showdown_players(self):
-            """Generate mock showdown players"""
             players = []
-            teams = ["NYY", "BOS"]
-
-            for team in teams:
+            for team in ["NYY", "BOS"]:
                 for i in range(15):
-                    p = AdvancedPlayer(f"{team}_Player{i + 1}", "UTIL", team,
-                                       3000 + i * 500, 8 + i * 0.5)
+                    p = AdvancedPlayer(
+                        f"{team}_Player{i + 1}", "UTIL", team,
+                        3000 + i * 500, 8 + i * 0.5
+                    )
                     p.positions = ["CPT", "UTIL"]
                     players.append(p)
-
             return players
 
         def set_optimization_mode(self, mode):
             self.optimization_mode = mode
 
         def apply_manual_selection(self, text):
-            """Mock manual selection"""
             names = [n.strip() for n in text.split(',') if n.strip()]
             return len(names)
 
         def detect_confirmed_players(self):
-            """Mock confirmation detection"""
             return min(20, len(self.players) // 4)
 
         def get_eligible_players_by_mode(self):
-            """Get eligible players based on mode"""
             if self.optimization_mode == 'all':
                 return self.players
             elif self.optimization_mode == 'manual_only':
-                # Return first 30% as "manually selected"
                 return self.players[:int(len(self.players) * 0.3)]
             else:
-                # Return first 50% as "confirmed/manual"
                 return self.players[:int(len(self.players) * 0.5)]
 
         def optimize_lineup_with_mode(self):
-            """Mock optimization"""
             eligible = self.get_eligible_players_by_mode()
 
             if self.contest_type == 'showdown':
@@ -164,8 +130,6 @@ except ImportError:
             else:
                 if len(eligible) < 10:
                     return [], 0
-
-                # Build valid classic lineup
                 lineup = []
                 positions_needed = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
 
@@ -177,7 +141,6 @@ except ImportError:
                             lineup.append(player)
                             added += 1
 
-                # Fill any remaining slots
                 while len(lineup) < 10 and eligible:
                     for p in eligible:
                         if p not in lineup:
@@ -188,7 +151,6 @@ except ImportError:
             return lineup, total_score
 
         def generate_contest_lineups(self, count, contest_type):
-            """Generate multiple lineups"""
             lineups = []
             for i in range(count):
                 lineup, score = self.optimize_lineup_with_mode()
@@ -196,31 +158,23 @@ except ImportError:
                     lineups.append({
                         'lineup_id': i + 1,
                         'lineup': lineup,
-                        'total_score': score + (i * 0.1),  # Slight variation
+                        'total_score': score + (i * 0.1),
                         'total_salary': sum(p.salary for p in lineup),
                         'contest_type': contest_type
                     })
             return lineups
 
 
-class ThreadSafeConsole(QPlainTextEdit):  # Changed from QTextEdit to QPlainTextEdit
+class ThreadSafeConsole(QPlainTextEdit):
     """Thread-safe console widget"""
     append_signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
-        # Initialize attributes
-        self.core = None
-        self.worker = None
-        self.dk_file = ""
-        self.dff_file = ""  # ADD THIS LINE
-        self.last_results = []
-        self.contest_type = 'classic'
         self.setReadOnly(True)
         self.setFont(QFont("Consolas", 9))
-        self.setMaximumBlockCount(1000)  # Now this will work!
+        self.setMaximumBlockCount(1000)
 
-        # Optional: Add some styling for better appearance
         self.setStyleSheet("""
             QPlainTextEdit {
                 background-color: #1e1e1e;
@@ -235,21 +189,16 @@ class ThreadSafeConsole(QPlainTextEdit):  # Changed from QTextEdit to QPlainText
 
     @pyqtSlot(str)
     def _append_text(self, text):
-        """Append text in main thread"""
-        self.appendPlainText(text)  # Changed from insertPlainText
-        # Auto-scroll to bottom
+        self.appendPlainText(text)
         scrollbar = self.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
     def thread_safe_append(self, text):
-        """Call from any thread"""
         self.append_signal.emit(text)
 
 
 class OptimizationWorker(QThread):
     """Worker thread for optimization"""
-
-    # Signals
     started = pyqtSignal()
     progress = pyqtSignal(str)
     finished = pyqtSignal(list)
@@ -262,46 +211,35 @@ class OptimizationWorker(QThread):
         self._is_running = True
 
     def stop(self):
-        """Stop the worker"""
         self._is_running = False
 
     def run(self):
-        """Run optimization in separate thread"""
         try:
             self.started.emit()
 
-            # Apply settings
             self.progress.emit(f"Contest type: {self.core.contest_type}")
             self.progress.emit(f"Optimization mode: {self.settings['mode']}")
 
-            # Set optimization mode
             self.core.set_optimization_mode(self.settings['mode'])
 
-            # Process manual selections if any
             if self.settings.get('manual_players'):
                 self.progress.emit("Processing manual selections...")
                 count = self.core.apply_manual_selection(self.settings['manual_players'])
                 self.progress.emit(f"Applied {count} manual selections")
 
-            # Detect confirmed players
             if self.settings['mode'] != 'manual_only':
                 self.progress.emit("Detecting confirmed players...")
                 confirmed = self.core.detect_confirmed_players()
                 self.progress.emit(f"Found {confirmed} confirmed players")
 
-            # Check if we should stop
             if not self._is_running:
                 return
 
-            # Generate lineups
             lineup_count = self.settings.get('lineup_count', 1)
 
             if lineup_count > 1:
                 self.progress.emit(f"Generating {lineup_count} lineups...")
-                lineups = self.core.generate_contest_lineups(
-                    lineup_count,
-                    self.core.contest_type
-                )
+                lineups = self.core.generate_contest_lineups(lineup_count, self.core.contest_type)
             else:
                 self.progress.emit("Optimizing single lineup...")
                 lineup, score = self.core.optimize_lineup_with_mode()
@@ -332,21 +270,24 @@ class DFSOptimizerGUI(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        # Initialize attributes
+        # Initialize attributes FIRST
         self.core = None
         self.worker = None
         self.dk_file = ""
+        self.dff_file = ""
         self.last_results = []
         self.contest_type = 'classic'
+        self.last_directory = ""
+
+        # Initialize UI components that might be accessed early
+        self.manual_text = None
 
         # Setup UI
         self.init_ui()
         self.setup_style()
-
-        # Load settings
         self.load_settings()
 
-        # Auto-detect files
+        # Auto-detect files after UI is ready
         QTimer.singleShot(100, self.auto_detect_files)
 
     def init_ui(self):
@@ -354,25 +295,18 @@ class DFSOptimizerGUI(QMainWindow):
         self.setWindowTitle("DFS Optimizer Pro - Clean Version")
         self.setMinimumSize(1200, 800)
 
-        # Create central widget
         central = QWidget()
         self.setCentralWidget(central)
 
-        # Main layout
         layout = QVBoxLayout(central)
         layout.setSpacing(10)
 
-        # Header
         header = self.create_header()
         layout.addWidget(header)
 
-        # Main content area
         content = QSplitter(Qt.Horizontal)
 
-        # Left panel (controls)
         left_panel = self.create_left_panel()
-
-        # Right panel (results)
         right_panel = self.create_right_panel()
 
         content.addWidget(left_panel)
@@ -381,17 +315,14 @@ class DFSOptimizerGUI(QMainWindow):
 
         layout.addWidget(content)
 
-        # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
-        # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.progress_bar.setMaximumWidth(200)
         self.status_bar.addPermanentWidget(self.progress_bar)
 
-        # Contest type indicator
         self.contest_indicator = QLabel("Contest: Unknown")
         self.contest_indicator.setStyleSheet("""
             QLabel {
@@ -414,7 +345,6 @@ class DFSOptimizerGUI(QMainWindow):
 
         layout = QHBoxLayout(header)
 
-        # Title
         title_layout = QVBoxLayout()
         title = QLabel("DFS Optimizer Pro")
         title.setStyleSheet("font-size: 24px; font-weight: bold; color: #1e40af;")
@@ -427,10 +357,8 @@ class DFSOptimizerGUI(QMainWindow):
 
         layout.addStretch()
 
-        # Quick actions
         actions_layout = QHBoxLayout()
 
-        # Lineup count spinner
         actions_layout.addWidget(QLabel("Lineups:"))
         self.quick_lineup_spin = QSpinBox()
         self.quick_lineup_spin.setRange(1, 150)
@@ -438,7 +366,6 @@ class DFSOptimizerGUI(QMainWindow):
         self.quick_lineup_spin.setMaximumWidth(60)
         actions_layout.addWidget(self.quick_lineup_spin)
 
-        # Quick generate buttons
         for label, count in [("5 Cash", 5), ("20 GPP", 20), ("150 Max", 150)]:
             btn = QPushButton(label)
             btn.clicked.connect(lambda checked, c=count: self.quick_generate(c))
@@ -453,24 +380,19 @@ class DFSOptimizerGUI(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Tab widget
         self.tabs = QTabWidget()
 
-        # Data tab
         data_tab = self.create_data_tab()
         self.tabs.addTab(data_tab, "📁 Data")
 
-        # Settings tab
         settings_tab = self.create_settings_tab()
         self.tabs.addTab(settings_tab, "⚙️ Settings")
 
-        # Lineups tab
         lineups_tab = self.create_lineups_tab()
         self.tabs.addTab(lineups_tab, "🎯 Lineups")
 
         layout.addWidget(self.tabs)
 
-        # Generate button
         self.generate_btn = QPushButton("🚀 Generate Optimal Lineup")
         self.generate_btn.setMinimumHeight(50)
         self.generate_btn.clicked.connect(self.run_optimization)
@@ -481,7 +403,7 @@ class DFSOptimizerGUI(QMainWindow):
         return widget
 
     def create_data_tab(self):
-        """Create data input tab"""
+        """Create data input tab - FIXED VERSION"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
@@ -540,11 +462,11 @@ class DFSOptimizerGUI(QMainWindow):
 
         layout.addWidget(dff_group)
 
-        # Manual player selection - FIXED VERSION
+        # Manual player selection - FIXED
         manual_group = QGroupBox("Manual Player Selection")
-        manual_layout = QVBoxLayout()  # Don't pass manual_group here yet
+        manual_layout = QVBoxLayout(manual_group)  # Create the layout!
 
-        # Create the text edit widget
+        # Create manual text widget
         self.manual_text = QTextEdit()
         self.manual_text.setMaximumHeight(100)
         self.manual_text.setPlaceholderText("Enter player names separated by commas...")
@@ -552,9 +474,7 @@ class DFSOptimizerGUI(QMainWindow):
         # Add to layout
         manual_layout.addWidget(self.manual_text)
 
-        # Create button layout
         manual_btn_layout = QHBoxLayout()
-
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self.manual_text.clear)
 
@@ -563,17 +483,11 @@ class DFSOptimizerGUI(QMainWindow):
 
         manual_btn_layout.addWidget(clear_btn)
         manual_btn_layout.addWidget(sample_btn)
-
-        # Add button layout to manual layout
         manual_layout.addLayout(manual_btn_layout)
 
-        # NOW set the layout to the group box
-        manual_group.setLayout(manual_layout)
-
-        # Add to main layout
         layout.addWidget(manual_group)
 
-        # Test mode button
+        # Test mode
         test_btn = QPushButton("🧪 Create Test Data")
         test_btn.clicked.connect(self.create_test_data)
         layout.addWidget(test_btn)
@@ -606,10 +520,17 @@ class DFSOptimizerGUI(QMainWindow):
                 }
             """)
 
-            # Store DFF file in core if available
             if self.core and hasattr(self.core, 'current_dff_file'):
                 self.core.current_dff_file = file_path
                 self.console.thread_safe_append(f"📊 DFF file loaded: {filename}")
+
+                # Apply DFF rankings if core is ready
+                if hasattr(self.core, 'apply_dff_rankings'):
+                    try:
+                        self.core.apply_dff_rankings(file_path)
+                        self.console.thread_safe_append("✅ DFF rankings applied")
+                    except Exception as e:
+                        self.console.thread_safe_append(f"⚠️ Could not apply DFF: {str(e)}")
 
     def create_settings_tab(self):
         """Create settings tab"""
@@ -668,7 +589,7 @@ class DFSOptimizerGUI(QMainWindow):
         self.use_statcast.setChecked(True)
 
         self.use_weather = QCheckBox("Weather Data")
-        self.use_weather.setChecked(True)
+        self.use_weather.setChecked(False)
 
         self.use_trends = QCheckBox("Recent Trends")
         self.use_trends.setChecked(True)
@@ -755,18 +676,14 @@ class DFSOptimizerGUI(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Results tabs
         self.result_tabs = QTabWidget()
 
-        # Console tab
         self.console = ThreadSafeConsole()
         self.result_tabs.addTab(self.console, "📋 Console")
 
-        # Lineup tab
         lineup_widget = self.create_lineup_display()
         self.result_tabs.addTab(lineup_widget, "📊 Lineup")
 
-        # Analytics tab
         analytics_widget = self.create_analytics_display()
         self.result_tabs.addTab(analytics_widget, "📈 Analytics")
 
@@ -779,7 +696,6 @@ class DFSOptimizerGUI(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Summary stats
         stats_widget = QWidget()
         stats_widget.setMaximumHeight(100)
         stats_layout = QHBoxLayout(stats_widget)
@@ -794,14 +710,12 @@ class DFSOptimizerGUI(QMainWindow):
 
         layout.addWidget(stats_widget)
 
-        # Lineup table
         self.lineup_table = QTableWidget()
         self.lineup_table.setAlternatingRowColors(True)
         self.lineup_table.setSelectionBehavior(QTableWidget.SelectRows)
 
         layout.addWidget(self.lineup_table)
 
-        # Export buttons
         export_layout = QHBoxLayout()
 
         copy_btn = QPushButton("📋 Copy")
@@ -827,7 +741,6 @@ class DFSOptimizerGUI(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Player exposure table
         exposure_group = QGroupBox("Player Exposure (Multi-Lineup)")
         exposure_layout = QVBoxLayout(exposure_group)
 
@@ -838,7 +751,6 @@ class DFSOptimizerGUI(QMainWindow):
         exposure_layout.addWidget(self.exposure_table)
         layout.addWidget(exposure_group)
 
-        # Position distribution
         position_group = QGroupBox("Position Distribution")
         position_layout = QVBoxLayout(position_group)
 
@@ -954,31 +866,14 @@ class DFSOptimizerGUI(QMainWindow):
             }
         """)
 
-        # Special styling for generate button
-        self.generate_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #10b981;
-                font-size: 16px;
-                padding: 12px;
-            }
-            QPushButton:hover {
-                background-color: #059669;
-            }
-            QPushButton:disabled {
-                background-color: #9ca3af;
-            }
-        """)
-
     def load_settings(self):
         """Load saved settings"""
         settings = QSettings("DFSOptimizer", "CleanGUI")
 
-        # Window geometry
         geometry = settings.value("geometry")
         if geometry:
             self.restoreGeometry(geometry)
 
-        # Last directory
         self.last_directory = settings.value("last_directory", "")
 
     def save_settings(self):
@@ -989,14 +884,11 @@ class DFSOptimizerGUI(QMainWindow):
 
     def closeEvent(self, event):
         """Handle application close"""
-        # Stop worker if running
         if self.worker and self.worker.isRunning():
             self.worker.stop()
             self.worker.wait()
 
-        # Save settings
         self.save_settings()
-
         event.accept()
 
     def auto_detect_files(self):
@@ -1008,7 +900,6 @@ class DFSOptimizerGUI(QMainWindow):
         for pattern in patterns:
             files = glob.glob(pattern)
             if files:
-                # Load most recent file
                 files.sort(key=os.path.getmtime, reverse=True)
                 self.load_csv(files[0])
                 break
@@ -1039,7 +930,6 @@ class DFSOptimizerGUI(QMainWindow):
             self.dk_file = file_path
             filename = os.path.basename(file_path)
 
-            # Update UI
             self.csv_label.setText(f"✅ {filename}")
             self.csv_label.setStyleSheet("""
                 QLabel {
@@ -1052,27 +942,29 @@ class DFSOptimizerGUI(QMainWindow):
                 }
             """)
 
-            # Initialize core
             if CORE_AVAILABLE:
                 self.core = BulletproofDFSCore()
             else:
-                self.core = BulletproofDFSCore()  # Use mock
+                self.core = BulletproofDFSCore()
 
-            # Load CSV
             success = self.core.load_draftkings_csv(file_path)
 
             if success:
-                # Update contest type
                 self.contest_type = self.core.contest_type
                 self.update_contest_indicator()
-
-                # Enable generate button
                 self.generate_btn.setEnabled(True)
 
-                # Log to console
                 self.console.thread_safe_append(f"✅ Loaded {filename}")
                 self.console.thread_safe_append(f"📊 {len(self.core.players)} players loaded")
                 self.console.thread_safe_append(f"🎮 Contest type: {self.contest_type.upper()}")
+
+                # Apply DFF if already selected
+                if self.dff_file and hasattr(self.core, 'apply_dff_rankings'):
+                    try:
+                        self.core.apply_dff_rankings(self.dff_file)
+                        self.console.thread_safe_append("✅ DFF rankings applied")
+                    except Exception as e:
+                        self.console.thread_safe_append(f"⚠️ Could not apply DFF: {str(e)}")
 
                 self.update_status(f"Ready to optimize - {len(self.core.players)} players loaded")
             else:
@@ -1120,21 +1012,17 @@ class DFSOptimizerGUI(QMainWindow):
     def create_test_data(self):
         """Create test CSV data"""
         try:
-            # Create temporary file
             fd, path = tempfile.mkstemp(suffix='_test.csv')
 
             with os.fdopen(fd, 'w', newline='') as f:
                 writer = csv.writer(f)
 
-                # Write header
                 writer.writerow([
                     'Position', 'Name + ID', 'Name', 'ID', 'Roster Position',
                     'Salary', 'Game Info', 'TeamAbbrev', 'AvgPointsPerGame'
                 ])
 
-                # Write test players
                 if self.contest_type == 'showdown':
-                    # Showdown players
                     teams = ['NYY', 'BOS']
                     for i, team in enumerate(teams):
                         for j in range(10):
@@ -1145,7 +1033,6 @@ class DFSOptimizerGUI(QMainWindow):
                                 8 + j * 0.5
                             ])
                 else:
-                    # Classic players
                     positions = [
                         ('P', 20), ('C', 10), ('1B', 10), ('2B', 10),
                         ('3B', 10), ('SS', 10), ('OF', 30)
@@ -1162,7 +1049,6 @@ class DFSOptimizerGUI(QMainWindow):
                             ])
                             player_id += 1
 
-            # Load the test file
             self.load_csv(path)
             self.console.thread_safe_append("✅ Test data created and loaded")
 
@@ -1173,21 +1059,21 @@ class DFSOptimizerGUI(QMainWindow):
         """Apply optimization preset"""
         if preset_type == 'cash':
             self.single_radio.setChecked(True)
-            self.mode_combo.setCurrentIndex(2)  # Confirmed only
+            self.mode_combo.setCurrentIndex(2)
             self.min_salary_spin.setValue(49000)
         elif preset_type == 'gpp':
             self.multi_radio.setChecked(True)
             self.lineup_count_spin.setValue(20)
-            self.mode_combo.setCurrentIndex(0)  # Bulletproof
+            self.mode_combo.setCurrentIndex(0)
             self.diversity_slider.setValue(80)
         elif preset_type == 'single':
             self.single_radio.setChecked(True)
-            self.mode_combo.setCurrentIndex(0)  # Bulletproof
+            self.mode_combo.setCurrentIndex(0)
             self.min_salary_spin.setValue(48500)
         elif preset_type == 'mass':
             self.multi_radio.setChecked(True)
             self.lineup_count_spin.setValue(150)
-            self.mode_combo.setCurrentIndex(0)  # Bulletproof
+            self.mode_combo.setCurrentIndex(0)
             self.diversity_slider.setValue(90)
 
     def quick_generate(self, count):
@@ -1211,7 +1097,7 @@ class DFSOptimizerGUI(QMainWindow):
 
         settings = {
             'mode': mode_map.get(self.mode_combo.currentIndex(), 'bulletproof'),
-            'manual_players': self.manual_text.toPlainText().strip(),
+            'manual_players': self.manual_text.toPlainText().strip() if self.manual_text else "",
             'lineup_count': 1 if self.single_radio.isChecked() else self.lineup_count_spin.value(),
             'min_salary': self.min_salary_spin.value(),
             'max_exposure': self.max_exposure_spin.value(),
@@ -1226,7 +1112,6 @@ class DFSOptimizerGUI(QMainWindow):
             QMessageBox.warning(self, "No Data", "Please load a CSV file first")
             return
 
-        # Check if already running
         if self.worker and self.worker.isRunning():
             reply = QMessageBox.question(
                 self, "Optimization Running",
@@ -1240,31 +1125,25 @@ class DFSOptimizerGUI(QMainWindow):
             else:
                 return
 
-        # Clear console
         self.console.clear()
         self.console.thread_safe_append("=" * 60)
         self.console.thread_safe_append("🚀 STARTING OPTIMIZATION")
         self.console.thread_safe_append("=" * 60)
 
-        # Get settings
         settings = self.get_optimization_settings()
 
-        # Update UI
         self.generate_btn.setEnabled(False)
         self.generate_btn.setText("🔄 Optimizing...")
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)  # Indeterminate
+        self.progress_bar.setRange(0, 0)
 
-        # Create and start worker
         self.worker = OptimizationWorker(self.core, settings)
 
-        # Connect signals
         self.worker.started.connect(self.on_optimization_started)
         self.worker.progress.connect(self.on_optimization_progress)
         self.worker.finished.connect(self.on_optimization_finished)
         self.worker.error.connect(self.on_optimization_error)
 
-        # Start
         self.worker.start()
 
     def on_optimization_started(self):
@@ -1277,15 +1156,12 @@ class DFSOptimizerGUI(QMainWindow):
 
     def on_optimization_finished(self, lineups):
         """Handle optimization completion"""
-        # Reset UI
         self.generate_btn.setEnabled(True)
         self.generate_btn.setText("🚀 Generate Optimal Lineup")
         self.progress_bar.setVisible(False)
 
-        # Store results
         self.last_results = lineups
 
-        # Display results
         self.console.thread_safe_append(f"\n✅ Generated {len(lineups)} lineup(s)")
 
         if len(lineups) == 1:
@@ -1293,25 +1169,20 @@ class DFSOptimizerGUI(QMainWindow):
         else:
             self.display_multiple_lineups(lineups)
 
-        # Switch to lineup tab
         self.result_tabs.setCurrentIndex(1)
 
-        # Update status
         avg_score = sum(l['total_score'] for l in lineups) / len(lineups)
         self.update_status(f"Optimization complete - {len(lineups)} lineup(s), avg score: {avg_score:.1f}")
 
     def on_optimization_error(self, error_msg):
         """Handle optimization error"""
-        # Reset UI
         self.generate_btn.setEnabled(True)
         self.generate_btn.setText("🚀 Generate Optimal Lineup")
         self.progress_bar.setVisible(False)
 
-        # Show error
         self.console.thread_safe_append(f"\n❌ ERROR: {error_msg}")
         self.update_status("Optimization failed")
 
-        # Show message box for critical errors
         if "segmentation" in error_msg.lower() or "memory" in error_msg.lower():
             QMessageBox.critical(
                 self, "Optimization Error",
@@ -1327,7 +1198,6 @@ class DFSOptimizerGUI(QMainWindow):
         """Display a single lineup"""
         lineup = lineup_data['lineup']
 
-        # Update summary stats
         score = lineup_data['total_score']
         salary = lineup_data['total_salary']
         value = score / (salary / 1000) if salary > 0 else 0
@@ -1336,7 +1206,6 @@ class DFSOptimizerGUI(QMainWindow):
         self.salary_label.findChild(QLabel, "salary_value").setText(f"${salary:,}")
         self.value_label.findChild(QLabel, "value_value").setText(f"{value:.2f}")
 
-        # Setup table based on contest type
         if self.contest_type == 'showdown':
             self.setup_showdown_table()
             self.display_showdown_lineup(lineup)
@@ -1368,15 +1237,12 @@ class DFSOptimizerGUI(QMainWindow):
         """Display classic lineup in table"""
         self.lineup_table.setRowCount(len(lineup))
 
-        # Position order for display
         position_order = ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']
         position_count = {pos: 0 for pos in set(position_order)}
 
         for i, player in enumerate(lineup):
-            # Get assigned position
             pos = getattr(player, 'assigned_position', player.primary_position)
 
-            # Track position count for display
             if pos in position_count:
                 position_count[pos] += 1
                 if pos in ['P', 'OF'] and position_count[pos] > 1:
@@ -1386,43 +1252,36 @@ class DFSOptimizerGUI(QMainWindow):
             else:
                 display_pos = pos
 
-            # Position
             pos_item = QTableWidgetItem(display_pos)
             pos_item.setTextAlignment(Qt.AlignCenter)
             self.lineup_table.setItem(i, 0, pos_item)
 
-            # Player name
             self.lineup_table.setItem(i, 1, QTableWidgetItem(player.name))
 
-            # Team
             team_item = QTableWidgetItem(player.team)
             team_item.setTextAlignment(Qt.AlignCenter)
             self.lineup_table.setItem(i, 2, team_item)
 
-            # Salary
             salary_item = QTableWidgetItem(f"${player.salary:,}")
             salary_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.lineup_table.setItem(i, 3, salary_item)
 
-            # Projected score
             score = getattr(player, 'enhanced_score', player.projection)
             proj_item = QTableWidgetItem(f"{score:.1f}")
             proj_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.lineup_table.setItem(i, 4, proj_item)
 
-            # Value
             value = score / (player.salary / 1000) if player.salary > 0 else 0
             value_item = QTableWidgetItem(f"{value:.2f}")
             value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.lineup_table.setItem(i, 5, value_item)
 
-            # Color coding
             if pos == 'P':
-                color = QColor(219, 234, 254)  # Light blue
+                color = QColor(219, 234, 254)
             elif pos in ['C', '1B', '2B', '3B', 'SS']:
-                color = QColor(254, 215, 215)  # Light red
-            else:  # OF
-                color = QColor(209, 250, 229)  # Light green
+                color = QColor(254, 215, 215)
+            else:
+                color = QColor(209, 250, 229)
 
             for j in range(6):
                 item = self.lineup_table.item(i, j)
@@ -1434,53 +1293,45 @@ class DFSOptimizerGUI(QMainWindow):
         self.lineup_table.setRowCount(len(lineup))
 
         for i, player in enumerate(lineup):
-            # Type (CPT or UTIL)
             player_type = getattr(player, 'assigned_position', 'UTIL')
-            if i == 0 and player_type != 'UTIL':  # First player is usually captain
+            if i == 0 and player_type != 'UTIL':
                 player_type = 'CPT'
 
             type_item = QTableWidgetItem(player_type)
             type_item.setTextAlignment(Qt.AlignCenter)
             self.lineup_table.setItem(i, 0, type_item)
 
-            # Player name
             self.lineup_table.setItem(i, 1, QTableWidgetItem(player.name))
 
-            # Team
             team_item = QTableWidgetItem(player.team)
             team_item.setTextAlignment(Qt.AlignCenter)
             self.lineup_table.setItem(i, 2, team_item)
 
-            # Salary (1.5x for captain)
             multiplier = 1.5 if player_type == 'CPT' else 1.0
             salary = int(player.salary * multiplier)
             salary_item = QTableWidgetItem(f"${salary:,}")
             salary_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.lineup_table.setItem(i, 3, salary_item)
 
-            # Multiplier
             mult_item = QTableWidgetItem(f"{multiplier}x")
             mult_item.setTextAlignment(Qt.AlignCenter)
             self.lineup_table.setItem(i, 4, mult_item)
 
-            # Projected score (with multiplier)
             base_score = getattr(player, 'enhanced_score', player.projection)
             adj_score = base_score * multiplier
             proj_item = QTableWidgetItem(f"{adj_score:.1f}")
             proj_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.lineup_table.setItem(i, 5, proj_item)
 
-            # Value
             value = adj_score / (salary / 1000) if salary > 0 else 0
             value_item = QTableWidgetItem(f"{value:.2f}")
             value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.lineup_table.setItem(i, 6, value_item)
 
-            # Color coding
             if player_type == 'CPT':
-                color = QColor(254, 240, 138)  # Yellow for captain
+                color = QColor(254, 240, 138)
             else:
-                color = QColor(226, 232, 240)  # Light gray for utility
+                color = QColor(226, 232, 240)
 
             for j in range(7):
                 item = self.lineup_table.item(i, j)
@@ -1489,14 +1340,12 @@ class DFSOptimizerGUI(QMainWindow):
 
     def display_multiple_lineups(self, lineups):
         """Display multiple lineups summary"""
-        # Show summary dialog
         dialog = QDialog(self)
         dialog.setWindowTitle(f"{len(lineups)} Lineups Generated")
         dialog.setMinimumSize(600, 400)
 
         layout = QVBoxLayout(dialog)
 
-        # Summary stats
         scores = [l['total_score'] for l in lineups]
         salaries = [l['total_salary'] for l in lineups]
 
@@ -1511,20 +1360,17 @@ class DFSOptimizerGUI(QMainWindow):
         summary_label = QLabel(summary_text)
         layout.addWidget(summary_label)
 
-        # Lineup list
         lineup_list = QListWidget()
         for i, lineup_data in enumerate(lineups):
             item_text = f"Lineup {i + 1}: {lineup_data['total_score']:.1f} pts, ${lineup_data['total_salary']:,}"
             lineup_list.addItem(item_text)
 
-        # Double-click to view lineup
         lineup_list.itemDoubleClicked.connect(
             lambda item: self.display_single_lineup(lineups[lineup_list.row(item)])
         )
 
         layout.addWidget(lineup_list)
 
-        # Buttons
         btn_layout = QHBoxLayout()
 
         export_btn = QPushButton("Export All")
@@ -1539,14 +1385,12 @@ class DFSOptimizerGUI(QMainWindow):
 
         dialog.exec_()
 
-        # Update exposure analysis
         self.update_exposure_analysis(lineups)
 
     def update_exposure_analysis(self, lineups):
         """Update player exposure analysis"""
         player_usage = {}
 
-        # Count player usage
         for lineup_data in lineups:
             for player in lineup_data['lineup']:
                 key = player.name
@@ -1560,54 +1404,45 @@ class DFSOptimizerGUI(QMainWindow):
                 score = getattr(player, 'enhanced_score', player.projection)
                 player_usage[key]['total_score'] += score
 
-        # Sort by usage
         sorted_players = sorted(
             player_usage.items(),
             key=lambda x: x[1]['count'],
             reverse=True
         )
 
-        # Update exposure table
         self.exposure_table.setRowCount(len(sorted_players))
 
         for i, (name, data) in enumerate(sorted_players):
-            # Player name
             self.exposure_table.setItem(i, 0, QTableWidgetItem(name))
 
-            # Count
             count_item = QTableWidgetItem(str(data['count']))
             count_item.setTextAlignment(Qt.AlignCenter)
             self.exposure_table.setItem(i, 1, count_item)
 
-            # Exposure %
             exposure = (data['count'] / len(lineups)) * 100
             exp_item = QTableWidgetItem(f"{exposure:.1f}%")
             exp_item.setTextAlignment(Qt.AlignCenter)
 
-            # Color code exposure
             if exposure > 60:
-                exp_item.setBackground(QColor(254, 202, 202))  # Red
+                exp_item.setBackground(QColor(254, 202, 202))
             elif exposure > 40:
-                exp_item.setBackground(QColor(254, 240, 138))  # Yellow
+                exp_item.setBackground(QColor(254, 240, 138))
             else:
-                exp_item.setBackground(QColor(187, 247, 208))  # Green
+                exp_item.setBackground(QColor(187, 247, 208))
 
             self.exposure_table.setItem(i, 2, exp_item)
 
-            # Average score
             avg_score = data['total_score'] / data['count']
             avg_item = QTableWidgetItem(f"{avg_score:.1f}")
             avg_item.setTextAlignment(Qt.AlignCenter)
             self.exposure_table.setItem(i, 3, avg_item)
 
-        # Update position distribution
         position_counts = {}
         for lineup_data in lineups:
             for player in lineup_data['lineup']:
                 pos = getattr(player, 'assigned_position', player.primary_position)
                 position_counts[pos] = position_counts.get(pos, 0) + 1
 
-        # Display position distribution
         pos_text = "Position Distribution:\n\n"
         for pos, count in sorted(position_counts.items()):
             avg_per_lineup = count / len(lineups)
@@ -1643,13 +1478,11 @@ class DFSOptimizerGUI(QMainWindow):
                 with open(file_path, 'w', newline='') as f:
                     writer = csv.writer(f)
 
-                    # Header
                     if self.contest_type == 'showdown':
                         writer.writerow(['Lineup', 'Type', 'Player', 'Team', 'Salary', 'Multiplier', 'Score'])
                     else:
                         writer.writerow(['Lineup', 'Position', 'Player', 'Team', 'Salary', 'Score'])
 
-                    # Data
                     for i, lineup_data in enumerate(self.last_results):
                         for j, player in enumerate(lineup_data['lineup']):
                             if self.contest_type == 'showdown':
@@ -1693,11 +1526,9 @@ class DFSOptimizerGUI(QMainWindow):
                         row = []
 
                         if self.contest_type == 'showdown':
-                            # Showdown format: just player names in order
                             for player in lineup_data['lineup']:
                                 row.append(player.name)
                         else:
-                            # Classic format: position order
                             positions = ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']
                             lineup_by_pos = {}
 
@@ -1711,7 +1542,7 @@ class DFSOptimizerGUI(QMainWindow):
                                 if pos in lineup_by_pos and lineup_by_pos[pos]:
                                     row.append(lineup_by_pos[pos].pop(0))
                                 else:
-                                    row.append("")  # Empty slot
+                                    row.append("")
 
                         writer.writerow(row)
 
@@ -1736,10 +1567,8 @@ def main():
     app.setApplicationName("DFS Optimizer Pro")
     app.setOrganizationName("DFS Tools")
 
-    # Set app style
     app.setStyle("Fusion")
 
-    # Create and show main window
     window = DFSOptimizerGUI()
     window.show()
 

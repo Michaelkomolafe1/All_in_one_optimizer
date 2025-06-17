@@ -75,6 +75,7 @@ try:
 except ImportError:
     ENHANCED_STATS_AVAILABLE = False
     print("⚠️ Enhanced stats engine not found - using basic analysis")
+
     def apply_enhanced_statistical_analysis(players, verbose=False):
         return 0
 
@@ -161,6 +162,23 @@ KNOWN_RELIEF_PITCHERS = {
     'jhoan duran', 'edwin diaz', 'felix bautista', 'ryan helsley', 'david bednar',
     'alexis diaz', 'josh hader', 'emmanuel clase', 'jordan romano', 'clay holmes'
 }
+
+# ============================================================
+# REAL DATA ONLY CONFIGURATION - ADDED BY PATCH
+# ============================================================
+USE_ONLY_REAL_DATA = True
+
+REAL_DATA_SOURCES = {
+    'statcast': True,       # ✓ Working - Real Baseball Savant
+    'vegas': True,          # ✓ Working - Real API calls
+    'mlb_lineups': True,    # ✓ Working - Real MLB API
+    'dff_rankings': True,   # ✓ Manual upload via GUI
+    'park_factors': True,  # ✗ DISABLED - Hardcoded values
+    'recent_form': True,   # ✗ DISABLED - Random data
+    'weather': False,       # ✗ DISABLED - No real source
+    'fallbacks': False      # ✗ DISABLED - No fallback data
+}
+
 
 class AdvancedPlayer:
     """Player model with all advanced features including enhanced pitcher detection"""
@@ -1893,6 +1911,66 @@ class BulletproofDFSCore:
         print("🏟️ Applying park factors...")
         self.apply_park_factors()
 
+        # Recent Form (REAL game logs)
+        if REAL_DATA_SOURCES.get('recent_form', False):
+            print("✅ Applying recent form (real game logs)...")
+            try:
+                from real_recent_form import RealRecentFormAnalyzer
+                form_analyzer = RealRecentFormAnalyzer(days_back=7)
+                
+                # Only analyze confirmed players to save API calls
+                players_to_analyze = truly_confirmed[:30]  # Limit to 30
+                
+                if players_to_analyze:
+                    form_analyzer.enrich_players_with_form(players_to_analyze)
+                    if 'data_sources_used' in locals():
+                        data_sources_used.append("Recent Form")
+                    
+                    # Report hot/cold players
+                    hot_players = [p for p in players_to_analyze if hasattr(p, 'hot_streak') and p.hot_streak]
+                    cold_players = [p for p in players_to_analyze if hasattr(p, 'form_rating') and p.form_rating < 0.9]
+                    
+                    if hot_players:
+                        print(f"   🔥 {len(hot_players)} HOT players identified")
+                    if cold_players:
+                        print(f"   ❄️ {len(cold_players)} COLD players identified")
+                else:
+                    print("   ⚠️ No confirmed players to analyze")
+                    
+            except Exception as e:
+                print(f"⚠️ Recent form failed: {e}")
+
+
+        # Recent Form (REAL game logs)
+        if REAL_DATA_SOURCES.get('recent_form', False):
+            print("✅ Applying recent form (real game logs)...")
+            try:
+                from real_recent_form import RealRecentFormAnalyzer
+                form_analyzer = RealRecentFormAnalyzer(days_back=7)
+                
+                # Only analyze confirmed players to save API calls
+                players_to_analyze = truly_confirmed[:30]  # Limit to 30
+                
+                if players_to_analyze:
+                    form_analyzer.enrich_players_with_form(players_to_analyze)
+                    if 'data_sources_used' in locals():
+                        data_sources_used.append("Recent Form")
+                    
+                    # Report hot/cold players
+                    hot_players = [p for p in players_to_analyze if hasattr(p, 'hot_streak') and p.hot_streak]
+                    cold_players = [p for p in players_to_analyze if hasattr(p, 'form_rating') and p.form_rating < 0.9]
+                    
+                    if hot_players:
+                        print(f"   🔥 {len(hot_players)} HOT players identified")
+                    if cold_players:
+                        print(f"   ❄️ {len(cold_players)} COLD players identified")
+                else:
+                    print("   ⚠️ No confirmed players to analyze")
+                    
+            except Exception as e:
+                print(f"⚠️ Recent form failed: {e}")
+
+
         # 4. Batting Order (if available)
         if hasattr(self, 'enrich_with_batting_order'):
             print("🔢 Enriching with batting order...")
@@ -2420,6 +2498,16 @@ class BulletproofDFSCore:
         print(f"✅ Statcast Priority Complete: {enriched_count} enriched, {failed_count} failed")
 
     def apply_park_factors(self):
+        """Apply park factors with REAL_DATA_SOURCES check"""
+        if not REAL_DATA_SOURCES.get('park_factors', False):
+            print("⚠️ Park factors disabled in REAL_DATA_SOURCES")
+            return 0
+        
+        """Apply park factors with REAL_DATA_SOURCES check"""
+        if not REAL_DATA_SOURCES.get('park_factors', False):
+            print("⚠️ Park factors disabled in REAL_DATA_SOURCES")
+            return 0
+        
         """FIXED: Park factors for ALL confirmed players"""
         print("🏟️ Priority park factors for confirmed players...")
 

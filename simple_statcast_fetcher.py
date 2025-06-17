@@ -71,10 +71,13 @@ logger = logging.getLogger(__name__)
 
 # Rest of your class implementation continues here...
 
+# Modify your FastStatcastFetcher class:
+
 class FastStatcastFetcher:
     """Ultra-fast parallel Statcast fetcher for confirmed players only"""
 
     def __init__(self, max_workers: int = 5):
+        self.USE_FALLBACK = False  # DISABLED BY PATCH - No fake data!
         self.cache_dir = Path("data/statcast_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -82,26 +85,49 @@ class FastStatcastFetcher:
         self.season_end = '2024-09-30'
         self.max_workers = max_workers
 
+        # ADD THIS LINE TO FORCE FRESH DATA
+        self.FORCE_FRESH = True  # Set to False to re-enable caching
+
         self.player_id_cache = {}
         self.load_player_cache()
 
         self.stats = {'successful_fetches': 0, 'failed_fetches': 0, 'cache_hits': 0}
         self.lock = threading.Lock()
 
-        # Realistic fallback data
-        self.realistic_fallbacks = {
-            'batter': {
-                'xwOBA': 0.320, 'Hard_Hit': 37.0, 'Barrel': 8.5,
-                'avg_exit_velocity': 88.5, 'K': 23.0, 'BB': 8.5
-            },
-            'pitcher': {
-                'xwOBA': 0.315, 'Hard_Hit': 35.0, 'K': 22.0,
-                'Whiff': 25.0, 'Barrel_Against': 7.5
-            }
-        }
+        # Rest of your init code...
 
-        print(f"⚡ Fast Statcast Fetcher initialized with {max_workers} parallel workers")
+    def fetch_player_data(self, player_name: str, position: str) -> Optional[Dict]:
+        """Fetch data for a single player with caching"""
 
+        if not PYBASEBALL_AVAILABLE:
+            position_type = 'pitcher' if position == 'P' else 'batter'
+            return None  # PATCHED: No fallback data(player_name, position_type)
+
+        # Check cache first (MODIFIED LINE)
+        cache_key = f"{player_name}_{position}_{self.season_start}"
+        cache_file = self.cache_dir / f"{cache_key}.json"
+
+        # MODIFIED: Check FORCE_FRESH flag
+        if not self.FORCE_FRESH and cache_file.exists():
+            try:
+                with open(cache_file, 'r') as f:
+                    cached_data = json.load(f)
+
+                # Check if cache is recent (within 24 hours)
+                cache_time = datetime.fromisoformat(cached_data.get('last_updated', '2020-01-01'))
+                if (datetime.now() - cache_time).total_seconds() < 86400:  # 24 hours
+                    with self.lock:
+                        self.stats['cache_hits'] += 1
+                    logger.info(f"📦 CACHE HIT: {player_name}")  # ADD THIS
+                    return cached_data
+            except:
+                pass
+
+        # ADD THIS LOG
+        logger.info(f"🌐 FETCHING FROM WEB: {player_name}")
+
+        # Rest of your fetch code...
+        
     def load_player_cache(self):
         cache_file = self.cache_dir / "players.json"
         if cache_file.exists():
@@ -183,7 +209,7 @@ class FastStatcastFetcher:
 
         if not PYBASEBALL_AVAILABLE:
             position_type = 'pitcher' if position == 'P' else 'batter'
-            return self._create_fallback_data(player_name, position_type)
+            return None  # PATCHED: No fallback data(player_name, position_type)
 
         # Check cache first
         cache_key = f"{player_name}_{position}_{self.season_start}"
@@ -207,7 +233,7 @@ class FastStatcastFetcher:
         player_id = self.get_player_id(player_name)
         if not player_id:
             position_type = 'pitcher' if position == 'P' else 'batter'
-            return self._create_fallback_data(player_name, position_type)
+            return None  # PATCHED: No fallback data(player_name, position_type)
 
         try:
             if position == 'P':
@@ -218,7 +244,7 @@ class FastStatcastFetcher:
                 )
 
                 if data is None or len(data) == 0:
-                    return self._create_fallback_data(player_name, 'pitcher')
+                    return None  # PATCHED: No fallback data(player_name, 'pitcher')
 
                 # Limit data size for performance
                 if len(data) > 1000:
@@ -243,7 +269,7 @@ class FastStatcastFetcher:
                 )
 
                 if data is None or len(data) == 0:
-                    return self._create_fallback_data(player_name, 'batter')
+                    return None  # PATCHED: No fallback data(player_name, 'batter')
 
                 if len(data) > 1000:
                     data = data.tail(1000)
@@ -272,7 +298,7 @@ class FastStatcastFetcher:
         except Exception as e:
             logger.debug(f"Statcast API failed for {player_name}: {e}")
             position_type = 'pitcher' if position == 'P' else 'batter'
-            return self._create_fallback_data(player_name, position_type)
+            return None  # PATCHED: No fallback data(player_name, position_type)
 
     def get_player_id(self, player_name: str) -> Optional[int]:
         """Get player ID with caching"""

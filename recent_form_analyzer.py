@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 class RecentFormAnalyzer:
+    USE_RANDOM_DATA = False  # DISABLED BY PATCH
+
     """
     Analyzes recent player performance for hot/cold streak detection
     Integrates with existing cache system and player model
