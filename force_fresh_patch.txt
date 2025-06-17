@@ -1,0 +1,9 @@
+
+# Add this to your FastStatcastFetcher.__init__ method:
+self.FORCE_FRESH = True  # Force fresh data for testing
+
+# Then modify the fetch_player_data method:
+# Change this line:
+#     if cache_file.exists():
+# To:
+#     if not self.FORCE_FRESH and cache_file.exists():
