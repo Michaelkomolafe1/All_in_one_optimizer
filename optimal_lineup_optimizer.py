@@ -42,6 +42,33 @@ class OptimalLineupOptimizer:
             'UTIL': 5  # Utility
         }
 
+    def check_for_duplicate_players(self):
+        """Check if there are duplicate players in the pool"""
+        print("\n🔍 CHECKING FOR DUPLICATE PLAYERS")
+        print("=" * 60)
+
+        # Check by name
+        name_counts = {}
+        for player in self.players:
+            name_key = f"{player.name}_{player.team}"
+            if name_key not in name_counts:
+                name_counts[name_key] = []
+            name_counts[name_key].append(player)
+
+        # Find duplicates
+        duplicates_found = False
+        for name_key, players in name_counts.items():
+            if len(players) > 1:
+                duplicates_found = True
+                print(f"❌ DUPLICATE: {name_key} appears {len(players)} times")
+                for i, p in enumerate(players):
+                    print(f"   {i + 1}. ID: {p.id}, Salary: ${p.salary}, Positions: {p.positions}")
+
+        if not duplicates_found:
+            print("✅ No duplicate players found")
+
+        return duplicates_found
+
     def optimize_classic_lineup(self, players: List, use_confirmations: bool = False) -> OptimizationResult:
         """
         FIXED: Classic lineup optimization with exact position requirements
@@ -258,7 +285,26 @@ class OptimalLineupOptimizer:
         return {'feasible': True, 'reason': 'Valid'}
 
     def _safe_showdown_milp_optimization(self, players: List) -> OptimizationResult:
-        """Safe showdown MILP optimization"""
+        """Safe showdown MILP optimization with enhanced duplicate prevention"""
+
+        # First, ensure unique players
+        unique_players = []
+        seen_ids = set()
+
+        for player in players:
+            # Use player ID or name+team as unique identifier
+            player_key = f"{player.name}_{player.team}" if not hasattr(player, 'id') else player.id
+
+            if player_key not in seen_ids:
+                unique_players.append(player)
+                seen_ids.add(player_key)
+            else:
+                print(f"⚠️ Skipping duplicate player: {player.name} ({player.team})")
+
+        players = unique_players
+        print(f"🎯 Optimizing with {len(players)} unique players")
+
+        # Create problem
         prob = pulp.LpProblem("DFS_Showdown", pulp.LpMaximize)
 
         # Decision variables
@@ -275,73 +321,155 @@ class OptimalLineupOptimizer:
             for i, player in enumerate(players)
         ])
 
-        # Constraints
-        prob += pulp.lpSum(captain_vars.values()) == 1  # Exactly 1 captain
-        prob += pulp.lpSum(util_vars.values()) == 5  # Exactly 5 utility
+        # Constraint 1: Exactly 1 captain
+        prob += pulp.lpSum(captain_vars.values()) == 1
 
-        # Each player used at most once
+        # Constraint 2: Exactly 5 utility
+        prob += pulp.lpSum(util_vars.values()) == 5
+
+        # Constraint 3: Each player used at most once (CRITICAL)
         for i in range(len(players)):
             prob += captain_vars[i] + util_vars[i] <= 1
 
-        # Salary constraint: Captain costs 1.5x
+        # Constraint 4: Salary cap with captain costing 1.5x
         prob += pulp.lpSum([
             captain_vars[i] * player.salary * 1.5 +
             util_vars[i] * player.salary
             for i, player in enumerate(players)
         ]) <= self.salary_cap
 
+        # Constraint 5: Must have players from both teams
+        teams = list(set(p.team for p in players))
+        print(f"Teams in showdown: {teams}")
+
+        if len(teams) >= 2:
+            # At least 1 player from each of first 2 teams
+            for team in teams[:2]:
+                team_indices = [i for i, p in enumerate(players) if p.team == team]
+                if team_indices:
+                    prob += pulp.lpSum([
+                        captain_vars[i] + util_vars[i]
+                        for i in team_indices
+                    ]) >= 1
+
         # Solve
-        solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=15)
+        solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=30)
         prob.solve(solver)
 
+        print(f"Optimization status: {pulp.LpStatus[prob.status]}")
+
         if prob.status == pulp.LpStatusOptimal:
+            # Debug: show which variables are selected
+            selected_captain = None
+            selected_utils = []
+
+            for i, player in enumerate(players):
+                if captain_vars[i].value() == 1:
+                    selected_captain = (i, player)
+                    print(f"Captain selected: {player.name} ({player.team})")
+                if util_vars[i].value() == 1:
+                    selected_utils.append((i, player))
+                    print(f"Util selected: {player.name} ({player.team})")
+
             return self._extract_showdown_solution(players, captain_vars, util_vars)
         else:
             raise Exception(f"Showdown MILP failed: {pulp.LpStatus[prob.status]}")
 
     def _extract_showdown_solution(self, players: List, captain_vars: Dict, util_vars: Dict) -> OptimizationResult:
-        """Extract showdown solution"""
+        """Extract showdown solution with proper team preservation"""
         selected_players = []
         total_salary = 0
         total_score = 0
         positions_filled = {'CPT': 0, 'UTIL': 0}
 
+        # Track which indices were selected
+        selected_indices = set()
+
         # Extract captain
         for i, player in enumerate(players):
             if captain_vars[i].value() == 1:
+                if i in selected_indices:
+                    print(f"❌ ERROR: Player {player.name} already selected!")
+                    continue
+
                 player_copy = self._copy_player(player)
                 player_copy.assigned_position = 'CPT'
                 player_copy.multiplier = 1.5
+
+                # CRITICAL: Ensure team is preserved
+                if not hasattr(player_copy, 'team') or not player_copy.team:
+                    print(f"⚠️ WARNING: No team for {player_copy.name}")
+                    player_copy.team = player.team  # Force copy team
+
                 selected_players.append(player_copy)
                 total_salary += int(player.salary * 1.5)
                 total_score += player.enhanced_score * 1.5
                 positions_filled['CPT'] = 1
-                break
+                selected_indices.add(i)
+
+                print(f"✅ Captain: {player_copy.name} ({player_copy.team}) - ${int(player.salary * 1.5):,}")
 
         # Extract utility players
         for i, player in enumerate(players):
             if util_vars[i].value() == 1:
+                if i in selected_indices:
+                    print(f"❌ ERROR: Player {player.name} already selected as captain!")
+                    continue
+
                 player_copy = self._copy_player(player)
                 player_copy.assigned_position = 'UTIL'
                 player_copy.multiplier = 1.0
+
+                # CRITICAL: Ensure team is preserved
+                if not hasattr(player_copy, 'team') or not player_copy.team:
+                    print(f"⚠️ WARNING: No team for {player_copy.name}")
+                    player_copy.team = player.team  # Force copy team
+
                 selected_players.append(player_copy)
                 total_salary += player.salary
                 total_score += player.enhanced_score
                 positions_filled['UTIL'] += 1
+                selected_indices.add(i)
+
+                print(f"✅ Utility: {player_copy.name} ({player_copy.team}) - ${player.salary:,}")
+
+        # Verify lineup
+        if len(selected_players) != 6:
+            print(f"❌ ERROR: Expected 6 players, got {len(selected_players)}")
+
+        # Check team distribution
+        team_counts = {}
+        for p in selected_players:
+            team = p.team if hasattr(p, 'team') else 'UNKNOWN'
+            team_counts[team] = team_counts.get(team, 0) + 1
+
+        print(f"\n📊 Team distribution: {team_counts}")
 
         return OptimizationResult(
             lineup=selected_players,
             total_score=total_score,
             total_salary=total_salary,
             positions_filled=positions_filled,
-            optimization_status="Optimal"
+            optimization_status="Optimal" if len(selected_players) == 6 else "Incomplete"
         )
 
     def _copy_player(self, player):
-        """Safe player copying"""
+        """Safe player copying that preserves all attributes including team"""
         try:
-            return copy.deepcopy(player)
-        except:
+            import copy
+            player_copy = copy.deepcopy(player)
+
+            # Ensure critical attributes are preserved
+            critical_attrs = ['name', 'team', 'salary', 'id', 'positions', 'primary_position']
+            for attr in critical_attrs:
+                if hasattr(player, attr):
+                    setattr(player_copy, attr, getattr(player, attr))
+                else:
+                    print(f"⚠️ Missing attribute {attr} on {player.name}")
+
+            return player_copy
+        except Exception as e:
+            print(f"❌ Error copying player {player.name}: {e}")
             # Fallback: manual copy
             player_copy = type(player).__new__(type(player))
             for key, value in player.__dict__.items():

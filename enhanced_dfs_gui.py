@@ -40,6 +40,24 @@ except ImportError:
     print("⚠️ Core optimizer not found. Running in demo mode.")
     CORE_AVAILABLE = False
 
+    # Import configuration system
+    try:
+        from dfs_config import dfs_config
+
+        CONFIG_AVAILABLE = True
+    except ImportError:
+        CONFIG_AVAILABLE = False
+        print("⚠️ Configuration system not available")
+
+    # Import progress tracker
+    try:
+        from progress_tracker import ProgressTracker, MultiStageProgress
+
+        PROGRESS_AVAILABLE = True
+    except ImportError:
+        PROGRESS_AVAILABLE = False
+        print("⚠️ Progress tracking not available")
+
 
     # Mock classes for testing
     class AdvancedPlayer:
@@ -266,6 +284,90 @@ class OptimizationWorker(QThread):
 
 class DFSOptimizerGUI(QMainWindow):
     """Main application window"""
+
+    def create_config_dialog(self):
+        """Create configuration dialog"""
+        if not CONFIG_AVAILABLE:
+            QMessageBox.warning(self, "Not Available", "Configuration system not installed")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("DFS Optimizer Configuration")
+        dialog.setMinimumSize(600, 400)
+
+        layout = QVBoxLayout(dialog)
+
+        # Create tabs for different config sections
+        tabs = QTabWidget()
+
+        # Optimization tab
+        opt_widget = QWidget()
+        opt_layout = QFormLayout(opt_widget)
+
+        # Form analysis players
+        form_players_spin = QSpinBox()
+        form_players_spin.setRange(0, 1000)
+        form_players_spin.setSpecialValueText("All")
+        form_players_spin.setValue(dfs_config.get('optimization.max_form_analysis_players') or 0)
+        opt_layout.addRow("Max Form Analysis Players:", form_players_spin)
+
+        # Batch size
+        batch_spin = QSpinBox()
+        batch_spin.setRange(10, 100)
+        batch_spin.setValue(dfs_config.get('optimization.batch_size', 25))
+        opt_layout.addRow("Batch Size:", batch_spin)
+
+        # Parallel workers
+        workers_spin = QSpinBox()
+        workers_spin.setRange(1, 20)
+        workers_spin.setValue(dfs_config.get('optimization.parallel_workers', 10))
+        opt_layout.addRow("Parallel Workers:", workers_spin)
+
+        tabs.addTab(opt_widget, "Optimization")
+
+        # Data sources tab
+        sources_widget = QWidget()
+        sources_layout = QVBoxLayout(sources_widget)
+
+        for source in ['statcast', 'vegas', 'recent_form', 'dff', 'batting_order']:
+            enabled = QCheckBox(f"Enable {source.replace('_', ' ').title()}")
+            enabled.setChecked(dfs_config.get(f'data_sources.{source}.enabled', True))
+            sources_layout.addWidget(enabled)
+
+        sources_layout.addStretch()
+        tabs.addTab(sources_widget, "Data Sources")
+
+        layout.addWidget(tabs)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(
+            lambda: self.save_config_from_dialog(dialog, form_players_spin, batch_spin, workers_spin))
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+
+        btn_layout.addWidget(save_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+        dialog.exec_()
+
+    def save_config_from_dialog(self, dialog, form_spin, batch_spin, workers_spin):
+        """Save configuration from dialog"""
+        # Update config values
+        max_players = form_spin.value() if form_spin.value() > 0 else None
+        dfs_config.set('optimization.max_form_analysis_players', max_players)
+        dfs_config.set('optimization.batch_size', batch_spin.value())
+        dfs_config.set('optimization.parallel_workers', workers_spin.value())
+
+        # Update core if loaded
+        if self.core and CONFIG_AVAILABLE:
+            self.core.max_form_analysis_players = max_players
+            self.core.batch_size = batch_spin.value()
+
+        QMessageBox.information(dialog, "Success", "Configuration saved!")
+        dialog.accept()
 
     def __init__(self):
         super().__init__()

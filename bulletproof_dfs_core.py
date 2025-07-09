@@ -631,6 +631,8 @@ class BulletproofDFSCore:
     """Complete bulletproof DFS core with enhanced pitcher detection"""
 
     def __init__(self):
+        """Initialize BulletproofDFSCore with all modules and configuration"""
+        # Basic attributes
         self.players = []
         self.contest_type = 'classic'
         self.salary_cap = 50000
@@ -642,14 +644,40 @@ class BulletproofDFSCore:
         # Set game date
         self.game_date = datetime.now().strftime('%Y-%m-%d')
 
-        # Initialize modules
-        self.vegas_lines = VegasLines() if VEGAS_AVAILABLE else None
+        # Load configuration
+        try:
+            from dfs_config import dfs_config
+            self.config = dfs_config
+            # Apply config settings
+            self.salary_cap = self.config.get('optimization.salary_cap', 50000)
+            self.batch_size = self.config.get('optimization.batch_size', 25)
+            self.max_form_analysis_players = self.config.get('optimization.max_form_analysis_players', None)
+        except:
+            # Fallback if config not available
+            self.config = None
+            self.batch_size = 25
+            self.max_form_analysis_players = None
 
-        # Fix SmartConfirmationSystem initialization
+        # Initialize tracking for duplicate prevention
+        self._enrichment_applied = {}
+
+        # Initialize Vegas Lines
+        if VEGAS_AVAILABLE:
+            try:
+                self.vegas_lines = VegasLines()
+                print("✅ Vegas lines module initialized")
+            except Exception as e:
+                print(f"❌ Failed to initialize Vegas lines: {e}")
+                self.vegas_lines = None
+        else:
+            self.vegas_lines = None
+
+        # Initialize Smart Confirmation System
         if CONFIRMED_AVAILABLE:
             try:
+                # Initialize with empty players list first
                 self.confirmation_system = SmartConfirmationSystem(
-                    csv_players=self.players,
+                    csv_players=[],  # Empty at first, will be updated when CSV loads
                     verbose=True
                 )
                 print("✅ Smart Confirmation System initialized")
@@ -660,21 +688,357 @@ class BulletproofDFSCore:
             self.confirmation_system = None
             print("⚠️ SmartConfirmationSystem not available")
 
-        self.statcast_fetcher = SimpleStatcastFetcher() if STATCAST_AVAILABLE else None
+        # Initialize Statcast Fetcher
+        if STATCAST_AVAILABLE:
+            try:
+                self.statcast_fetcher = SimpleStatcastFetcher()
+                print("✅ Statcast fetcher initialized")
+            except Exception as e:
+                print(f"❌ Failed to initialize Statcast fetcher: {e}")
+                self.statcast_fetcher = None
+        else:
+            self.statcast_fetcher = None
 
-        # NEW: Initialize recent form analyzer if available
+        # Initialize Recent Form Analyzer
         if RECENT_FORM_AVAILABLE:
-            from utils.cache_manager import cache
-            self.form_analyzer = RecentFormAnalyzer(cache_manager=cache)
+            try:
+                from utils.cache_manager import cache
+                from recent_form_analyzer import RecentFormAnalyzer
+                self.form_analyzer = RecentFormAnalyzer(cache_manager=cache)
+                print("✅ Recent Form Analyzer initialized")
+            except Exception as e:
+                print(f"❌ Failed to initialize Recent Form Analyzer: {e}")
+                self.form_analyzer = None
         else:
             self.form_analyzer = None
 
-        # NEW: Initialize batting order and correlation systems
+        # Initialize Batting Order and Correlation Systems
         if BATTING_CORRELATION_AVAILABLE:
-            integrate_batting_order_correlation(self)
+            try:
+                integrate_batting_order_correlation(self)
+                print("✅ Batting Order & Correlation Systems integrated")
+            except Exception as e:
+                print(f"❌ Failed to integrate batting order/correlation: {e}")
 
-        print("🚀 Bulletproof DFS Core - ALL METHODS INCLUDED WITH ENHANCED PITCHER DETECTION")
-    # ==================== DFS UPGRADE METHODS ====================
+        # Initialize data system
+        try:
+            self.data_system = UnifiedDataSystem()
+            print("✅ Unified Data System initialized")
+        except Exception as e:
+            print(f"❌ Failed to initialize Unified Data System: {e}")
+            self.data_system = None
+
+        print("🚀 Bulletproof DFS Core initialized successfully")
+
+    # !/usr/bin/env python3
+    """
+    SHOWDOWN CAPTAIN/UTILITY POSITION FIX
+    ====================================
+    Fixes the issue where the same player is selected as both Captain and Utility
+    In showdown, each PERSON can only be selected once, but appears twice in CSV
+    """
+
+    def analyze_showdown_csv_structure(self):
+        """Analyze the showdown CSV structure to understand player duplicates"""
+        print("\n🎰 SHOWDOWN CSV ANALYSIS")
+        print("=" * 60)
+
+        # Group players by name
+        name_groups = {}
+        for player in self.players:
+            name_key = player.name.lower().strip()
+            if name_key not in name_groups:
+                name_groups[name_key] = []
+            name_groups[name_key].append(player)
+
+        print(f"Total players in CSV: {len(self.players)}")
+        print(f"Unique player names: {len(name_groups)}")
+
+        # Show captain/utility pairs
+        captain_util_pairs = 0
+        for name, player_list in name_groups.items():
+            if len(player_list) == 2:
+                # Check if one is CPT and one is UTIL
+                positions = [p.primary_position for p in player_list]
+                salaries = [p.salary for p in player_list]
+
+                if 'CPT' in positions or any('CPT' in p.positions for p in player_list):
+                    captain_util_pairs += 1
+                    if captain_util_pairs <= 5:  # Show first 5
+                        print(f"\n   {name.title()}:")
+                        for p in player_list:
+                            pos_str = '/'.join(p.positions)
+                            print(f"     {pos_str}: ${p.salary:,} (ID: {p.id})")
+
+        print(f"\nCaptain/Utility pairs found: {captain_util_pairs}")
+
+        return name_groups
+
+    def create_showdown_player_constraints(self, players: List) -> Dict:
+        """Create constraints to prevent selecting same person twice"""
+        print("\n🔒 Creating showdown player constraints...")
+
+        # Group players by actual person (same name)
+        person_groups = {}
+        for i, player in enumerate(players):
+            name_key = player.name.lower().strip()
+            if name_key not in person_groups:
+                person_groups[name_key] = []
+            person_groups[name_key].append(i)  # Store player index
+
+        # Find groups with multiple versions (CPT + UTIL)
+        constraint_groups = []
+        for name, player_indices in person_groups.items():
+            if len(player_indices) > 1:
+                constraint_groups.append(player_indices)
+                if len(constraint_groups) <= 5:  # Show first 5
+                    print(f"   {name.title()}: indices {player_indices}")
+
+        print(f"   Found {len(constraint_groups)} players with multiple versions")
+
+        return {
+            'person_groups': person_groups,
+            'constraint_groups': constraint_groups
+        }
+
+    def optimize_showdown_lineup_fixed(self, players: List) -> 'OptimizationResult':
+        """
+        FIXED: Showdown optimization that prevents same person being selected twice
+        """
+        print("\n🎰 SHOWDOWN LINEUP OPTIMIZATION (PERSON-AWARE)")
+        print("=" * 60)
+
+        if len(players) < 6:
+            print(f"❌ Need at least 6 players, have {len(players)}")
+            return self._create_failed_result("Not enough players")
+
+        print(f"🎯 Optimizing with {len(players)} player slots")
+
+        # Analyze the constraint structure
+        constraints = self.create_showdown_player_constraints(players)
+
+        try:
+            return self._person_aware_showdown_milp(players, constraints)
+        except Exception as e:
+            print(f"❌ MILP optimization failed: {e}")
+            return self._person_aware_greedy_fallback(players, constraints)
+
+    def _person_aware_showdown_milp(self, players: List, constraints: Dict) -> 'OptimizationResult':
+        """MILP optimization that respects person constraints"""
+        import pulp
+
+        prob = pulp.LpProblem("DFS_Showdown_PersonAware", pulp.LpMaximize)
+
+        # Decision variables for each player slot
+        x = {}  # x[i] = 1 if player i is selected
+        for i in range(len(players)):
+            x[i] = pulp.LpVariable(f"x_{i}", cat='Binary')
+
+        # Objective: maximize points
+        prob += pulp.lpSum([
+            x[i] * players[i].enhanced_score
+            for i in range(len(players))
+        ])
+
+        # Constraint 1: Exactly 6 players selected
+        prob += pulp.lpSum(x.values()) == 6
+
+        # Constraint 2: Exactly 1 captain
+        captain_indices = []
+        for i, player in enumerate(players):
+            if 'CPT' in player.positions:
+                captain_indices.append(i)
+
+        prob += pulp.lpSum([x[i] for i in captain_indices]) == 1
+
+        # Constraint 3: Exactly 5 utility players
+        util_indices = []
+        for i, player in enumerate(players):
+            if 'UTIL' in player.positions and 'CPT' not in player.positions:
+                util_indices.append(i)
+
+        prob += pulp.lpSum([x[i] for i in util_indices]) == 5
+
+        # Constraint 4: CRITICAL - Each person can only be selected once
+        for person_indices in constraints['constraint_groups']:
+            prob += pulp.lpSum([x[i] for i in person_indices]) <= 1
+            # This is the key constraint that was missing!
+
+        # Constraint 5: Salary cap
+        prob += pulp.lpSum([
+            x[i] * players[i].salary
+            for i in range(len(players))
+        ]) <= self.salary_cap
+
+        # Solve
+        solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=15)
+        status = prob.solve(solver)
+
+        if status == pulp.LpStatusOptimal:
+            return self._extract_person_aware_solution(players, x, constraints)
+        else:
+            raise Exception(f"MILP failed with status: {pulp.LpStatus[status]}")
+
+    def _extract_person_aware_solution(self, players: List, x: Dict, constraints: Dict) -> 'OptimizationResult':
+        """Extract solution ensuring no person appears twice"""
+        selected_players = []
+        total_salary = 0
+        total_score = 0
+        positions_filled = {'CPT': 0, 'UTIL': 0}
+
+        selected_indices = []
+        for i, player in enumerate(players):
+            if x[i].value() == 1:
+                selected_indices.append(i)
+                selected_players.append(player)
+                total_salary += player.salary
+                total_score += player.enhanced_score
+
+                if 'CPT' in player.positions:
+                    positions_filled['CPT'] += 1
+                    print(f"✅ Captain: {player.name} ({player.team}) - ${player.salary:,}")
+                else:
+                    positions_filled['UTIL'] += 1
+                    print(f"✅ Utility: {player.name} ({player.team}) - ${player.salary:,}")
+
+        # VALIDATION: Check for person duplicates
+        selected_names = [p.name.lower() for p in selected_players]
+        unique_names = set(selected_names)
+
+        if len(selected_names) != len(unique_names):
+            print(f"❌ PERSON DUPLICATE DETECTED!")
+            for name in selected_names:
+                if selected_names.count(name) > 1:
+                    print(f"   Duplicate person: {name}")
+
+            from optimal_lineup_optimizer import OptimizationResult
+            return OptimizationResult(
+                lineup=[], total_score=0, total_salary=0,
+                positions_filled={}, optimization_status="Person duplicate detected"
+            )
+
+        # Show team distribution
+        team_counts = {}
+        for player in selected_players:
+            team_counts[player.team] = team_counts.get(player.team, 0) + 1
+        print(f"📊 Team distribution: {team_counts}")
+
+        # Final validation
+        if len(selected_players) != 6:
+            print(f"❌ Wrong lineup size: {len(selected_players)}")
+        elif positions_filled['CPT'] != 1:
+            print(f"❌ Wrong captain count: {positions_filled['CPT']}")
+        elif positions_filled['UTIL'] != 5:
+            print(f"❌ Wrong utility count: {positions_filled['UTIL']}")
+        else:
+            print(f"✅ Lineup validation passed")
+
+        from optimal_lineup_optimizer import OptimizationResult
+        return OptimizationResult(
+            lineup=selected_players,
+            total_score=total_score,
+            total_salary=total_salary,
+            positions_filled=positions_filled,
+            optimization_status="Optimal"
+        )
+
+    def _person_aware_greedy_fallback(self, players: List, constraints: Dict) -> 'OptimizationResult':
+        """Greedy fallback that respects person constraints"""
+        print("🔄 Using person-aware greedy fallback...")
+
+        # Create person lookup
+        person_to_players = {}
+        for i, player in enumerate(players):
+            name_key = player.name.lower()
+            if name_key not in person_to_players:
+                person_to_players[name_key] = []
+            person_to_players[name_key].append((i, player))
+
+        # For each person, pick their best version (captain vs utility)
+        best_options = []
+
+        for name, player_options in person_to_players.items():
+            if len(player_options) == 1:
+                # Only one version available
+                best_options.append(player_options[0])
+            else:
+                # Multiple versions - need to try both captain and utility versions
+                for idx, player in player_options:
+                    value = player.enhanced_score / (player.salary / 1000)
+                    best_options.append((idx, player, value))
+
+        # Sort by value
+        best_options.sort(key=lambda x: x[2] if len(x) > 2 else x[1].enhanced_score / (x[1].salary / 1000),
+                          reverse=True)
+
+        best_lineup = None
+        best_score = 0
+
+        # Try different combinations respecting person constraints
+        for attempt in range(50):  # Try 50 different combinations
+            lineup = []
+            used_persons = set()
+            remaining_salary = self.salary_cap
+            captain_selected = False
+
+            # Shuffle for variety
+            import random
+            random.shuffle(best_options)
+
+            for option in best_options:
+                if len(option) == 2:
+                    idx, player = option
+                    value = player.enhanced_score / (player.salary / 1000)
+                else:
+                    idx, player, value = option
+
+                person_name = player.name.lower()
+
+                # Skip if person already used
+                if person_name in used_persons:
+                    continue
+
+                # Skip if salary too high
+                if player.salary > remaining_salary:
+                    continue
+
+                # Check position requirements
+                can_add = False
+                if 'CPT' in player.positions and not captain_selected:
+                    can_add = True
+                    captain_selected = True
+                elif 'UTIL' in player.positions and 'CPT' not in player.positions and len(lineup) < 6:
+                    can_add = True
+
+                if can_add:
+                    lineup.append(player)
+                    used_persons.add(person_name)
+                    remaining_salary -= player.salary
+
+                    if len(lineup) == 6:
+                        break
+
+            # Check if valid lineup
+            if len(lineup) == 6 and captain_selected:
+                total_score = sum(p.enhanced_score for p in lineup)
+                if total_score > best_score:
+                    best_score = total_score
+                    best_lineup = lineup[:]
+
+        if best_lineup:
+            total_salary = sum(p.salary for p in best_lineup)
+
+            from optimal_lineup_optimizer import OptimizationResult
+            return OptimizationResult(
+                lineup=best_lineup, total_score=best_score, total_salary=total_salary,
+                positions_filled={'CPT': 1, 'UTIL': 5}, optimization_status="Greedy"
+            )
+        else:
+            from optimal_lineup_optimizer import OptimizationResult
+            return OptimizationResult(
+                lineup=[], total_score=0, total_salary=0,
+                positions_filled={}, optimization_status="Greedy failed"
+            )
 
     def get_cached_data(self, key: str, fetch_func, category: str = 'default'):
         """Use smart caching for any data fetch"""
@@ -1824,11 +2188,29 @@ class BulletproofDFSCore:
         # CRITICAL: Reset all confirmations first
         self.reset_all_confirmations()
 
-        if not self.confirmation_system:
+        # Check if confirmation system exists and is initialized
+        if not hasattr(self, 'confirmation_system') or self.confirmation_system is None:
             print("⚠️ Smart confirmation system not available")
-            return 0
+            print("   Attempting to initialize...")
 
-        # Update CSV players
+            # Try to initialize it now
+            if CONFIRMED_AVAILABLE:
+                try:
+                    from smart_confirmation_system import SmartConfirmationSystem
+                    self.confirmation_system = SmartConfirmationSystem(
+                        csv_players=self.players,
+                        verbose=True
+                    )
+                    print("✅ Smart Confirmation System initialized successfully")
+                except Exception as e:
+                    print(f"❌ Failed to initialize confirmation system: {e}")
+                    self.confirmation_system = None
+                    return 0
+            else:
+                print("❌ SmartConfirmationSystem module not available")
+                return 0
+
+        # Update CSV players in confirmation system
         if hasattr(self.confirmation_system, 'csv_players'):
             self.confirmation_system.csv_players = self.players
             self.confirmation_system.csv_teams = set(p.team for p in self.players if p.team)
@@ -1895,102 +2277,62 @@ class BulletproofDFSCore:
             print("⚠️ No confirmed players to enrich")
             return
 
+        # Track which enrichments have been applied to avoid duplicates
+        self._enrichment_applied = {
+            'vegas': False,
+            'statcast': False,
+            'park_factors': False,
+            'recent_form': False,
+            'batting_order': False,
+            'statistical_analysis': False
+        }
+
         # Note: DFF data was already applied in detect_confirmed_players()
 
         # 1. Vegas Lines
-        if self.vegas_lines:
+        if self.vegas_lines and not self._enrichment_applied['vegas']:
             print("💰 Enriching with Vegas lines...")
             self.enrich_with_vegas_lines()
+            self._enrichment_applied['vegas'] = True
 
         # 2. Statcast Data (this can take a while)
-        if self.statcast_fetcher:
+        if self.statcast_fetcher and not self._enrichment_applied['statcast']:
             print("📊 Enriching with Statcast data...")
             self.enrich_with_statcast_priority()
+            self._enrichment_applied['statcast'] = True
 
         # 3. Park Factors
-        print("🏟️ Applying park factors...")
-        self.apply_park_factors()
+        if not self._enrichment_applied['park_factors']:
+            print("🏟️ Applying park factors...")
+            self.apply_park_factors()
+            self._enrichment_applied['park_factors'] = True
 
-        # Recent Form (REAL game logs)
-        if REAL_DATA_SOURCES.get('recent_form', False):
-            print("✅ Applying recent form (real game logs)...")
-            try:
-                from real_recent_form import RealRecentFormAnalyzer
-                form_analyzer = RealRecentFormAnalyzer(days_back=7)
-                
-                # Only analyze confirmed players to save API calls
-                players_to_analyze = truly_confirmed[:30]  # Limit to 30
-                
-                if players_to_analyze:
-                    form_analyzer.enrich_players_with_form(players_to_analyze)
-                    if 'data_sources_used' in locals():
-                        data_sources_used.append("Recent Form")
-                    
-                    # Report hot/cold players
-                    hot_players = [p for p in players_to_analyze if hasattr(p, 'hot_streak') and p.hot_streak]
-                    cold_players = [p for p in players_to_analyze if hasattr(p, 'form_rating') and p.form_rating < 0.9]
-                    
-                    if hot_players:
-                        print(f"   🔥 {len(hot_players)} HOT players identified")
-                    if cold_players:
-                        print(f"   ❄️ {len(cold_players)} COLD players identified")
-                else:
-                    print("   ⚠️ No confirmed players to analyze")
-                    
-            except Exception as e:
-                print(f"⚠️ Recent form failed: {e}")
+        # 4. Recent Form - UPDATED METHOD
+        if not self._enrichment_applied['recent_form']:
+            print("📈 Analyzing recent form for ALL confirmed players...")
+            self._apply_recent_form_all_players()
+            self._enrichment_applied['recent_form'] = True
 
-
-        # Recent Form (REAL game logs)
-        if REAL_DATA_SOURCES.get('recent_form', False):
-            print("✅ Applying recent form (real game logs)...")
-            try:
-                from real_recent_form import RealRecentFormAnalyzer
-                form_analyzer = RealRecentFormAnalyzer(days_back=7)
-                
-                # Only analyze confirmed players to save API calls
-                players_to_analyze = truly_confirmed[:30]  # Limit to 30
-                
-                if players_to_analyze:
-                    form_analyzer.enrich_players_with_form(players_to_analyze)
-                    if 'data_sources_used' in locals():
-                        data_sources_used.append("Recent Form")
-                    
-                    # Report hot/cold players
-                    hot_players = [p for p in players_to_analyze if hasattr(p, 'hot_streak') and p.hot_streak]
-                    cold_players = [p for p in players_to_analyze if hasattr(p, 'form_rating') and p.form_rating < 0.9]
-                    
-                    if hot_players:
-                        print(f"   🔥 {len(hot_players)} HOT players identified")
-                    if cold_players:
-                        print(f"   ❄️ {len(cold_players)} COLD players identified")
-                else:
-                    print("   ⚠️ No confirmed players to analyze")
-                    
-            except Exception as e:
-                print(f"⚠️ Recent form failed: {e}")
-
-
-        # 4. Batting Order (if available)
-        if hasattr(self, 'enrich_with_batting_order'):
+        # 5. Batting Order (if available)
+        if hasattr(self, 'enrich_with_batting_order') and not self._enrichment_applied['batting_order']:
             print("🔢 Enriching with batting order...")
             self.enrich_with_batting_order()
-
-        # 5. Recent Form (if available)
-        if hasattr(self, 'enrich_with_recent_form'):
-            print("📈 Analyzing recent form...")
-            self.enrich_with_recent_form()
+            self._enrichment_applied['batting_order'] = True
 
         # 6. Statistical Analysis (combines all data sources)
-        print("🔬 Applying enhanced statistical analysis...")
-        self._apply_comprehensive_statistical_analysis(truly_confirmed)
+        if not self._enrichment_applied['statistical_analysis']:
+            print("🔬 Applying enhanced statistical analysis...")
+            self._apply_comprehensive_statistical_analysis(truly_confirmed)
+            self._enrichment_applied['statistical_analysis'] = True
 
         # Show summary of enrichments
         enrichment_summary = {
             'DFF': sum(1 for p in truly_confirmed if hasattr(p, 'dff_data') and p.dff_data),
             'Vegas': sum(1 for p in truly_confirmed if hasattr(p, 'vegas_data') and p.vegas_data),
             'Statcast': sum(1 for p in truly_confirmed if hasattr(p, 'statcast_data') and p.statcast_data),
-            'Batting Order': sum(1 for p in truly_confirmed if hasattr(p, 'batting_order') and p.batting_order)
+            'Batting Order': sum(1 for p in truly_confirmed if hasattr(p, 'batting_order') and p.batting_order),
+            'Recent Form': sum(
+                1 for p in truly_confirmed if hasattr(p, '_recent_performance') and p._recent_performance)
         }
 
         print(f"\n📊 Enrichment Summary:")
@@ -1998,6 +2340,139 @@ class BulletproofDFSCore:
             print(f"   {source}: {count}/{len(truly_confirmed)} players")
 
         print("✅ All enrichments applied")
+
+        def _apply_recent_form_all_players(self):
+            """Apply recent form analysis to ALL confirmed players without limits"""
+            if REAL_DATA_SOURCES.get('recent_form', False):
+                try:
+                    from real_recent_form import RealRecentFormAnalyzer
+                    form_analyzer = RealRecentFormAnalyzer(days_back=7)
+
+                    # Get ALL confirmed players - NO LIMIT!
+                    players_to_analyze = [p for p in self.players if p.is_confirmed]
+
+                    if players_to_analyze:
+                        print(f"   Analyzing {len(players_to_analyze)} players (ALL confirmed)")
+
+                        # Process in batches for better progress tracking
+                        batch_size = 25
+                        total_hot = 0
+                        total_cold = 0
+
+                        for i in range(0, len(players_to_analyze), batch_size):
+                            batch_end = min(i + batch_size, len(players_to_analyze))
+                            batch = players_to_analyze[i:batch_end]
+
+                            print(
+                                f"   Processing batch {i // batch_size + 1}/{(len(players_to_analyze) + batch_size - 1) // batch_size} (players {i + 1}-{batch_end})")
+
+                            form_analyzer.enrich_players_with_form(batch)
+
+                            # Count hot/cold in this batch
+                            batch_hot = sum(1 for p in batch if hasattr(p, 'hot_streak') and p.hot_streak)
+                            batch_cold = sum(1 for p in batch if hasattr(p, 'form_rating') and p.form_rating < 0.9)
+
+                            total_hot += batch_hot
+                            total_cold += batch_cold
+
+                        # Final report
+                        if total_hot:
+                            print(f"   🔥 {total_hot} HOT players identified")
+                        if total_cold:
+                            print(f"   ❄️ {total_cold} COLD players identified")
+
+                    else:
+                        print("   ⚠️ No confirmed players to analyze")
+
+                except Exception as e:
+                    print(f"⚠️ Recent form failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+    def _apply_recent_form_all_players(self):
+        """Apply recent form analysis to ALL confirmed players without limits"""
+        if REAL_DATA_SOURCES.get('recent_form', False):
+            try:
+                from real_recent_form import RealRecentFormAnalyzer
+                form_analyzer = RealRecentFormAnalyzer(days_back=7)
+
+                # Get ALL confirmed players - NO LIMIT!
+                players_to_analyze = [p for p in self.players if p.is_confirmed]
+
+                if players_to_analyze:
+                    print(f"   Analyzing {len(players_to_analyze)} players (ALL confirmed)")
+
+                    # Process in batches for better progress tracking
+                    batch_size = self.batch_size if hasattr(self, 'batch_size') else 25
+                    total_hot = 0
+                    total_cold = 0
+                    total_analyzed = 0
+
+                    # Import progress tracker if available
+                    try:
+                        from progress_tracker import ProgressTracker
+                        tracker = ProgressTracker(
+                            len(players_to_analyze),
+                            "Analyzing recent form",
+                            show_eta=True
+                        )
+                    except:
+                        tracker = None
+
+                    for i in range(0, len(players_to_analyze), batch_size):
+                        batch_end = min(i + batch_size, len(players_to_analyze))
+                        batch = players_to_analyze[i:batch_end]
+
+                        if tracker is None:
+                            print(
+                                f"   Processing batch {i // batch_size + 1}/{(len(players_to_analyze) + batch_size - 1) // batch_size} (players {i + 1}-{batch_end})")
+
+                        # Analyze batch
+                        form_analyzer.enrich_players_with_form(batch)
+
+                        # Update progress tracker
+                        if tracker:
+                            for player in batch:
+                                tracker.update(1, player.name)
+
+                        # Count hot/cold in this batch
+                        batch_hot = sum(1 for p in batch if hasattr(p, 'hot_streak') and p.hot_streak)
+                        batch_cold = sum(1 for p in batch if hasattr(p, 'form_rating') and p.form_rating < 0.9)
+                        batch_analyzed = sum(
+                            1 for p in batch if hasattr(p, '_recent_performance') and p._recent_performance)
+
+                        total_hot += batch_hot
+                        total_cold += batch_cold
+                        total_analyzed += batch_analyzed
+
+                    # Finish progress tracking
+                    if tracker:
+                        tracker.finish()
+
+                    # Final report
+                    print(f"   ✅ Analyzed {total_analyzed}/{len(players_to_analyze)} players successfully")
+                    if total_hot:
+                        print(f"   🔥 {total_hot} HOT players identified")
+                    if total_cold:
+                        print(f"   ❄️ {total_cold} COLD players identified")
+
+                else:
+                    print("   ⚠️ No confirmed players to analyze")
+
+            except ImportError as e:
+                print(f"⚠️ Recent form module not available: {e}")
+                # Try the basic form analyzer if available
+                if hasattr(self, 'form_analyzer') and self.form_analyzer:
+                    print("   Using basic form analyzer instead...")
+                    eligible = [p for p in self.players if p.is_confirmed]
+                    if eligible:
+                        self.form_analyzer.enrich_players_with_form(eligible)
+                        print(f"   ✅ Basic form analysis complete")
+
+            except Exception as e:
+                print(f"⚠️ Recent form analysis failed: {e}")
+                import traceback
+                traceback.print_exc()
 
     def _validate_confirmations(self):
         """Validate that ONLY appropriate players are confirmed"""
@@ -2035,6 +2510,45 @@ class BulletproofDFSCore:
         return can_fill
 
     # Add this method to your BulletproofDFSCore class to fix lineup display:
+
+    # In your bulletproof_dfs_core.py, before calling optimizer
+    def pre_optimization_check(self):
+        """Run checks before optimization"""
+        print("\n🔍 PRE-OPTIMIZATION CHECKS")
+        print("=" * 60)
+
+        # Check for duplicates
+        self.check_for_duplicate_players()
+
+        # Check team distribution
+        team_counts = {}
+        for player in self.players:
+            team = player.team if hasattr(player, 'team') else 'NO_TEAM'
+            team_counts[team] = team_counts.get(team, 0) + 1
+
+        print(f"\n📊 Team distribution in player pool:")
+        for team, count in sorted(team_counts.items()):
+            print(f"   {team}: {count} players")
+
+        # Check eligible players
+        eligible = self.get_eligible_players_by_mode()
+        print(f"\n✅ Eligible players: {len(eligible)}")
+
+        # Check their teams
+        eligible_teams = {}
+        for player in eligible:
+            team = player.team if hasattr(player, 'team') else 'NO_TEAM'
+            if team not in eligible_teams:
+                eligible_teams[team] = []
+            eligible_teams[team].append(player.name)
+
+        print(f"\n📊 Eligible players by team:")
+        for team, players in sorted(eligible_teams.items()):
+            print(f"   {team}: {len(players)} players")
+            for p in players[:3]:
+                print(f"      - {p}")
+            if len(players) > 3:
+                print(f"      ... and {len(players) - 3} more")
 
     def optimize_lineup_with_mode(self) -> Tuple[List[AdvancedPlayer], float]:
         """
@@ -2598,6 +3112,197 @@ class BulletproofDFSCore:
 
         return eligible
 
+    def debug_showdown_csv_structure(self):
+        """Debug the actual structure of your showdown CSV"""
+        print("\n🔍 DETAILED SHOWDOWN CSV ANALYSIS")
+        print("=" * 80)
+
+        eligible = self.get_eligible_players_by_mode()
+
+        print(f"Total eligible players: {len(eligible)}")
+
+        # Group by name and analyze the differences
+        name_groups = {}
+        for player in eligible:
+            name_key = player.name.lower().strip()
+            if name_key not in name_groups:
+                name_groups[name_key] = []
+            name_groups[name_key].append(player)
+
+        print(f"Unique names: {len(name_groups)}")
+
+        # Analyze the first few pairs in detail
+        print(f"\n📋 DETAILED ANALYSIS (first 5 players):")
+
+        pair_count = 0
+        for name, player_list in name_groups.items():
+            if len(player_list) == 2 and pair_count < 5:
+                pair_count += 1
+                print(f"\n{pair_count}. {name.title()}:")
+
+                for i, player in enumerate(player_list):
+                    print(f"   Version {i + 1}:")
+                    print(f"      ID: {player.id}")
+                    print(f"      Primary Position: '{player.primary_position}'")
+                    print(f"      All Positions: {player.positions}")
+                    print(f"      Salary: ${player.salary:,}")
+                    print(f"      Enhanced Score: {player.enhanced_score:.2f}")
+
+        # Find the pattern for captain vs utility
+        print(f"\n🎯 IDENTIFYING CAPTAIN vs UTILITY PATTERN:")
+
+        salary_patterns = {}
+        for name, player_list in name_groups.items():
+            if len(player_list) == 2:
+                salaries = sorted([p.salary for p in player_list])
+                lower_sal, higher_sal = salaries
+                ratio = higher_sal / lower_sal if lower_sal > 0 else 0
+
+                salary_patterns[name] = {
+                    'lower_salary': lower_sal,
+                    'higher_salary': higher_sal,
+                    'ratio': ratio,
+                    'players': player_list
+                }
+
+        if salary_patterns:
+            # Check if there's a consistent 1.5x pattern
+            ratios = [data['ratio'] for data in salary_patterns.values()]
+            avg_ratio = sum(ratios) / len(ratios)
+
+            print(f"   Average salary ratio: {avg_ratio:.2f}")
+
+            if 1.4 <= avg_ratio <= 1.6:
+                print(f"   ✅ Found 1.5x captain pattern!")
+                print(f"   📝 RULE: Higher salary = Captain, Lower salary = Utility")
+            else:
+                print(f"   ❓ Unusual ratio pattern detected")
+
+            # Show a few examples
+            print(f"\n   Examples:")
+            count = 0
+            for name, data in salary_patterns.items():
+                if count < 3:
+                    print(
+                        f"   {name}: ${data['lower_salary']:,} vs ${data['higher_salary']:,} (ratio: {data['ratio']:.2f})")
+                    count += 1
+
+        return {
+            'eligible_players': eligible,
+            'name_groups': name_groups,
+            'salary_patterns': salary_patterns if 'salary_patterns' in locals() else {}
+        }
+
+    def optimize_showdown_with_correct_constraints(self, players: List):
+        """Fixed showdown optimization with correct constraints"""
+        print("\n🎰 FIXED SHOWDOWN OPTIMIZATION")
+        print("=" * 50)
+
+        if len(players) < 6:
+            from optimal_lineup_optimizer import OptimizationResult
+            return OptimizationResult(
+                lineup=[], total_score=0, total_salary=0,
+                positions_filled={}, optimization_status="Not enough players"
+            )
+
+        # Debug the structure first
+        structure = self.debug_showdown_csv_structure()
+
+        # Simple greedy approach for now
+        return self._simple_showdown_greedy(players, structure)
+
+    def _simple_showdown_greedy(self, players: List, structure: dict):
+        """Simple greedy showdown that avoids person duplicates"""
+        print("\n🔄 Simple showdown greedy (person-aware)")
+
+        name_groups = structure.get('name_groups', {})
+
+        # Create person-aware player pool
+        person_options = {}  # name -> [captain_option, utility_option]
+
+        for name, player_list in name_groups.items():
+            if len(player_list) == 2:
+                # Sort by salary - higher is captain
+                sorted_players = sorted(player_list, key=lambda p: p.salary, reverse=True)
+                person_options[name] = {
+                    'captain': sorted_players[0],  # Higher salary
+                    'utility': sorted_players[1]  # Lower salary
+                }
+            elif len(player_list) == 1:
+                # Only one version - can be either
+                person_options[name] = {
+                    'captain': player_list[0],
+                    'utility': player_list[0]
+                }
+
+        print(f"Found {len(person_options)} unique people")
+
+        # Try to build lineup
+        best_lineup = None
+        best_score = 0
+
+        # Try each person as captain
+        for captain_name, options in person_options.items():
+            captain = options['captain']
+
+            if captain.salary > self.salary_cap:
+                continue
+
+            lineup = [captain]
+            captain.assigned_position = 'CPT'
+            used_names = {captain_name}
+            remaining_salary = self.salary_cap - captain.salary
+
+            # Get utility options (excluding captain)
+            utility_candidates = []
+            for name, opts in person_options.items():
+                if name != captain_name:  # Different person
+                    util_player = opts['utility']
+                    if util_player.salary <= remaining_salary:
+                        value = util_player.enhanced_score / (util_player.salary / 1000)
+                        utility_candidates.append((value, util_player, name))
+
+            # Sort by value and pick top 5
+            utility_candidates.sort(reverse=True)
+
+            for value, util_player, name in utility_candidates[:5]:
+                if len(lineup) < 6:
+                    util_copy = self._copy_player(util_player)
+                    util_copy.assigned_position = 'UTIL'
+                    lineup.append(util_copy)
+                    remaining_salary -= util_player.salary
+
+            if len(lineup) == 6:
+                total_score = sum(p.enhanced_score for p in lineup)
+                if total_score > best_score:
+                    best_score = total_score
+                    best_lineup = lineup[:]
+
+                    print(f"✅ Found lineup with {captain_name} as captain: {total_score:.2f} points")
+
+        if best_lineup:
+            total_salary = sum(p.salary for p in best_lineup)
+
+            print(f"\n✅ BEST LINEUP FOUND:")
+            for p in best_lineup:
+                print(f"   {p.assigned_position}: {p.name} - ${p.salary:,}")
+
+            from optimal_lineup_optimizer import OptimizationResult
+            return OptimizationResult(
+                lineup=best_lineup,
+                total_score=best_score,
+                total_salary=total_salary,
+                positions_filled={'CPT': 1, 'UTIL': 5},
+                optimization_status="Optimal"
+            )
+        else:
+            print("❌ No valid lineup found")
+            from optimal_lineup_optimizer import OptimizationResult
+            return OptimizationResult(
+                lineup=[], total_score=0, total_salary=0,
+                positions_filled={}, optimization_status="No valid lineup"
+            )
+
 
     def _apply_comprehensive_statistical_analysis(self, players):
         """ENHANCED: Apply comprehensive statistical analysis with PRIORITY 1 improvements"""
@@ -2696,7 +3401,7 @@ class BulletproofDFSCore:
 
         # Run optimization based on contest type
         if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
-            result = optimizer.optimize_showdown_lineup(eligible_players)
+            result = self.optimize_showdown_with_correct_constraints(eligible_players)  # NEW METHOD
         else:
             # Don't use confirmations for artificial boosts
             result = optimizer.optimize_classic_lineup(eligible_players, use_confirmations=False)
@@ -3165,4 +3870,444 @@ if __name__ == "__main__":
             smart_cache.clear(category)
             print(f"🧹 Cleared cache: {category or 'all'}")
 
+# !/usr/bin/env python3
+"""
+SHOWDOWN CSV STRUCTURE DEBUGGER
+==============================
+Let's understand exactly how your showdown CSV is structured
+"""
 
+
+
+
+
+def create_correct_showdown_constraints(self, players: List) -> Dict:
+    """Create showdown constraints based on actual CSV structure"""
+    print("\n🔧 CREATING CORRECT SHOWDOWN CONSTRAINTS")
+    print("=" * 50)
+
+    # Group players by name
+    name_groups = {}
+    for i, player in enumerate(players):
+        name_key = player.name.lower().strip()
+        if name_key not in name_groups:
+            name_groups[name_key] = []
+        name_groups[name_key].append((i, player))
+
+    # Separate captain and utility versions based on salary
+    captain_indices = []
+    utility_indices = []
+    person_constraints = []
+
+    for name, player_pairs in name_groups.items():
+        if len(player_pairs) == 2:
+            # Two versions - determine which is captain (higher salary)
+            idx1, player1 = player_pairs[0]
+            idx2, player2 = player_pairs[1]
+
+            if player1.salary > player2.salary:
+                captain_indices.append(idx1)
+                utility_indices.append(idx2)
+            else:
+                captain_indices.append(idx2)
+                utility_indices.append(idx1)
+
+            # Person constraint - can't select both
+            person_constraints.append([idx1, idx2])
+
+        elif len(player_pairs) == 1:
+            # Only one version available
+            idx, player = player_pairs[0]
+            # Determine if captain or utility based on some logic
+            # For now, add to both pools (optimizer will choose)
+            captain_indices.append(idx)
+            utility_indices.append(idx)
+
+    print(f"   Captain options: {len(captain_indices)}")
+    print(f"   Utility options: {len(utility_indices)}")
+    print(f"   Person constraints: {len(person_constraints)}")
+
+    return {
+        'captain_indices': captain_indices,
+        'utility_indices': utility_indices,
+        'person_constraints': person_constraints,
+        'name_groups': name_groups
+    }
+
+
+def optimize_showdown_with_correct_constraints(self, players: List) -> 'OptimizationResult':
+    """Fixed showdown optimization with correct constraints"""
+    print("\n🎰 FIXED SHOWDOWN OPTIMIZATION")
+    print("=" * 50)
+
+    if len(players) < 6:
+        return self._create_failed_result("Not enough players")
+
+    # Debug the structure first
+    structure = self.debug_showdown_csv_structure()
+
+    # Create correct constraints
+    constraints = self.create_correct_showdown_constraints(players)
+
+    try:
+        return self._milp_with_correct_constraints(players, constraints)
+    except Exception as e:
+        print(f"❌ MILP failed: {e}")
+        return self._greedy_with_correct_constraints(players, constraints)
+
+
+def _milp_with_correct_constraints(self, players: List, constraints: Dict) -> 'OptimizationResult':
+    """MILP optimization with corrected constraints"""
+    import pulp
+
+    prob = pulp.LpProblem("Showdown_Fixed", pulp.LpMaximize)
+
+    # Variables
+    x = {}
+    for i in range(len(players)):
+        x[i] = pulp.LpVariable(f"x_{i}", cat='Binary')
+
+    # Objective
+    prob += pulp.lpSum([x[i] * players[i].enhanced_score for i in range(len(players))])
+
+    # Constraint 1: Exactly 6 players total
+    prob += pulp.lpSum(x.values()) == 6
+
+    # Constraint 2: Exactly 1 captain (from captain indices)
+    if constraints['captain_indices']:
+        prob += pulp.lpSum([x[i] for i in constraints['captain_indices']]) == 1
+
+    # Constraint 3: Exactly 5 utility (from utility indices)
+    if constraints['utility_indices']:
+        prob += pulp.lpSum([x[i] for i in constraints['utility_indices']]) == 5
+
+    # Constraint 4: Person constraints (can't select same person twice)
+    for person_group in constraints['person_constraints']:
+        prob += pulp.lpSum([x[i] for i in person_group]) <= 1
+
+    # Constraint 5: Salary cap
+    prob += pulp.lpSum([x[i] * players[i].salary for i in range(len(players))]) <= self.salary_cap
+
+    # Solve
+    solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=15)
+    status = prob.solve(solver)
+
+    if status == pulp.LpStatusOptimal:
+        return self._extract_fixed_solution(players, x, constraints)
+    else:
+        raise Exception(f"MILP failed: {pulp.LpStatus[status]}")
+
+
+def _extract_fixed_solution(self, players: List, x: Dict, constraints: Dict) -> 'OptimizationResult':
+    """Extract the solution with proper validation"""
+    selected_players = []
+    total_salary = 0
+    total_score = 0
+
+    captain_count = 0
+    utility_count = 0
+
+    for i, player in enumerate(players):
+        if x[i].value() == 1:
+            selected_players.append(player)
+            total_salary += player.salary
+            total_score += player.enhanced_score
+
+            # Determine if this is captain or utility based on constraints
+            if i in constraints['captain_indices']:
+                # Check if this was selected as captain
+                other_captains_selected = sum(1 for j in constraints['captain_indices'] if j != i and x[j].value() == 1)
+                if other_captains_selected == 0:  # This is the only captain
+                    captain_count += 1
+                    player.assigned_position = 'CPT'
+                    print(f"✅ Captain: {player.name} ({player.team}) - ${player.salary:,}")
+                else:
+                    utility_count += 1
+                    player.assigned_position = 'UTIL'
+                    print(f"✅ Utility: {player.name} ({player.team}) - ${player.salary:,}")
+            else:
+                utility_count += 1
+                player.assigned_position = 'UTIL'
+                print(f"✅ Utility: {player.name} ({player.team}) - ${player.salary:,}")
+
+    # Validate no person duplicates
+    names = [p.name.lower() for p in selected_players]
+    if len(names) != len(set(names)):
+        print("❌ Person duplicate detected!")
+        from optimal_lineup_optimizer import OptimizationResult
+        return OptimizationResult(
+            lineup=[], total_score=0, total_salary=0,
+            positions_filled={}, optimization_status="Person duplicate"
+        )
+
+    from optimal_lineup_optimizer import OptimizationResult
+    return OptimizationResult(
+        lineup=selected_players,
+        total_score=total_score,
+        total_salary=total_salary,
+        positions_filled={'CPT': captain_count, 'UTIL': utility_count},
+        optimization_status="Optimal"
+    )
+
+
+def _greedy_with_correct_constraints(self, players: List, constraints: Dict) -> 'OptimizationResult':
+    """Greedy fallback with correct constraints"""
+    print("🔄 Using greedy fallback with correct constraints...")
+
+    # Simple greedy: pick best captain, then best 5 utilities without conflicts
+    captain_options = [(i, players[i]) for i in constraints['captain_indices']]
+    utility_options = [(i, players[i]) for i in constraints['utility_indices']]
+
+    # Sort by value
+    captain_options.sort(key=lambda x: x[1].enhanced_score / (x[1].salary / 1000), reverse=True)
+    utility_options.sort(key=lambda x: x[1].enhanced_score / (x[1].salary / 1000), reverse=True)
+
+    best_lineup = None
+    best_score = 0
+
+    # Try each captain option
+    for cap_idx, captain in captain_options:
+        if captain.salary > self.salary_cap:
+            continue
+
+        lineup = [captain]
+        used_persons = {captain.name.lower()}
+        remaining_salary = self.salary_cap - captain.salary
+
+        # Find 5 best utilities that don't conflict
+        for util_idx, utility in utility_options:
+            if len(lineup) >= 6:
+                break
+
+            if utility.name.lower() in used_persons:
+                continue
+
+            if utility.salary > remaining_salary:
+                continue
+
+            lineup.append(utility)
+            used_persons.add(utility.name.lower())
+            remaining_salary -= utility.salary
+
+        if len(lineup) == 6:
+            total_score = sum(p.enhanced_score for p in lineup)
+            if total_score > best_score:
+                best_score = total_score
+                best_lineup = lineup[:]
+
+    if best_lineup:
+        # Set positions
+        best_lineup[0].assigned_position = 'CPT'
+        for p in best_lineup[1:]:
+            p.assigned_position = 'UTIL'
+
+        total_salary = sum(p.salary for p in best_lineup)
+
+        from optimal_lineup_optimizer import OptimizationResult
+        return OptimizationResult(
+            lineup=best_lineup,
+            total_score=best_score,
+            total_salary=total_salary,
+            positions_filled={'CPT': 1, 'UTIL': 5},
+            optimization_status="Greedy"
+        )
+
+    from optimal_lineup_optimizer import OptimizationResult
+    return OptimizationResult(
+        lineup=[], total_score=0, total_salary=0,
+        positions_filled={}, optimization_status="Greedy failed"
+    )
+
+
+def debug_showdown_csv_structure(self):
+    """Debug the actual structure of your showdown CSV"""
+    print("\n🔍 DETAILED SHOWDOWN CSV ANALYSIS")
+    print("=" * 80)
+
+    eligible = self.get_eligible_players_by_mode()
+
+    print(f"Total eligible players: {len(eligible)}")
+
+    # Group by name and analyze the differences
+    name_groups = {}
+    for player in eligible:
+        name_key = player.name.lower().strip()
+        if name_key not in name_groups:
+            name_groups[name_key] = []
+        name_groups[name_key].append(player)
+
+    print(f"Unique names: {len(name_groups)}")
+
+    # Analyze the first few pairs in detail
+    print(f"\n📋 DETAILED ANALYSIS (first 5 players):")
+
+    pair_count = 0
+    for name, player_list in name_groups.items():
+        if len(player_list) == 2 and pair_count < 5:
+            pair_count += 1
+            print(f"\n{pair_count}. {name.title()}:")
+
+            for i, player in enumerate(player_list):
+                print(f"   Version {i + 1}:")
+                print(f"      ID: {player.id}")
+                print(f"      Primary Position: '{player.primary_position}'")
+                print(f"      All Positions: {player.positions}")
+                print(f"      Salary: ${player.salary:,}")
+                print(f"      Enhanced Score: {player.enhanced_score:.2f}")
+
+    # Find the pattern for captain vs utility
+    print(f"\n🎯 IDENTIFYING CAPTAIN vs UTILITY PATTERN:")
+
+    salary_patterns = {}
+    for name, player_list in name_groups.items():
+        if len(player_list) == 2:
+            salaries = sorted([p.salary for p in player_list])
+            lower_sal, higher_sal = salaries
+            ratio = higher_sal / lower_sal if lower_sal > 0 else 0
+
+            salary_patterns[name] = {
+                'lower_salary': lower_sal,
+                'higher_salary': higher_sal,
+                'ratio': ratio,
+                'players': player_list
+            }
+
+    if salary_patterns:
+        # Check if there's a consistent 1.5x pattern
+        ratios = [data['ratio'] for data in salary_patterns.values()]
+        avg_ratio = sum(ratios) / len(ratios)
+
+        print(f"   Average salary ratio: {avg_ratio:.2f}")
+
+        if 1.4 <= avg_ratio <= 1.6:
+            print(f"   ✅ Found 1.5x captain pattern!")
+            print(f"   📝 RULE: Higher salary = Captain, Lower salary = Utility")
+        else:
+            print(f"   ❓ Unusual ratio pattern detected")
+
+        # Show a few examples
+        print(f"\n   Examples:")
+        count = 0
+        for name, data in salary_patterns.items():
+            if count < 3:
+                print(
+                    f"   {name}: ${data['lower_salary']:,} vs ${data['higher_salary']:,} (ratio: {data['ratio']:.2f})")
+                count += 1
+
+    return {
+        'eligible_players': eligible,
+        'name_groups': name_groups,
+        'salary_patterns': salary_patterns if 'salary_patterns' in locals() else {}
+    }
+
+
+def optimize_showdown_with_correct_constraints(self, players: List):
+    """Fixed showdown optimization with correct constraints"""
+    print("\n🎰 FIXED SHOWDOWN OPTIMIZATION")
+    print("=" * 50)
+
+    if len(players) < 6:
+        from optimal_lineup_optimizer import OptimizationResult
+        return OptimizationResult(
+            lineup=[], total_score=0, total_salary=0,
+            positions_filled={}, optimization_status="Not enough players"
+        )
+
+    # Debug the structure first
+    structure = self.debug_showdown_csv_structure()
+
+    # Simple greedy approach for now
+    return self._simple_showdown_greedy(players, structure)
+
+
+def _simple_showdown_greedy(self, players: List, structure: dict):
+    """Simple greedy showdown that avoids person duplicates"""
+    print("\n🔄 Simple showdown greedy (person-aware)")
+
+    name_groups = structure.get('name_groups', {})
+
+    # Create person-aware player pool
+    person_options = {}  # name -> [captain_option, utility_option]
+
+    for name, player_list in name_groups.items():
+        if len(player_list) == 2:
+            # Sort by salary - higher is captain
+            sorted_players = sorted(player_list, key=lambda p: p.salary, reverse=True)
+            person_options[name] = {
+                'captain': sorted_players[0],  # Higher salary
+                'utility': sorted_players[1]  # Lower salary
+            }
+        elif len(player_list) == 1:
+            # Only one version - can be either
+            person_options[name] = {
+                'captain': player_list[0],
+                'utility': player_list[0]
+            }
+
+    print(f"Found {len(person_options)} unique people")
+
+    # Try to build lineup
+    best_lineup = None
+    best_score = 0
+
+    # Try each person as captain
+    for captain_name, options in person_options.items():
+        captain = options['captain']
+
+        if captain.salary > self.salary_cap:
+            continue
+
+        lineup = [captain]
+        captain.assigned_position = 'CPT'
+        used_names = {captain_name}
+        remaining_salary = self.salary_cap - captain.salary
+
+        # Get utility options (excluding captain)
+        utility_candidates = []
+        for name, opts in person_options.items():
+            if name != captain_name:  # Different person
+                util_player = opts['utility']
+                if util_player.salary <= remaining_salary:
+                    value = util_player.enhanced_score / (util_player.salary / 1000)
+                    utility_candidates.append((value, util_player, name))
+
+        # Sort by value and pick top 5
+        utility_candidates.sort(reverse=True)
+
+        for value, util_player, name in utility_candidates[:5]:
+            if len(lineup) < 6:
+                util_copy = self._copy_player(util_player)
+                util_copy.assigned_position = 'UTIL'
+                lineup.append(util_copy)
+                remaining_salary -= util_player.salary
+
+        if len(lineup) == 6:
+            total_score = sum(p.enhanced_score for p in lineup)
+            if total_score > best_score:
+                best_score = total_score
+                best_lineup = lineup[:]
+
+                print(f"✅ Found lineup with {captain_name} as captain: {total_score:.2f} points")
+
+    if best_lineup:
+        total_salary = sum(p.salary for p in best_lineup)
+
+        print(f"\n✅ BEST LINEUP FOUND:")
+        for p in best_lineup:
+            print(f"   {p.assigned_position}: {p.name} - ${p.salary:,}")
+
+        from optimal_lineup_optimizer import OptimizationResult
+        return OptimizationResult(
+            lineup=best_lineup,
+            total_score=best_score,
+            total_salary=total_salary,
+            positions_filled={'CPT': 1, 'UTIL': 5},
+            optimization_status="Optimal"
+        )
+    else:
+        print("❌ No valid lineup found")
+        from optimal_lineup_optimizer import OptimizationResult
+        return OptimizationResult(
+            lineup=[], total_score=0, total_salary=0,
+            positions_filled={}, optimization_status="No valid lineup"
+        )
