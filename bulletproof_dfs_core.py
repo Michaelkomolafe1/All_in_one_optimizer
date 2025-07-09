@@ -1,25 +1,11 @@
 #!/usr/bin/env python3
 """
-BULLETPROOF DFS CORE - COMPLETE WORKING VERSION WITH ENHANCED PITCHER DETECTION
-==============================================================================
-✅ All missing methods included
-✅ Real player name matching
-✅ Manual-only mode working
-✅ Enhanced pitcher detection integrated
-✅ Comprehensive validation
-✅ Priority 1 enhancements included
+BULLETPROOF DFS CORE - CLEANED AND IMPROVED VERSION
+===================================================
+Complete working version with enhanced pitcher detection,
+proper error handling, and optimized data pipeline.
 """
-#!/usr/bin/env python3
-"""
-BULLETPROOF DFS CORE - COMPLETE WORKING VERSION WITH ENHANCED PITCHER DETECTION
-==============================================================================
-✅ All missing methods included
-✅ Real player name matching
-✅ Manual-only mode working
-✅ Enhanced pitcher detection integrated
-✅ Comprehensive validation
-✅ Priority 1 enhancements included
-"""
+
 # Standard library imports
 import os
 import sys
@@ -39,17 +25,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from difflib import SequenceMatcher
 
-# DFS Upgrade Modules
-try:
-    from smart_cache import smart_cache
-    from multi_lineup_optimizer import MultiLineupOptimizer
-    from performance_tracker import tracker
-    UPGRADES_AVAILABLE = True
-    print("✅ DFS upgrades loaded")
-except ImportError as e:
-    print(f"⚠️ Optional upgrades not available: {e}")
-    UPGRADES_AVAILABLE = False
-
 # Third-party imports
 import numpy as np
 import pandas as pd
@@ -57,128 +32,214 @@ import pandas as pd
 # Suppress warnings
 warnings.filterwarnings('ignore')
 
-# Import utils - only what exists and is used
-from utils.cache_manager import cache
-from utils.profiler import profiler
-from utils.validator import DataValidator
-from utils.config import config
+# ============================================================================
+# MODULE IMPORTS WITH FALLBACKS
+# ============================================================================
 
-# New unified imports
-from unified_data_system import UnifiedDataSystem
-from optimal_lineup_optimizer import OptimalLineupOptimizer, OptimizationResult
+# DFS Upgrade Modules
+try:
+    from smart_cache import smart_cache
+    from multi_lineup_optimizer import MultiLineupOptimizer
+    from performance_tracker import tracker
 
-# Enhanced Statistical Analysis Engine - PRIORITY 1 IMPROVEMENTS
+    UPGRADES_AVAILABLE = True
+    print("✅ DFS upgrades loaded")
+except ImportError as e:
+    print(f"⚠️ Optional upgrades not available: {e}")
+    UPGRADES_AVAILABLE = False
+
+# Utils imports
+try:
+    from utils.cache_manager import cache
+    from utils.profiler import profiler
+    from utils.validator import DataValidator
+    from utils.config import config
+except ImportError as e:
+    print(f"⚠️ Utils not available: {e}")
+    cache = None
+    profiler = None
+    DataValidator = None
+    config = None
+
+# Core system imports
+try:
+    from unified_data_system import UnifiedDataSystem
+    from optimal_lineup_optimizer import OptimalLineupOptimizer, OptimizationResult
+except ImportError as e:
+    print(f"⚠️ Core systems not available: {e}")
+    UnifiedDataSystem = None
+    OptimalLineupOptimizer = None
+
+# Enhanced modules
 try:
     from enhanced_stats_engine import apply_enhanced_statistical_analysis
+
     ENHANCED_STATS_AVAILABLE = True
     print("✅ Enhanced Statistical Analysis Engine loaded")
 except ImportError:
     ENHANCED_STATS_AVAILABLE = False
     print("⚠️ Enhanced stats engine not found - using basic analysis")
 
+
     def apply_enhanced_statistical_analysis(players, verbose=False):
         return 0
 
-# Import optimization
+# Optimization library
 try:
     import pulp
+
     MILP_AVAILABLE = True
     print("✅ PuLP available - MILP optimization enabled")
 except ImportError:
     MILP_AVAILABLE = False
     print("⚠️ PuLP not available - using greedy fallback")
 
-# Import modules with enhanced fallbacks
+# External data modules
 try:
     from vegas_lines import VegasLines
+
     VEGAS_AVAILABLE = True
     print("✅ Vegas lines module imported")
 except ImportError:
     VEGAS_AVAILABLE = False
     print("⚠️ vegas_lines.py not found")
+
+
     class VegasLines:
-        def __init__(self, **kwargs): self.lines = {}
-        def get_vegas_lines(self, **kwargs): return {}
-        def apply_to_players(self, players): return players
+        def __init__(self, **kwargs):
+            self.lines = {}
+
+        def get_vegas_lines(self, **kwargs):
+            return {}
+
+        def apply_to_players(self, players):
+            return players
 
 try:
     from smart_confirmation_system import SmartConfirmationSystem
+
     CONFIRMED_AVAILABLE = True
     print("✅ Smart Confirmation System imported")
 except ImportError:
     CONFIRMED_AVAILABLE = False
     print("⚠️ smart_confirmation_system.py not found")
+
+
     class SmartConfirmationSystem:
         def __init__(self, **kwargs):
             self.confirmed_lineups = {}
             self.confirmed_pitchers = {}
-        def get_all_confirmations(self): return 0, 0
-        def is_player_confirmed(self, name, team): return False, None
-        def is_pitcher_confirmed(self, name, team): return False
+
+        def get_all_confirmations(self):
+            return 0, 0
+
+        def is_player_confirmed(self, name, team):
+            return False, None
+
+        def is_pitcher_confirmed(self, name, team):
+            return False
 
 try:
     from simple_statcast_fetcher import SimpleStatcastFetcher, FastStatcastFetcher
+
     STATCAST_AVAILABLE = True
     print("✅ Statcast fetcher imported")
 except ImportError:
     STATCAST_AVAILABLE = False
     print("⚠️ simple_statcast_fetcher.py not found")
-    class SimpleStatcastFetcher:
-        def __init__(self): pass
-        def fetch_player_data(self, name, position): return {}
-    class FastStatcastFetcher:
-        def __init__(self, max_workers=5): pass
-        def fetch_multiple_players_parallel(self, players): return {}
 
-# NEW: Recent Form Analyzer
+
+    class SimpleStatcastFetcher:
+        def __init__(self):
+            pass
+
+        def fetch_player_data(self, name, position):
+            return {}
+
+        def fetch_multiple_players_parallel(self, players):
+            return {}
+
+        def test_connection(self):
+            return False
+
 try:
     from recent_form_analyzer import RecentFormAnalyzer
+
     RECENT_FORM_AVAILABLE = True
     print("✅ Recent Form Analyzer imported")
 except ImportError:
     RECENT_FORM_AVAILABLE = False
     print("⚠️ recent_form_analyzer.py not found")
 
-# NEW: Batting Order & Correlation System
 try:
     from batting_order_correlation_system import (
         BattingOrderEnricher,
         CorrelationOptimizer,
         integrate_batting_order_correlation
     )
+
     BATTING_CORRELATION_AVAILABLE = True
     print("✅ Batting Order & Correlation System imported")
 except ImportError:
     BATTING_CORRELATION_AVAILABLE = False
     print("⚠️ batting_order_correlation_system.py not found")
 
-# Constants
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+
+# Park factors (1.0 = neutral, >1.0 = hitter friendly, <1.0 = pitcher friendly)
 PARK_FACTORS = {
-    "COL": 1.1, "TEX": 1.05, "CIN": 1.05, "NYY": 1.05, "BOS": 1.03, "PHI": 1.03,
-    "MIA": 0.95, "OAK": 0.95, "SD": 0.97, "SEA": 0.97
+    # Extreme hitter-friendly
+    "COL": 1.20,  # Coors Field
+
+    # Hitter-friendly
+    "CIN": 1.12, "TEX": 1.10, "PHI": 1.08, "MIL": 1.06,
+    "BAL": 1.05, "HOU": 1.04, "TOR": 1.03, "BOS": 1.03,
+
+    # Slight hitter-friendly
+    "NYY": 1.02, "CHC": 1.01,
+
+    # Neutral
+    "ARI": 1.00, "ATL": 1.00, "MIN": 0.99,
+
+    # Slight pitcher-friendly
+    "WSH": 0.98, "NYM": 0.97, "LAA": 0.96, "STL": 0.95,
+
+    # Pitcher-friendly
+    "CLE": 0.94, "TB": 0.93, "KC": 0.92, "DET": 0.91, "SEA": 0.90,
+
+    # Extreme pitcher-friendly
+    "OAK": 0.89, "SF": 0.88, "SD": 0.87, "MIA": 0.86, "PIT": 0.85,
+
+    # Additional teams
+    "LAD": 0.98, "CHW": 0.96, "CWS": 0.96,
 }
 
 KNOWN_RELIEF_PITCHERS = {
-    'jhoan duran', 'edwin diaz', 'felix bautista', 'ryan helsley', 'david bednar',
-    'alexis diaz', 'josh hader', 'emmanuel clase', 'jordan romano', 'clay holmes'
+    'jhoan duran', 'edwin diaz', 'felix bautista', 'ryan helsley',
+    'david bednar', 'alexis diaz', 'josh hader', 'emmanuel clase',
+    'jordan romano', 'clay holmes'
 }
 
-# ============================================================
-# REAL DATA ONLY CONFIGURATION - ADDED BY PATCH
-# ============================================================
+# Real data configuration
 USE_ONLY_REAL_DATA = True
 
 REAL_DATA_SOURCES = {
-    'statcast': True,       # ✓ Working - Real Baseball Savant
-    'vegas': True,          # ✓ Working - Real API calls
-    'mlb_lineups': True,    # ✓ Working - Real MLB API
-    'dff_rankings': True,   # ✓ Manual upload via GUI
-    'park_factors': True,  # ✗ DISABLED - Hardcoded values
-    'recent_form': True,   # ✗ DISABLED - Random data
-    'weather': False,       # ✗ DISABLED - No real source
-    'fallbacks': False      # ✗ DISABLED - No fallback data
+    'statcast': True,  # Real Baseball Savant
+    'vegas': True,  # Real API calls
+    'mlb_lineups': True,  # Real MLB API
+    'dff_rankings': True,  # Manual upload via GUI
+    'park_factors': True,  # Built-in factors
+    'recent_form': True,  # Real game logs
+    'weather': False,  # DISABLED - No real source
+    'fallbacks': False  # DISABLED - No fallback data
 }
 
+
+# ============================================================================
+# PLAYER CLASS
+# ============================================================================
 
 class AdvancedPlayer:
     """Player model with all advanced features including enhanced pitcher detection"""
@@ -206,144 +267,66 @@ class AdvancedPlayer:
         self.recent_performance = {}
         self.platoon_data = {}
 
-        # Calculate scores
+        # Scoring
         self.base_score = self.projection if self.projection > 0 else (self.salary / 1000.0)
         self.enhanced_score = self.base_score
 
-    # Add these methods to AdvancedPlayer class:
+        # Contest specific
+        self.contest_type = player_data.get('contest_type', 'classic')
 
     def _parse_positions_enhanced(self, position_str: str) -> List[str]:
-        """Enhanced position parsing for multi-position players"""
+        """Enhanced position parsing that properly handles DraftKings format"""
         if not position_str:
             return ['UTIL']
 
         position_str = str(position_str).strip().upper()
 
-        # Handle various multi-position delimiters
-        delimiters = ['/', ',', '-', '|', '+', ' / ', ' , ', ' - ', ' OR ', ' AND ']
-        positions = [position_str]
+        # IMPORTANT: If this is just "UTIL", don't return it yet -
+        # it might be a multi-position player marked as UTIL
+        if position_str == 'UTIL':
+            # This is likely a DH or multi-position player
+            # We'll need to check the Roster Position column
+            return ['UTIL']  # Will be overridden if Roster Position has real positions
 
-        for delimiter in delimiters:
-            if delimiter in position_str:
-                positions = [p.strip() for p in position_str.split(delimiter) if p.strip()]
-                break
+        # Handle multi-position formats
+        positions = []
 
-        # Enhanced position mapping
+        # Try different delimiters
+        if '/' in position_str:
+            positions = position_str.split('/')
+        elif ',' in position_str:
+            positions = position_str.split(',')
+        elif '-' in position_str and position_str.count('-') == 1:  # Avoid splitting "1B-2B-3B" incorrectly
+            positions = position_str.split('-')
+        else:
+            positions = [position_str]
+
+        # Clean and map positions
+        valid_positions = []
         position_mapping = {
-            'P': 'P', 'SP': 'P', 'RP': 'P', 'PITCHER': 'P',
-            'C': 'C', 'CATCHER': 'C',
-            '1B': '1B', 'FIRST': '1B', 'FIRSTBASE': '1B', '1ST': '1B',
-            '2B': '2B', 'SECOND': '2B', 'SECONDBASE': '2B', '2ND': '2B',
-            '3B': '3B', 'THIRD': '3B', 'THIRDBASE': '3B', '3RD': '3B',
-            'SS': 'SS', 'SHORTSTOP': 'SS', 'SHORT': 'SS',
-            'OF': 'OF', 'OUTFIELD': 'OF', 'OUTFIELDER': 'OF',
-            'LF': 'OF', 'CF': 'OF', 'RF': 'OF', 'LEFT': 'OF', 'CENTER': 'OF', 'RIGHT': 'OF',
-            'UTIL': 'UTIL', 'DH': 'UTIL', 'UTILITY': 'UTIL'
+            'P': 'P', 'SP': 'P', 'RP': 'P',
+            'C': 'C',
+            '1B': '1B', 'FIRST': '1B',
+            '2B': '2B', 'SECOND': '2B',
+            '3B': '3B', 'THIRD': '3B',
+            'SS': 'SS', 'SHORTSTOP': 'SS',
+            'OF': 'OF', 'OUTFIELD': 'OF',
+            'LF': 'OF', 'CF': 'OF', 'RF': 'OF',
+            'UTIL': 'UTIL', 'DH': 'UTIL'
         }
 
-        valid_positions = []
         for pos in positions:
             pos = pos.strip().upper()
-            # Remove any numbers or special characters
-            pos = ''.join(c for c in pos if c.isalpha())
+            mapped = position_mapping.get(pos, None)
+            if mapped and mapped not in valid_positions:
+                valid_positions.append(mapped)
 
-            mapped_pos = position_mapping.get(pos, pos)
-            if mapped_pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL']:
-                if mapped_pos not in valid_positions:
-                    valid_positions.append(mapped_pos)
-
-        # If we found valid positions, return them; otherwise default to UTIL
-        return valid_positions if valid_positions else ['UTIL']
-
-    def get_position_string(self) -> str:
-        """Get position string showing flexibility"""
-        if len(self.positions) > 1:
-            return f"{self.primary_position} ({'/'.join(self.positions)})"
-        return self.primary_position
-
-    def get_position_display(self) -> str:
-        """Get display string for GUI"""
-        if hasattr(self, 'assigned_position') and self.assigned_position != self.primary_position:
-            # Show assigned position with flexibility indicator
-            if len(self.positions) > 1:
-                return f"{self.assigned_position}*"  # * indicates flex usage
-            return self.assigned_position
-        return self.primary_position
-
-    def is_using_flex_position(self) -> bool:
-        """Check if player is assigned to non-primary position"""
-        if hasattr(self, 'assigned_position'):
-            return self.assigned_position != self.primary_position
-        return False
-
-    def _parse_positions_enhanced(self, position_str: str) -> List[str]:
-        """Enhanced position parsing"""
-        if not position_str:
+        # IMPORTANT: Don't default to UTIL if we found real positions
+        if valid_positions:
+            return valid_positions
+        else:
             return ['UTIL']
 
-        position_str = str(position_str).strip().upper()
-
-        # Handle various multi-position delimiters
-        delimiters = ['/', ',', '-', '|', '+', ' / ', ' , ', ' - ']
-        positions = [position_str]
-
-        for delimiter in delimiters:
-            if delimiter in position_str:
-                positions = [p.strip() for p in position_str.split(delimiter) if p.strip()]
-                break
-
-        # Enhanced position mapping
-        position_mapping = {
-            'P': 'P', 'SP': 'P', 'RP': 'P', 'PITCHER': 'P',
-            'C': 'C', 'CATCHER': 'C',
-            '1B': '1B', 'FIRST': '1B', 'FIRSTBASE': '1B', '1ST': '1B',
-            '2B': '2B', 'SECOND': '2B', 'SECONDBASE': '2B', '2ND': '2B',
-            '3B': '3B', 'THIRD': '3B', 'THIRDBASE': '3B', '3RD': '3B',
-            'SS': 'SS', 'SHORTSTOP': 'SS', 'SHORT': 'SS',
-            'OF': 'OF', 'OUTFIELD': 'OF', 'OUTFIELDER': 'OF',
-            'LF': 'OF', 'CF': 'OF', 'RF': 'OF', 'LEFT': 'OF', 'CENTER': 'OF', 'RIGHT': 'OF',
-            'UTIL': 'UTIL', 'DH': 'UTIL', 'UTILITY': 'UTIL'
-        }
-
-        valid_positions = []
-        for pos in positions:
-            pos = pos.strip().upper()
-            mapped_pos = position_mapping.get(pos, pos)
-            if mapped_pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL']:
-                if mapped_pos not in valid_positions:
-                    valid_positions.append(mapped_pos)
-
-        return valid_positions if valid_positions else ['UTIL']
-
-    # Add this debug method to bulletproof_dfs_core.py
-    def debug_confirmations(self):
-        """Debug why players aren't getting confirmed"""
-        print("\n🔍 DEBUG: Why aren't players confirmed?")
-
-        # Check lineup matches
-        for player in self.players:
-            if self.confirmation_system:
-                is_confirmed, order = self.confirmation_system.is_player_confirmed(
-                    player.name, player.team
-                )
-                if is_confirmed:
-                    print(f"✅ {player.name} ({player.team}) - Confirmed, batting {order}")
-                    player.add_confirmation_source("mlb_lineup")
-                else:
-                    # Check if team has lineup
-                    if player.team in self.confirmation_system.confirmed_lineups:
-                        print(f"❌ {player.name} ({player.team}) - Team has lineup but player not in it")
-
-        # Check pitcher matches
-        pitchers = [p for p in self.players if p.primary_position == 'P']
-        for pitcher in pitchers:
-            if self.confirmation_system:
-                is_confirmed = self.confirmation_system.is_pitcher_confirmed(
-                    pitcher.name, pitcher.team
-                )
-                if is_confirmed:
-                    print(f"✅ {pitcher.name} ({pitcher.team}) - Confirmed starter")
-                    pitcher.add_confirmation_source("mlb_starter")
     def _parse_salary(self, salary_input: Any) -> int:
         """Enhanced salary parsing"""
         try:
@@ -365,13 +348,14 @@ class AdvancedPlayer:
             return 0.0
 
     def is_eligible_for_selection(self, mode: str = 'bulletproof') -> bool:
-        """FIXED: Enhanced eligibility check with pitcher validation"""
-
+        """Enhanced eligibility check with pitcher validation"""
         # SHOWDOWN: All players are eligible!
         if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
             return True
 
-        if mode == 'manual_only':
+        if mode == 'all':
+            return True
+        elif mode == 'manual_only':
             return self.is_manual_selected
         elif mode == 'confirmed_only':
             # Extra check for pitchers
@@ -391,8 +375,6 @@ class AdvancedPlayer:
                 return True
 
             return False
-
-
 
     def add_confirmation_source(self, source: str):
         """Add confirmation source"""
@@ -419,92 +401,6 @@ class AdvancedPlayer:
         if str(dff_data.get('confirmed_order', '')).upper() == 'YES':
             self.add_confirmation_source("dff_confirmed")
 
-    def apply_contest_specific_adjustments(self, contest_type: str):
-        """
-        Apply temporary contest-specific score adjustments
-        IMPORTANT: Creates adjusted scores without modifying base enhanced_score
-        """
-        print(f"\n🎯 Applying {contest_type.upper()} contest adjustments...")
-
-        for player in self.players:
-            # Store original score if not already stored
-            if not hasattr(player, 'base_enhanced_score'):
-                player.base_enhanced_score = player.enhanced_score
-
-            # Reset to base before applying new adjustments
-            player.enhanced_score = player.base_enhanced_score
-
-            if contest_type == 'gpp':
-                # GPP: Favor high ceiling players
-                ceiling_multiplier = 1.0
-
-                # Boost based on Statcast power metrics
-                if hasattr(player, 'statcast_data') and player.statcast_data:
-                    barrel = player.statcast_data.get('Barrel', 0)
-                    hard_hit = player.statcast_data.get('Hard_Hit', 0)
-
-                    if barrel > 12:  # Elite barrel rate
-                        ceiling_multiplier *= 1.12
-                    elif barrel > 10:
-                        ceiling_multiplier *= 1.08
-
-                    if hard_hit > 45:  # Elite hard hit
-                        ceiling_multiplier *= 1.05
-
-                # Boost high-upside positions
-                if player.primary_position in ['SS', 'OF']:
-                    ceiling_multiplier *= 1.03
-
-                # Apply GPP adjustment
-                player.enhanced_score *= ceiling_multiplier
-                player.contest_adjustment = ceiling_multiplier
-
-            elif contest_type == 'cash':
-                # Cash: Favor consistent, confirmed players
-                floor_multiplier = 1.0
-
-                # Boost confirmed players
-                if player.is_confirmed:
-                    floor_multiplier *= 1.08
-
-                # Boost if in good Vegas spot
-                if hasattr(player, 'vegas_data') and player.vegas_data:
-                    team_total = player.vegas_data.get('team_total', 4.5)
-                    if team_total >= 5.0 and player.primary_position != 'P':
-                        floor_multiplier *= 1.05
-                    elif team_total <= 4.0 and player.primary_position == 'P':
-                        floor_multiplier *= 1.05
-
-                # Penalize unconfirmed players
-                if not player.is_confirmed and not player.is_manual_selected:
-                    floor_multiplier *= 0.90
-
-                # Apply cash adjustment
-                player.enhanced_score *= floor_multiplier
-                player.contest_adjustment = floor_multiplier
-
-            elif contest_type == 'single':
-                # Single entry: Balanced approach
-                balance_multiplier = 1.0
-
-                # Slight boost for confirmed
-                if player.is_confirmed:
-                    balance_multiplier *= 1.04
-
-                # Moderate ceiling boost
-                if hasattr(player, 'statcast_data') and player.statcast_data:
-                    barrel = player.statcast_data.get('Barrel', 0)
-                    if barrel > 10:
-                        balance_multiplier *= 1.05
-
-                player.enhanced_score *= balance_multiplier
-                player.contest_adjustment = balance_multiplier
-
-        # Report adjustments
-        adjusted_count = sum(
-            1 for p in self.players if hasattr(p, 'contest_adjustment') and p.contest_adjustment != 1.0)
-        print(f"✅ Applied {contest_type} adjustments to {adjusted_count} players")
-
     def apply_vegas_data(self, vegas_data: Dict):
         """Apply Vegas data"""
         self.vegas_data = vegas_data
@@ -517,8 +413,23 @@ class AdvancedPlayer:
         """Apply park factor data"""
         self.park_factors = park_data
 
+    def get_position_string(self) -> str:
+        """Get position string showing flexibility"""
+        if len(self.positions) > 1:
+            return f"{self.primary_position} ({'/'.join(self.positions)})"
+        return self.primary_position
+
+    def get_position_display(self) -> str:
+        """Get display string for GUI"""
+        if hasattr(self, 'assigned_position') and self.assigned_position != self.primary_position:
+            # Show assigned position with flexibility indicator
+            if len(self.positions) > 1:
+                return f"{self.assigned_position}*"  # * indicates flex usage
+            return self.assigned_position
+        return self.primary_position
+
     def get_status_string(self) -> str:
-        """ENHANCED: Get comprehensive status string showing ALL data sources"""
+        """Get comprehensive status string showing ALL data sources"""
         status_parts = []
 
         # Multi-position display
@@ -566,13 +477,9 @@ class AdvancedPlayer:
             factor = self.park_factors.get('factor', 1.0)
             status_parts.append(f"PARK({factor:.2f}x)")
 
-        # NEW: Add batting order
+        # Batting order
         if hasattr(self, 'batting_order') and self.batting_order:
             status_parts.append(f"BAT-{self.batting_order}")
-
-        # NEW: Add correlation info
-        if hasattr(self, 'correlation_adjustment') and self.correlation_adjustment:
-            status_parts.append(f"CORR({self.correlation_adjustment:+.0%})")
 
         # Recent form
         if hasattr(self, '_recent_performance') and self._recent_performance:
@@ -594,43 +501,21 @@ class AdvancedPlayer:
             return 8.0
         return 0.0
 
-    def get_optimal_position_assignment(self, needed_positions: Dict[str, int]) -> str:
-        """Get optimal position assignment based on current needs"""
-        if not needed_positions:
-            return self.primary_position
-
-        # Find position with highest need that this player can fill
-        best_pos = self.primary_position
-        max_need = needed_positions.get(self.primary_position, 0)
-
-        for pos in self.positions:
-            need = needed_positions.get(pos, 0)
-            if need > max_need:
-                max_need = need
-                best_pos = pos
-
-        return best_pos
-
-    def get_flexibility_value_bonus(self) -> float:
-        """Get value bonus for position flexibility (1.0 = no bonus, 1.05 = 5% bonus)"""
-        flexibility_score = self.get_position_flexibility_score()
-        if flexibility_score >= 8:
-            return 1.05  # 5% bonus for 3+ positions
-        elif flexibility_score >= 5:
-            return 1.02  # 2% bonus for 2 positions
-        return 1.0  # No bonus for single position
-
     def __repr__(self):
         pos_str = '/'.join(self.positions)
         status = "✅" if self.is_eligible_for_selection() else "❌"
         return f"Player({self.name}, {pos_str}, ${self.salary}, {self.enhanced_score:.1f}, {status})"
 
-
+# ============================================================================
+# MAIN DFS CORE CLASS
+# ============================================================================
 
 class BulletproofDFSCore:
     """Complete bulletproof DFS core with enhanced pitcher detection"""
 
     def __init__(self):
+        """Initialize BulletproofDFSCore with all modules and configuration"""
+        # Basic attributes
         self.players = []
         self.contest_type = 'classic'
         self.salary_cap = 50000
@@ -642,14 +527,220 @@ class BulletproofDFSCore:
         # Set game date
         self.game_date = datetime.now().strftime('%Y-%m-%d')
 
-        # Initialize modules
-        self.vegas_lines = VegasLines() if VEGAS_AVAILABLE else None
+        # Load configuration
+        try:
+            from dfs_config import dfs_config
+            self.config = dfs_config
+            self.salary_cap = self.config.get('optimization.salary_cap', 50000)
+            self.batch_size = self.config.get('optimization.batch_size', 25)
+            self.max_form_analysis_players = self.config.get('optimization.max_form_analysis_players', None)
+        except:
+            self.config = None
+            self.batch_size = 25
+            self.max_form_analysis_players = None
 
-        # Fix SmartConfirmationSystem initialization
+        # Initialize tracking for duplicate prevention
+        self._enrichment_applied = {}
+
+        # Initialize external modules
+        self._initialize_modules()
+
+        print("🚀 Bulletproof DFS Core initialized successfully")
+
+    def identify_showdown_pitchers(self):
+        """Identify pitchers in showdown using smart detection"""
+        print("\n⚾ IDENTIFYING PITCHERS IN SHOWDOWN")
+        print("=" * 60)
+
+        # Get teams playing
+        teams = list(set(p.team for p in self.players if p.team))
+        print(f"Teams in showdown: {teams}")
+
+        # Method 1: Check if confirmation system knows who's pitching
+        identified_pitchers = []
+
+        if self.confirmation_system:
+            # Get confirmed pitchers for these teams
+            if hasattr(self.confirmation_system, 'confirmed_pitchers'):
+                for team in teams:
+                    if team in self.confirmation_system.confirmed_pitchers:
+                        pitcher_data = self.confirmation_system.confirmed_pitchers[team]
+                        pitcher_name = pitcher_data.get('name', '')
+
+                        # Find this pitcher in our player list
+                        for player in self.players:
+                            if self.confirmation_system.data_system.match_player_names(
+                                    player.name, pitcher_name
+                            ):
+                                player.original_position = 'P'
+                                player.original_positions = ['P']
+                                identified_pitchers.append(player)
+                                print(f"   ⚾ Confirmed starter found: {player.name} ({player.team})")
+                                break
+
+        # Method 2: Use projections as fallback
+        if len(identified_pitchers) < 2:
+            print("\n🔍 Using projection-based detection for remaining pitchers...")
+
+            # Sort by projection to find likely pitchers
+            sorted_by_proj = sorted(
+                [p for p in self.players if p.projection > 0 and p not in identified_pitchers],
+                key=lambda x: x.projection
+            )
+
+            # In showdown, typically the 2-4 lowest projected players are pitchers
+            for player in sorted_by_proj[:4]:
+                if len(identified_pitchers) < 2:
+                    player.original_position = 'P'
+                    player.original_positions = ['P']
+                    identified_pitchers.append(player)
+                    print(
+                        f"   ⚾ Likely pitcher (low projection): {player.name} ({player.team}) - Proj: {player.projection}")
+
+        print(f"\n✅ Identified {len(identified_pitchers)} pitchers in showdown")
+        return identified_pitchers
+
+    def reset_all_confirmations(self):
+        """Reset ALL confirmation status - call this at the start of each run"""
+        print("\n🔄 RESETTING ALL CONFIRMATIONS")
+        for player in self.players:
+            player.is_confirmed = False
+            player.confirmation_sources = []
+            # Don't reset manual selections
+        print(f"✅ Reset confirmations for {len(self.players)} players")
+
+    def get_eligible_players_by_mode(self):
+        """Get eligible players based on optimization mode"""
+
+        # For showdown, ALL players are eligible regardless of position
+        if self.contest_type == 'showdown':
+            if self.optimization_mode == 'all':
+                eligible = self.players.copy()
+                print(f"🌐 ALL PLAYERS MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} players eligible")
+            elif self.optimization_mode == 'manual_only':
+                eligible = [p for p in self.players if p.is_manual_selected]
+                print(f"🎯 MANUAL-ONLY MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} manually selected players")
+            elif self.optimization_mode == 'confirmed_only':
+                eligible = [p for p in self.players if p.is_confirmed]
+                print(f"🔒 CONFIRMED-ONLY MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} confirmed players")
+            else:  # bulletproof
+                eligible = [p for p in self.players if p.is_confirmed or p.is_manual_selected]
+                print(f"🛡️ BULLETPROOF MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} players eligible")
+
+                # Show breakdown
+                confirmed_only = sum(1 for p in eligible if p.is_confirmed and not p.is_manual_selected)
+                manual_only = sum(1 for p in eligible if p.is_manual_selected and not p.is_confirmed)
+                both = sum(1 for p in eligible if p.is_confirmed and p.is_manual_selected)
+
+                print(f"   - Confirmed only: {confirmed_only}")
+                print(f"   - Manual only: {manual_only}")
+                print(f"   - Both confirmed & manual: {both}")
+
+            # Show position types available (for info only)
+            position_types = {}
+            for player in eligible:
+                # Use ORIGINAL position for display
+                orig_pos = getattr(player, 'original_position', 'UTIL')
+                position_types[orig_pos] = position_types.get(orig_pos, 0) + 1
+
+            if position_types:
+                print(f"📊 Position types in eligible pool (by original): {position_types}")
+
+            return eligible
+
+        # CLASSIC MODE - original logic with position validation
+        self._validate_confirmations()
+
+        if self.optimization_mode == 'all':
+            eligible = self.players.copy()
+            print(f"🌐 ALL PLAYERS MODE: {len(eligible)}/{len(self.players)} players eligible")
+        elif self.optimization_mode == 'manual_only':
+            eligible = [p for p in self.players if p.is_manual_selected]
+            print(f"🎯 MANUAL-ONLY MODE: {len(eligible)}/{len(self.players)} manually selected players")
+        elif self.optimization_mode == 'confirmed_only':
+            eligible = [p for p in self.players if p.is_confirmed and not p.is_manual_selected]
+            print(f"🔒 CONFIRMED-ONLY MODE: {len(eligible)}/{len(self.players)} confirmed players")
+        else:  # bulletproof (default)
+            eligible = [p for p in self.players if p.is_confirmed or p.is_manual_selected]
+            print(f"🛡️ BULLETPROOF MODE: {len(eligible)}/{len(self.players)} players eligible")
+
+            # Show breakdown
+            confirmed_only = sum(1 for p in eligible if p.is_confirmed and not p.is_manual_selected)
+            manual_only = sum(1 for p in eligible if p.is_manual_selected and not p.is_confirmed)
+            both = sum(1 for p in eligible if p.is_confirmed and p.is_manual_selected)
+
+            print(f"   - Confirmed only: {confirmed_only}")
+            print(f"   - Manual only: {manual_only}")
+            print(f"   - Both confirmed & manual: {both}")
+
+        # Extra validation for pitchers (skip in 'all' mode)
+        if self.optimization_mode != 'all':
+            eligible = self._validate_pitcher_eligibility(eligible)
+
+        return eligible
+
+    def _validate_confirmations(self):
+        """Validate that ONLY appropriate players are confirmed"""
+        print("\n🔍 VALIDATING CONFIRMATIONS...")
+
+        issues = []
+
+        for player in self.players:
+            if player.is_confirmed:
+                if not player.confirmation_sources:
+                    issues.append(f"{player.name} marked confirmed but no sources")
+
+                # Extra validation for pitchers
+                if player.primary_position == 'P':
+                    if 'mlb_starter' not in player.confirmation_sources:
+                        issues.append(f"Pitcher {player.name} confirmed but not MLB starter")
+
+        if issues:
+            print("⚠️ CONFIRMATION ISSUES FOUND:")
+            for issue in issues:
+                print(f"   - {issue}")
+        else:
+            print("✅ All confirmations validated")
+
+    def detect_confirmed_players(self) -> int:
+        """Apply confirmations to player objects"""
+        print("\n🔍 SMART CONFIRMATION DETECTION")
+        print("=" * 60)
+
+        # Reset all confirmations first
+        self.reset_all_confirmations()
+
+        # FOR SHOWDOWN: First identify who the pitchers are
+        if self.contest_type == 'showdown':
+            print("🔄 SHOWDOWN MODE - Need to identify pitchers first...")
+            pitcher_count_before = len([p for p in self.players if getattr(p, 'original_position', '') == 'P'])
+            print(f"   Pitchers before identification: {pitcher_count_before}")
+
+            # Call the identification
+            identified = self.identify_showdown_pitchers()
+
+            pitcher_count_after = len([p for p in self.players if getattr(p, 'original_position', '') == 'P'])
+            print(f"   Pitchers after identification: {pitcher_count_after}")
+            print(f"   Identified pitchers: {[p.name for p in identified]}")
+
+    def _initialize_modules(self):
+        """Initialize all external modules with proper error handling"""
+        # Vegas Lines
+        if VEGAS_AVAILABLE:
+            try:
+                self.vegas_lines = VegasLines()
+                print("✅ Vegas lines module initialized")
+            except Exception as e:
+                print(f"❌ Failed to initialize Vegas lines: {e}")
+                self.vegas_lines = None
+        else:
+            self.vegas_lines = None
+
+        # Smart Confirmation System
         if CONFIRMED_AVAILABLE:
             try:
                 self.confirmation_system = SmartConfirmationSystem(
-                    csv_players=self.players,
+                    csv_players=[],  # Empty at first, will be updated when CSV loads
                     verbose=True
                 )
                 print("✅ Smart Confirmation System initialized")
@@ -658,89 +749,549 @@ class BulletproofDFSCore:
                 self.confirmation_system = None
         else:
             self.confirmation_system = None
-            print("⚠️ SmartConfirmationSystem not available")
 
-        self.statcast_fetcher = SimpleStatcastFetcher() if STATCAST_AVAILABLE else None
+        # Statcast Fetcher
+        if STATCAST_AVAILABLE:
+            try:
+                self.statcast_fetcher = SimpleStatcastFetcher()
+                print("✅ Statcast fetcher initialized")
+            except Exception as e:
+                print(f"❌ Failed to initialize Statcast fetcher: {e}")
+                self.statcast_fetcher = None
+        else:
+            self.statcast_fetcher = None
 
-        # NEW: Initialize recent form analyzer if available
+        # Recent Form Analyzer
         if RECENT_FORM_AVAILABLE:
-            from utils.cache_manager import cache
-            self.form_analyzer = RecentFormAnalyzer(cache_manager=cache)
+            try:
+                from utils.cache_manager import cache
+                from recent_form_analyzer import RecentFormAnalyzer
+                self.form_analyzer = RecentFormAnalyzer(cache_manager=cache)
+                print("✅ Recent Form Analyzer initialized")
+            except Exception as e:
+                print(f"❌ Failed to initialize Recent Form Analyzer: {e}")
+                self.form_analyzer = None
         else:
             self.form_analyzer = None
 
-        # NEW: Initialize batting order and correlation systems
+        # Batting Order and Correlation Systems
         if BATTING_CORRELATION_AVAILABLE:
-            integrate_batting_order_correlation(self)
+            try:
+                integrate_batting_order_correlation(self)
+                print("✅ Batting Order & Correlation Systems integrated")
+            except Exception as e:
+                print(f"❌ Failed to integrate batting order/correlation: {e}")
 
-        print("🚀 Bulletproof DFS Core - ALL METHODS INCLUDED WITH ENHANCED PITCHER DETECTION")
-    # ==================== DFS UPGRADE METHODS ====================
+        # Unified Data System
+        try:
+            self.data_system = UnifiedDataSystem()
+            print("✅ Unified Data System initialized")
+        except Exception as e:
+            print(f"❌ Failed to initialize Unified Data System: {e}")
+            self.data_system = None
 
-    def get_cached_data(self, key: str, fetch_func, category: str = 'default'):
-        """Use smart caching for any data fetch"""
-        if 'UPGRADES_AVAILABLE' in globals() and UPGRADES_AVAILABLE:
-            return smart_cache.get_or_fetch(key, fetch_func, category)
+    # ========================================================================
+    # CSV LOADING AND PARSING
+    # ========================================================================
+
+    def load_draftkings_csv(self, file_path: str) -> bool:
+        """Load DraftKings CSV with better multi-position parsing"""
+        try:
+            print(f"📁 Loading DraftKings CSV: {Path(file_path).name}")
+
+            if not os.path.exists(file_path):
+                print(f"❌ File not found: {file_path}")
+                return False
+
+            # Read CSV
+            df = pd.read_csv(file_path)
+            print(f"📊 Found {len(df)} rows, {len(df.columns)} columns")
+
+            # Detect contest type
+            self._detect_contest_type(df, file_path)
+
+            # Parse columns
+            column_map = self._detect_columns(df)
+
+            # Parse players
+            self.players = self._parse_players(df, column_map)
+
+            # Update confirmation system if available
+            if self.confirmation_system and hasattr(self.confirmation_system, 'csv_players'):
+                self.confirmation_system.csv_players = self.players
+                self.confirmation_system.csv_teams = set(p.team for p in self.players if p.team)
+
+            print(f"✅ Loaded {len(self.players)} valid {self.contest_type.upper()} players")
+
+            # Show position statistics
+            self._show_position_stats()
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Error loading CSV: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def _detect_contest_type(self, df: pd.DataFrame, file_path: str):
+        """Detect contest type from filename and data"""
+        filename = os.path.basename(file_path).lower()
+
+        # Check filename
+        if any(indicator in filename for indicator in ['showdown', 'captain', 'sd', 'cptn']):
+            self.contest_type = 'showdown'
+            print("🎯 SHOWDOWN DETECTED (filename)")
         else:
-            return fetch_func()
+            # Check team count
+            team_col_idx = None
+            for i, col in enumerate(df.columns):
+                if 'team' in str(col).lower():
+                    team_col_idx = i
+                    break
 
-    def generate_multiple_lineups(self, count: int = 20) -> list:
-        """Generate multiple unique lineups for GPPs"""
-        if 'UPGRADES_AVAILABLE' not in globals() or not UPGRADES_AVAILABLE:
-            print("❌ Multi-lineup module not available")
-            return []
+            if team_col_idx is not None:
+                unique_teams = df.iloc[:, team_col_idx].dropna().unique()
+                team_count = len([t for t in unique_teams if str(t).strip() and str(t) != 'nan'])
 
-        print(f"\n🚀 Generating {count} lineups...")
+                if team_count <= 2:
+                    self.contest_type = 'showdown'
+                    print(f"🎯 SHOWDOWN DETECTED ({team_count} teams)")
+                else:
+                    self.contest_type = 'classic'
+                    print(f"🏈 CLASSIC CONTEST ({team_count} teams)")
 
-        optimizer = MultiLineupOptimizer(self)
-        lineups = optimizer.generate_gpp_lineups(
-            num_lineups=count,
-            max_exposure=0.5,
-            min_salary=49000
-        )
+        # Update salary cap for showdown
+        if self.contest_type == 'showdown':
+            self.salary_cap = 50000
+            print("💰 Showdown salary cap: $50,000")
 
-        # Show summary
-        optimizer.print_summary()
+    def _detect_columns(self, df: pd.DataFrame) -> Dict[str, int]:
+        """Detect column indices for important fields"""
+        column_map = {}
+        roster_position_idx = None
 
-        # Export for upload
-        upload_file = optimizer.export_for_upload('draftkings')
-        if upload_file:
-            print(f"\n📁 Upload file: {upload_file}")
+        for i, col in enumerate(df.columns):
+            col_lower = str(col).lower().strip()
 
-        return lineups
+            # Check for Roster Position column specifically
+            if 'roster position' in col_lower:
+                roster_position_idx = i
+                print(f"   Found Roster Position column at index {i}")
 
-    def track_lineup_performance(self, lineup: list, contest_info: dict):
-        """Track lineup for future analysis"""
-        if 'UPGRADES_AVAILABLE' not in globals() or not UPGRADES_AVAILABLE:
-            return None
+            # Name column
+            if any(name in col_lower for name in ['name', 'player']):
+                if 'name' in col_lower and '+' not in col_lower and 'name' not in column_map:
+                    column_map['name'] = i
 
-        contest_id = tracker.log_contest(lineup, contest_info)
+            # Position column
+            elif any(pos in col_lower for pos in ['position']) and 'roster' not in col_lower:
+                if 'position' not in column_map:
+                    column_map['position'] = i
 
-        # Also save to database if available
-        if hasattr(self, 'game_date'):
-            contest_info['date'] = self.game_date
+            # Team column
+            elif any(team in col_lower for team in ['team', 'teamabbrev', 'tm']):
+                if 'team' not in column_map:
+                    column_map['team'] = i
 
-        return contest_id
+            # Salary column
+            elif any(sal in col_lower for sal in ['salary', 'sal', 'cost']):
+                if 'salary' not in column_map:
+                    column_map['salary'] = i
 
-    def get_performance_summary(self, days: int = 30):
-        """Get performance tracking summary"""
-        if 'UPGRADES_AVAILABLE' not in globals() or not UPGRADES_AVAILABLE:
-            print("Performance tracking not available")
-            return
+            # Projection column
+            elif any(proj in col_lower for proj in ['avgpointspergame', 'fppg', 'projection', 'points']):
+                if 'projection' not in column_map:
+                    column_map['projection'] = i
 
-        tracker.print_summary(days)
+        # Store roster position index separately
+        if roster_position_idx is not None:
+            column_map['roster_position'] = roster_position_idx
 
-    def clear_cache(self, category: str = None):
-        """Clear cache by category or all"""
-        if 'UPGRADES_AVAILABLE' in globals() and UPGRADES_AVAILABLE:
-            smart_cache.clear(category)
-            print(f"🧹 Cleared cache: {category or 'all'}")
+        # Debug output
+        print(f"📋 Detected columns:")
+        for field, idx in column_map.items():
+            print(f"   {field}: column {idx} ('{df.columns[idx]}')")
 
+        return column_map
+
+    def _parse_players(self, df: pd.DataFrame, column_map: Dict[str, int]) -> List[AdvancedPlayer]:
+        """Parse players from dataframe with enhanced position handling"""
+        players = []
+        multi_position_players = []
+        pitcher_count = 0
+
+        print(f"\n📊 Parsing {len(df)} rows...")
+
+        for idx, row in df.iterrows():
+            try:
+                # Get player name first for debugging
+                player_name = str(row.iloc[column_map.get('name', 0)]).strip()
+
+                # CRITICAL: Check BOTH position columns
+                primary_position = str(row.iloc[column_map.get('position', 0)]).strip().upper()
+                roster_position = ""
+
+                if 'roster_position' in column_map:
+                    roster_position = str(row.iloc[column_map['roster_position']]).strip().upper()
+
+                # Determine which position string to use
+                position_str = roster_position  # Default to roster position
+
+                # Special handling for UTIL players
+                if primary_position == 'UTIL' and roster_position and roster_position not in ['', 'NAN', 'NONE',
+                                                                                              'UTIL']:
+                    # This is a multi-position player listed as UTIL
+                    position_str = roster_position
+                elif not roster_position or roster_position in ['', 'NAN', 'NONE']:
+                    # No roster position, use primary
+                    position_str = primary_position
+
+                # For known players, debug their positions
+                if player_name.lower() in ['freddie freeman', 'mookie betts', 'gleyber torres', 'jose altuve']:
+                    print(
+                        f"🎯 {player_name}: Primary='{primary_position}', Roster='{roster_position}' → Using '{position_str}'")
+
+                player_data = {
+                    'id': idx + 1,
+                    'name': player_name,
+                    'position': position_str,
+                    'team': str(row.iloc[column_map.get('team', 2)]).strip(),
+                    'salary': row.iloc[column_map.get('salary', 3)],
+                    'projection': row.iloc[column_map.get('projection', 4)],
+                    'contest_type': self.contest_type
+                }
+
+                # Create player
+                player = AdvancedPlayer(player_data)
+
+                # CRITICAL: Store original positions BEFORE any modifications
+                player.original_positions = player.positions.copy()
+                player.original_position = player.primary_position
+
+                # Track pitchers
+                if player.primary_position == 'P':
+                    pitcher_count += 1
+
+                # Enhanced debug for showdown
+                if self.contest_type == 'showdown':
+                    if idx < 10 or player.original_position == 'P':  # Show first 10 + all pitchers
+                        print(f"   Player {idx}: {player.name} ({player.team})")
+                        print(f"      Raw position: '{position_str}'")
+                        print(f"      Parsed positions: {player.positions}")
+                        print(f"      Primary: {player.primary_position}")
+                        print(f"      Original stored: {player.original_position}")
+
+                    # NOW change positions to CPT/UTIL
+                    player.positions = ['CPT', 'UTIL']
+                    player.primary_position = 'UTIL'
+                    player.showdown_eligible = True
+
+                    # Special message for pitchers
+                    if player.original_position == 'P':
+                        print(f"   ⚾ Pitcher for showdown: {player.name} - Original: P → Now: CPT/UTIL")
+
+                # Track multi-position players (for classic only)
+                if self.contest_type == 'classic' and len(player.positions) > 1:
+                    multi_position_players.append(f"{player.name} ({'/'.join(player.positions)})")
+
+                if player.name and player.salary > 0:
+                    players.append(player)
+
+            except Exception as e:
+                print(f"❌ Error parsing row {idx}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
+
+        print(f"✅ Successfully parsed {len(players)} players")
+
+        # Show multi-position players for classic
+        if self.contest_type == 'classic' and multi_position_players:
+            print(f"\n🔄 Found {len(multi_position_players)} multi-position players:")
+            for mp in multi_position_players[:10]:
+                print(f"   {mp}")
+            if len(multi_position_players) > 10:
+                print(f"   ... and {len(multi_position_players) - 10} more")
+
+        # Show position breakdown for showdown
+        if self.contest_type == 'showdown':
+            print(f"\n⚾ Total pitchers found: {pitcher_count}")
+
+            orig_pos_count = {}
+            for p in players:
+                orig = getattr(p, 'original_position', 'UNKNOWN')
+                orig_pos_count[orig] = orig_pos_count.get(orig, 0) + 1
+
+            print(f"📊 Showdown players by original position: {orig_pos_count}")
+
+            # Verify pitchers have original_position set correctly
+            pitcher_check = 0
+            for p in players:
+                if getattr(p, 'original_position', '') == 'P':
+                    pitcher_check += 1
+
+            print(f"✅ Pitcher verification: {pitcher_check} pitchers have original_position='P'")
+
+        return players
+
+    def _show_position_stats(self):
+        """Show position statistics"""
+        multi_position_count = sum(1 for p in self.players if len(p.positions) > 1)
+        single_position_count = sum(1 for p in self.players if len(p.positions) == 1)
+
+        print(f"📊 Position stats: {multi_position_count} multi-position, {single_position_count} single-position")
+
+        # Position breakdown
+        position_counts = {}
+        for player in self.players:
+            for pos in player.positions:
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        print(f"📍 Position coverage: {position_counts}")
+
+    # ========================================================================
+    # PLAYER SELECTION AND CONFIRMATION
+    # ========================================================================
+
+    def set_optimization_mode(self, mode: str):
+        """Set optimization mode with validation"""
+        valid_modes = ['bulletproof', 'manual_only', 'confirmed_only', 'all']
+
+        # Handle different mode names from GUI
+        mode_mapping = {
+            'all players': 'all',
+            'all_players': 'all',
+            'manual only': 'manual_only',
+            'confirmed only': 'confirmed_only',
+            'bulletproof (confirmed + manual)': 'bulletproof'
+        }
+
+        # Normalize the mode
+        mode_lower = mode.lower()
+        if mode_lower in mode_mapping:
+            mode = mode_mapping[mode_lower]
+
+        if mode in valid_modes:
+            self.optimization_mode = mode
+            print(f"⚙️ Optimization mode set to: {mode}")
+        else:
+            print(f"❌ Invalid mode '{mode}'. Choose from: {valid_modes}")
+            print(f"   Keeping current mode: {self.optimization_mode}")
+
+    def apply_manual_selection(self, manual_input: str) -> int:
+        """Apply manual player selection with enhanced matching"""
+        if not manual_input:
+            return 0
+
+        # Parse manual input
+        manual_names = []
+        for delimiter in [',', ';', '\n', '|']:
+            if delimiter in manual_input:
+                manual_names = [name.strip() for name in manual_input.split(delimiter)]
+                break
+        else:
+            manual_names = [manual_input.strip()]
+
+        manual_names = [name for name in manual_names if name and len(name) > 2]
+
+        if not manual_names:
+            return 0
+
+        print(f"🎯 Processing manual selection: {len(manual_names)} players")
+
+        matches = 0
+        for manual_name in manual_names:
+            best_match = None
+            best_score = 0
+
+            for player in self.players:
+                similarity = self._name_similarity(manual_name, player.name)
+                if similarity > best_score and similarity >= 0.6:
+                    best_score = similarity
+                    best_match = player
+
+            if best_match:
+                best_match.set_manual_selected()
+                matches += 1
+                print(f"   ✅ {manual_name} → {best_match.name} ({best_score:.2f})")
+            else:
+                # Try partial matching
+                for player in self.players:
+                    if manual_name.lower() in player.name.lower():
+                        player.set_manual_selected()
+                        matches += 1
+                        print(f"   ✅ {manual_name} → {player.name} (partial)")
+                        break
+                else:
+                    print(f"   ❌ {manual_name} → No match found")
+
+        return matches
+
+    def detect_confirmed_players(self) -> int:
+        """Apply confirmations to player objects"""
+        print("\n🔍 SMART CONFIRMATION DETECTION")
+        print("=" * 60)
+
+        # Reset all confirmations first
+        self.reset_all_confirmations()
+
+        # FOR SHOWDOWN: First identify who the pitchers are
+        if self.contest_type == 'showdown':
+            print("🔄 Identifying pitchers in showdown format...")
+            self.identify_showdown_pitchers()
+
+            # Now temporarily restore positions for confirmation
+            print("🔄 Temporarily restoring original positions for confirmation...")
+            for player in self.players:
+                if hasattr(player, 'original_position'):
+                    player._temp_position = player.primary_position  # Save current
+                    player.primary_position = player.original_position  # Restore original
+
+        # Initialize confirmation system if needed
+        if not self.confirmation_system:
+            if CONFIRMED_AVAILABLE:
+                try:
+                    from smart_confirmation_system import SmartConfirmationSystem
+                    self.confirmation_system = SmartConfirmationSystem(
+                        csv_players=self.players,
+                        verbose=True
+                    )
+                    print("✅ Smart Confirmation System initialized successfully")
+                except Exception as e:
+                    print(f"❌ Failed to initialize confirmation system: {e}")
+                    self.confirmation_system = None
+                    return 0
+            else:
+                print("❌ SmartConfirmationSystem module not available")
+                return 0
+
+        # Update CSV players in confirmation system
+        if hasattr(self.confirmation_system, 'csv_players'):
+            self.confirmation_system.csv_players = self.players
+            self.confirmation_system.csv_teams = set(p.team for p in self.players if p.team)
+
+        # Get all confirmations
+        lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
+
+        # Apply confirmations to players
+        confirmed_count = 0
+        confirmed_pitchers = 0
+
+        # Process regular players
+        for player in self.players:
+            # Use primary_position which has been set correctly (original for showdown)
+            if player.primary_position != 'P':  # Non-pitchers
+                is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
+                    player.name, player.team
+                )
+                if is_confirmed:
+                    player.is_confirmed = True
+                    player.add_confirmation_source("mlb_lineup")
+                    if batting_order:
+                        player.batting_order = batting_order
+                    confirmed_count += 1
+
+        # Process pitchers
+        for player in self.players:
+            if player.primary_position == 'P':
+                is_confirmed = self.confirmation_system.is_pitcher_confirmed(
+                    player.name, player.team
+                )
+                if is_confirmed:
+                    player.is_confirmed = True
+                    player.add_confirmation_source("mlb_starter")
+                    confirmed_count += 1
+                    confirmed_pitchers += 1
+
+                    if self.contest_type == 'showdown':
+                        print(f"   ⚾ Pitcher CONFIRMED as starter: {player.name} ({player.team})")
+
+        # FOR SHOWDOWN: Restore UTIL positions after confirmation
+        if self.contest_type == 'showdown':
+            print("🔄 Restoring showdown positions...")
+            for player in self.players:
+                if hasattr(player, '_temp_position'):
+                    player.primary_position = player._temp_position  # Restore showdown position
+                    delattr(player, '_temp_position')
+
+        print(f"\n📊 Total confirmed: {confirmed_count} players")
+        if self.contest_type == 'showdown':
+            print(f"   Including {confirmed_pitchers} confirmed starting pitchers")
+
+        # Show breakdown by position for showdown
+        if self.contest_type == 'showdown':
+            position_breakdown = {}
+            for player in self.players:
+                if player.is_confirmed:
+                    orig_pos = getattr(player, 'original_position', 'UTIL')
+                    position_breakdown[orig_pos] = position_breakdown.get(orig_pos, 0) + 1
+
+            print(f"📊 Confirmed by original position: {position_breakdown}")
+
+        # Apply DFF if available
+        if hasattr(self, 'current_dff_file') and self.current_dff_file:
+            print("\n🎯 APPLYING DFF RANKINGS...")
+            self.apply_dff_rankings(self.current_dff_file)
+
+        # Apply enrichments only to confirmed players
+        if confirmed_count > 0:
+            print("\n📊 APPLYING ADVANCED ANALYTICS...")
+            self._apply_enrichments_to_confirmed_players()
+        else:
+            print("\n⚠️ NO PLAYERS CONFIRMED!")
+            print("💡 Try:")
+            print("1. Add manual players")
+            print("2. Check name matching between CSV and MLB data")
+            print("3. Use 'All Players' mode for testing")
+
+        return confirmed_count
+
+
+
+    def _validate_pitcher_eligibility(self, eligible: List[AdvancedPlayer]) -> List[AdvancedPlayer]:
+        """Extra validation for pitcher eligibility"""
+        eligible_pitchers = [p for p in eligible if p.primary_position == 'P']
+        print(f"\n⚾ PITCHER VALIDATION:")
+        print(f"   Total eligible pitchers: {len(eligible_pitchers)}")
+
+        for pitcher in eligible_pitchers[:5]:  # Show first 5
+            sources = ', '.join(pitcher.confirmation_sources) if pitcher.confirmation_sources else 'MANUAL'
+            print(f"   - {pitcher.name} ({pitcher.team}) - Sources: [{sources}]")
+
+        # Remove any pitcher without proper confirmation
+        safe_eligible = []
+        removed_count = 0
+
+        for player in eligible:
+            if player.primary_position == 'P' and not player.is_manual_selected:
+                # Pitcher MUST have mlb_starter confirmation
+                if 'mlb_starter' not in player.confirmation_sources:
+                    print(f"   ❌ REMOVING unconfirmed pitcher: {player.name}")
+                    removed_count += 1
+                    continue
+            safe_eligible.append(player)
+
+        if removed_count > 0:
+            print(f"⚠️ Removed {removed_count} unconfirmed pitchers for safety")
+            eligible = safe_eligible
+
+        # Position breakdown
+        position_counts = {}
+        for player in eligible:
+            for pos in player.positions:
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        print(f"\n📍 Eligible position coverage: {position_counts}")
+
+        return eligible
+
+    # ========================================================================
+    # DATA ENRICHMENT
+    # ========================================================================
 
     def detect_and_load_dff_files(self, dff_file_path: str = None):
-        """
-        Intelligently detect and load appropriate DFF file based on contest type
-        Handles both manual file selection and auto-detection
-        """
+        """Intelligently detect and load appropriate DFF file based on contest type"""
         import glob
 
         print("\n📂 DFF FILE DETECTION")
@@ -782,7 +1333,6 @@ class BulletproofDFSCore:
 
             if not dff_files:
                 print("❌ No DFF files found in current directory")
-                print("   Looking for patterns: DFF_MLB_*.csv, DFF_*.csv, *cheatsheet*.csv")
                 return False
 
             print(f"📁 Found {len(dff_files)} DFF file(s):")
@@ -803,7 +1353,6 @@ class BulletproofDFSCore:
             # Load appropriate file based on contest type
             if self.contest_type == 'showdown':
                 if showdown_files:
-                    # Pick the most recent showdown file
                     showdown_files.sort(key=os.path.getmtime, reverse=True)
                     selected_file = showdown_files[0]
                     self.dff_showdown_file = selected_file
@@ -813,13 +1362,8 @@ class BulletproofDFSCore:
                     print(f"\n⚠️ No showdown DFF found, using classic DFF for showdown contest")
                     selected_file = classic_files[0]
                     return self.apply_dff_rankings(selected_file)
-                else:
-                    print("❌ No suitable DFF files found")
-                    return False
-
             else:  # classic contest
                 if classic_files:
-                    # Pick the most recent classic file
                     classic_files.sort(key=os.path.getmtime, reverse=True)
                     selected_file = classic_files[0]
                     self.dff_classic_file = selected_file
@@ -829,42 +1373,24 @@ class BulletproofDFSCore:
                     print(f"\n⚠️ No classic DFF found, using showdown DFF for classic contest")
                     selected_file = showdown_files[0]
                     return self.apply_dff_rankings(selected_file)
-                else:
-                    print("❌ No suitable DFF files found")
-                    return False
 
         return False
 
-    def enrich_with_recent_form(self):
-        """Enrich players with recent form analysis"""
-        if not self.form_analyzer:
-            print("⚠️ Recent form analyzer not available")
-            return 0
-
-        eligible = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
-        return self.form_analyzer.enrich_players_with_form(eligible)
-
-    def enrich_with_batting_order(self):
-        """Enrich players with batting order data"""
-        if hasattr(self, 'batting_enricher'):
-            eligible = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
-            return self.batting_enricher.enrich_with_batting_order(eligible)
-        return 0
-
-    def apply_lineup_correlations(self, lineup):
-        """Apply correlation adjustments to lineup"""
-        if hasattr(self, 'correlation_optimizer') and hasattr(self, 'vegas_lines'):
-            vegas_data = self.vegas_lines.lines if self.vegas_lines else None
-            return self.correlation_optimizer.apply_correlation_adjustments(lineup, vegas_data)
-        return lineup
-
-    # Replace the apply_dff_rankings method in BulletproofDFSCore with this enhanced version
-
     def apply_dff_rankings(self, dff_file_path: str) -> bool:
-        """Enhanced DFF application with better matching and debugging"""
+        """Apply DFF rankings with enhanced matching"""
         if not dff_file_path or not os.path.exists(dff_file_path):
             print("⚠️ No DFF file provided or file not found")
             return False
+
+        def clean_dff_name(name):
+            """Clean DFF names only - removes team abbreviations and normalizes"""
+            if not name:
+                return ''
+            # Remove team abbreviations in parentheses
+            name = re.sub(r'\s*\([^)]*\)', '', str(name)).strip()
+            # Remove extra spaces
+            name = ' '.join(name.split())
+            return name
 
         try:
             print(f"\n🎯 Loading DFF rankings: {Path(dff_file_path).name}")
@@ -905,40 +1431,6 @@ class BulletproofDFSCore:
             print(f"   Value: '{value_col}' {'✓' if value_col else '✗'}")
             print(f"   Team: '{team_col}' {'✓' if team_col else '✗'}")
 
-            # Create lookup dictionaries for faster matching
-            dk_players_by_name = {}
-            dk_players_by_team = {}
-
-            # Build lookup dictionaries with cleaned names
-            for player in self.players:
-                # Clean DK player name
-                dk_name_clean = self.clean_player_name_for_matching(player.name)
-                dk_name_lower = dk_name_clean.lower()
-
-                # Store by cleaned name
-                dk_players_by_name[dk_name_lower] = player
-
-                # Also store by last name only
-                if ' ' in dk_name_clean:
-                    last_name = dk_name_lower.split()[-1]
-                    if last_name not in dk_players_by_name:
-                        dk_players_by_name[last_name] = player
-
-                # Store by team
-                if player.team:
-                    if player.team not in dk_players_by_team:
-                        dk_players_by_team[player.team] = []
-                    dk_players_by_team[player.team].append(player)
-
-            # Debug: Show sample names
-            print(f"\n📋 Sample DFF names (first 5):")
-            for i, name in enumerate(df[name_col].head(5)):
-                print(f"   {i + 1}. {name}")
-
-            print(f"\n📋 Sample DK player names (first 5):")
-            for i, player in enumerate(self.players[:5]):
-                print(f"   {i + 1}. {player.name} ({player.team})")
-
             # Match players
             matches = 0
             no_matches = []
@@ -952,9 +1444,8 @@ class BulletproofDFSCore:
                     if not dff_name_raw or dff_name_raw == 'nan':
                         continue
 
-                    # USE THE NEW CLEANING METHOD HERE
-                    dff_name = self.clean_player_name_for_matching(dff_name_raw)
-                    dff_name_lower = dff_name.lower()
+                    # Clean DFF name
+                    dff_name = clean_dff_name(dff_name_raw)
 
                     # Get team if available
                     dff_team = str(row[team_col]).strip().upper() if team_col and pd.notna(row[team_col]) else None
@@ -992,63 +1483,36 @@ class BulletproofDFSCore:
                     best_match = None
                     best_score = 0
 
-                    # Method 1: Exact name match with cleaned names
-                    if dff_name_lower in dk_players_by_name:
-                        best_match = dk_players_by_name[dff_name_lower]
-                        best_score = 1.0
-                    else:
-                        # Method 2: Last name match + team verification
-                        last_name = dff_name_lower.split()[-1] if ' ' in dff_name_lower else dff_name_lower
+                    for player in self.players:
+                        similarity = self._name_similarity(dff_name, player.name)
 
-                        if last_name in dk_players_by_name:
-                            candidate = dk_players_by_name[last_name]
-                            # Verify team matches if we have team data
-                            if dff_team and candidate.team == dff_team:
-                                best_match = candidate
-                                best_score = 0.95
-                            elif not dff_team:
-                                best_match = candidate
-                                best_score = 0.85
+                        # Boost score for same team
+                        if dff_team and player.team == dff_team and similarity >= 0.7:
+                            similarity = min(1.0, similarity + 0.1)
 
-                        # Method 3: Fuzzy matching within same team
-                        if not best_match and dff_team and dff_team in dk_players_by_team:
-                            for player in dk_players_by_team[dff_team]:
-                                # Clean DK name for comparison
-                                dk_name_clean = self.clean_player_name_for_matching(player.name)
-                                score = self._name_similarity(dff_name, dk_name_clean)
-                                if score > best_score and score >= 0.75:  # Lower threshold for same team
-                                    best_score = score
-                                    best_match = player
-
-                        # Method 4: Global fuzzy matching (last resort)
-                        if not best_match:
-                            for player in self.players:
-                                # Clean DK name for comparison
-                                dk_name_clean = self.clean_player_name_for_matching(player.name)
-                                score = self._name_similarity(dff_name, dk_name_clean)
-                                if score > best_score and score >= 0.85:
-                                    best_score = score
-                                    best_match = player
+                        if similarity > best_score and similarity >= 0.7:
+                            best_score = similarity
+                            best_match = player
 
                     if best_match and 'ppg_projection' in dff_data:
-                        # APPLY TO MATCHED PLAYER
+                        # Apply to matched player
                         best_match.apply_dff_data(dff_data)
                         matches += 1
                         all_enriched += 1
 
-                        # Check if this player is eligible
+                        # Check if eligible
                         if best_match.is_eligible_for_selection(self.optimization_mode):
                             eligible_enriched += 1
 
-                            # Show match details for first few or significant differences
+                            # Show match details for first few
                             if eligible_enriched <= 5 or abs(dff_data['ppg_projection'] - best_match.base_score) > 2:
                                 proj = dff_data['ppg_projection']
                                 own = dff_data.get('ownership', 'N/A')
                                 match_indicator = "✅" if best_score >= 0.95 else f"🔄 ({best_score:.2f})"
 
-                                print(f"\n   {match_indicator} DFF MATCH: {dff_name_raw} → {best_match.name}")
-                                print(
-                                    f"      Cleaned: {dff_name} → {self.clean_player_name_for_matching(best_match.name)}")
+                                print(f"\n   {match_indicator} DFF MATCH: {dff_name} → {best_match.name}")
+                                if dff_name != dff_name_raw:
+                                    print(f"      (Original: {dff_name_raw})")
                                 print(f"      Team: {dff_team or 'N/A'} → {best_match.team}")
                                 print(f"      Projection: {proj:.1f} | Ownership: {own}%")
                     else:
@@ -1056,8 +1520,6 @@ class BulletproofDFSCore:
 
                 except Exception as e:
                     print(f"   ❌ Error processing row {idx}: {e}")
-                    import traceback
-                    traceback.print_exc()
                     continue
 
             print(f"\n📊 DFF Integration Summary:")
@@ -1089,421 +1551,722 @@ class BulletproofDFSCore:
             traceback.print_exc()
             return False
 
-    def _name_similarity(self, name1: str, name2: str) -> float:
-        """Enhanced name matching with special handling for common variations"""
-        name1 = name1.lower().strip()
-        name2 = name2.lower().strip()
+    def _apply_enrichments_to_confirmed_players(self):
+        """Apply all enrichments to confirmed players"""
+        # Get only confirmed players
+        truly_confirmed = [p for p in self.players if p.is_confirmed]
+        print(f"🎯 Enriching {len(truly_confirmed)} confirmed players...")
 
-        # Remove common suffixes
-        for suffix in [' jr', ' jr.', ' sr', ' sr.', ' iii', ' ii', ' iv', ' v']:
-            name1 = name1.replace(suffix, '')
-            name2 = name2.replace(suffix, '')
+        if not truly_confirmed:
+            print("⚠️ No confirmed players to enrich")
+            return
 
-        # Exact match
-        if name1 == name2:
-            return 1.0
-
-        # Check if one contains the other
-        if name1 in name2 or name2 in name1:
-            return 0.95
-
-        # Split names
-        parts1 = name1.split()
-        parts2 = name2.split()
-
-        if len(parts1) >= 2 and len(parts2) >= 2:
-            # Last name exact match
-            if parts1[-1] == parts2[-1]:
-                # First name initial match
-                if parts1[0][0] == parts2[0][0]:
-                    return 0.9
-                # Check common nicknames
-                if self._are_nicknames(parts1[0], parts2[0]):
-                    return 0.85
-
-        # Fuzzy match
-        from difflib import SequenceMatcher
-        return SequenceMatcher(None, name1, name2).ratio()
-
-    def reset_all_confirmations(self):
-        """Reset ALL confirmation status - call this at the start of each run"""
-        print("\n🔄 RESETTING ALL CONFIRMATIONS")
-        for player in self.players:
-            player.is_confirmed = False
-            player.confirmation_sources = []
-            # Don't reset manual selections
-        print(f"✅ Reset confirmations for {len(self.players)} players")
-
-    def _are_nicknames(self, name1: str, name2: str) -> bool:
-        """Check if two names are common nicknames"""
-        nicknames = {
-            # Common nicknames
-            'mike': 'michael', 'michael': 'mike',
-            'chris': 'christopher', 'christopher': 'chris',
-            'dave': 'david', 'david': 'dave',
-            'rob': 'robert', 'robert': 'rob', 'bob': 'robert', 'bobby': 'robert',
-            'matt': 'matthew', 'matthew': 'matt', 'matty': 'matthew',
-            'joe': 'joseph', 'joseph': 'joe', 'joey': 'joseph',
-            'alex': 'alexander', 'alexander': 'alex',
-            'will': 'william', 'william': 'will', 'willie': 'william', 'bill': 'william', 'billy': 'william',
-            'jake': 'jacob', 'jacob': 'jake',
-            'josh': 'joshua', 'joshua': 'josh',
-            'jon': 'jonathan', 'jonathan': 'jon', 'jonny': 'jonathan',
-            'nick': 'nicholas', 'nicholas': 'nick', 'nicky': 'nicholas',
-            'tony': 'anthony', 'anthony': 'tony',
-            'andy': 'andrew', 'andrew': 'andy', 'drew': 'andrew',
-            'dan': 'daniel', 'daniel': 'dan', 'danny': 'daniel',
-            'jim': 'james', 'james': 'jim', 'jimmy': 'james',
-            'ed': 'edward', 'edward': 'ed', 'eddie': 'edward',
-            'tom': 'thomas', 'thomas': 'tom', 'tommy': 'thomas',
-            'ben': 'benjamin', 'benjamin': 'ben', 'benny': 'benjamin',
-            'ken': 'kenneth', 'kenneth': 'ken', 'kenny': 'kenneth',
-            'steve': 'stephen', 'stephen': 'steve', 'steven': 'steve',
-            'rick': 'richard', 'richard': 'rick', 'ricky': 'richard', 'dick': 'richard',
-            'charlie': 'charles', 'charles': 'charlie', 'chuck': 'charles',
-            'ted': 'theodore', 'theodore': 'ted', 'teddy': 'theodore',
-            'frank': 'francis', 'francis': 'frank', 'frankie': 'francis',
-            'sam': 'samuel', 'samuel': 'sam', 'sammy': 'samuel',
-            'tim': 'timothy', 'timothy': 'tim', 'timmy': 'timothy',
-            'pat': 'patrick', 'patrick': 'pat',
-            'pete': 'peter', 'peter': 'pete',
-
-            # Spanish/Latin nicknames common in baseball
-            'alex': 'alejandro', 'alejandro': 'alex',
-            'manny': 'manuel', 'manuel': 'manny',
-            'rafa': 'rafael', 'rafael': 'rafa',
-            'miggy': 'miguel', 'miguel': 'miggy',
-            'vlad': 'vladimir', 'vladimir': 'vlad', 'vladdy': 'vladimir',
-
-            # Baseball-specific common nicknames
-            'aj': 'aaron', 'aj': 'andrew', 'aj': 'anthony',  # A.J. can be multiple names
-            'cj': 'christopher', 'cj': 'carl', 'cj': 'charles',
-            'dj': 'david', 'dj': 'daniel', 'dj': 'derek',
-            'tj': 'thomas', 'tj': 'tyler', 'tj': 'timothy',
-            'jp': 'john', 'jp': 'james', 'jp': 'joseph',
-            'jd': 'john', 'jd': 'james', 'jd': 'joseph',
-
-            # Other common baseball nicknames
-            'bo': 'robert', 'buster': 'gerald', 'chipper': 'larry',
-            'dusty': 'johnnie', 'duke': 'edwin', 'goose': 'richard',
-            'lefty': 'steve', 'moose': 'michael', 'pudge': 'ivan',
-            'rusty': 'russell', 'sandy': 'sanford', 'sparky': 'george',
-            'whitey': 'edward', 'yogi': 'lawrence'
+        # Track which enrichments have been applied
+        self._enrichment_applied = {
+            'vegas': False,
+            'statcast': False,
+            'park_factors': False,
+            'recent_form': False,
+            'batting_order': False,
+            'statistical_analysis': False
         }
 
-        name1_lower = name1.lower().strip()
-        name2_lower = name2.lower().strip()
+        # Note: DFF data was already applied in detect_confirmed_players()
 
-        # Direct nickname match
-        if nicknames.get(name1_lower) == name2_lower or nicknames.get(name2_lower) == name1_lower:
-            return True
+        # 1. Vegas Lines
+        if self.vegas_lines and not self._enrichment_applied['vegas']:
+            print("💰 Enriching with Vegas lines...")
+            self.enrich_with_vegas_lines()
+            self._enrichment_applied['vegas'] = True
 
-        # Check if both map to same full name
-        if name1_lower in nicknames and name2_lower in nicknames:
-            if nicknames[name1_lower] == nicknames[name2_lower]:
-                return True
+        # 2. Statcast Data
+        if self.statcast_fetcher and not self._enrichment_applied['statcast']:
+            print("📊 Enriching with Statcast data...")
+            self.enrich_with_statcast_priority()
+            self._enrichment_applied['statcast'] = True
 
-        # Handle initials (A.J., C.J., etc.)
-        if len(name1_lower) == 2 and '.' not in name1_lower and len(name2_lower) > 2:
-            # Check if initials match first letters
-            if name1_lower[0] == name2_lower[0]:
-                return True
+        # 3. Park Factors
+        if not self._enrichment_applied['park_factors']:
+            print("🏟️ Applying park factors...")
+            self.apply_park_factors()
+            self._enrichment_applied['park_factors'] = True
 
-        return False
+        # 4. Recent Form
+        if not self._enrichment_applied['recent_form']:
+            print("📈 Analyzing recent form for ALL confirmed players...")
+            self._apply_recent_form_all_players()
+            self._enrichment_applied['recent_form'] = True
 
-    def _copy_player(self, player):
-        """Create a copy of player"""
-        import copy
-        return copy.deepcopy(player)
+        # 5. Batting Order (if available)
+        if hasattr(self, 'enrich_with_batting_order') and not self._enrichment_applied['batting_order']:
+            print("🔢 Enriching with batting order...")
+            self.enrich_with_batting_order()
+            self._enrichment_applied['batting_order'] = True
 
-    def set_optimization_mode(self, mode: str):
-        """Set optimization mode with validation"""
-        valid_modes = ['bulletproof', 'manual_only', 'confirmed_only', 'all']
+        # 6. Statistical Analysis (combines all data sources)
+        if not self._enrichment_applied['statistical_analysis']:
+            print("🔬 Applying enhanced statistical analysis...")
+            self._apply_comprehensive_statistical_analysis(truly_confirmed)
+            self._enrichment_applied['statistical_analysis'] = True
 
-        # Handle different mode names from GUI
-        mode_mapping = {
-            'all players': 'all',
-            'all_players': 'all',
-            'manual only': 'manual_only',
-            'confirmed only': 'confirmed_only',
-            'bulletproof (confirmed + manual)': 'bulletproof'
+        # Show summary of enrichments
+        enrichment_summary = {
+            'DFF': sum(1 for p in truly_confirmed if hasattr(p, 'dff_data') and p.dff_data),
+            'Vegas': sum(1 for p in truly_confirmed if hasattr(p, 'vegas_data') and p.vegas_data),
+            'Statcast': sum(1 for p in truly_confirmed if hasattr(p, 'statcast_data') and p.statcast_data),
+            'Batting Order': sum(1 for p in truly_confirmed if hasattr(p, 'batting_order') and p.batting_order),
+            'Recent Form': sum(
+                1 for p in truly_confirmed if hasattr(p, '_recent_performance') and p._recent_performance)
         }
 
-        # Normalize the mode
-        mode_lower = mode.lower()
-        if mode_lower in mode_mapping:
-            mode = mode_mapping[mode_lower]
+        print(f"\n📊 Enrichment Summary:")
+        for source, count in enrichment_summary.items():
+            print(f"   {source}: {count}/{len(truly_confirmed)} players")
 
-        if mode in valid_modes:
-            self.optimization_mode = mode
-            print(f"⚙️ Optimization mode set to: {mode}")
-        else:
-            print(f"❌ Invalid mode '{mode}'. Choose from: {valid_modes}")
-            print(f"   Keeping current mode: {self.optimization_mode}")
+        print("✅ All enrichments applied")
 
-    def load_draftkings_csv(self, file_path: str) -> bool:
-        """Load DraftKings CSV with better multi-position parsing"""
+    def enrich_with_vegas_lines(self):
+        """Apply Vegas lines with better error handling"""
+        if not self.vegas_lines:
+            print("⚠️ Vegas lines module not available")
+            return
+
+        print("💰 Applying Vegas lines where data exists...")
+
         try:
-            print(f"📁 Loading DraftKings CSV: {Path(file_path).name}")
+            vegas_data = self.vegas_lines.get_vegas_lines()
 
-            if not os.path.exists(file_path):
-                print(f"❌ File not found: {file_path}")
-                return False
+            if not vegas_data:
+                print("⚠️ No Vegas data retrieved - API may be down")
+                return
 
-            # Read CSV first to detect contest type
-            df = pd.read_csv(file_path)
-            print(f"📊 Found {len(df)} rows, {len(df.columns)} columns")
+            # Only apply to confirmed/eligible players
+            eligible_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
 
-            # ENHANCED SHOWDOWN DETECTION
-            filename = os.path.basename(file_path).lower()
-            if any(indicator in filename for indicator in ['showdown', 'captain', 'sd', 'cptn']):
-                self.contest_type = 'showdown'
-                print("🎯 SHOWDOWN DETECTED (filename)")
-            else:
-                # Method 2: Check team count
-                team_col_idx = None
-                for i, col in enumerate(df.columns):
-                    if 'team' in str(col).lower():
-                        team_col_idx = i
-                        break
+            enriched_count = 0
+            for player in eligible_players:
+                if player.team in vegas_data:
+                    team_vegas = vegas_data[player.team]
+                    player.apply_vegas_data(team_vegas)
+                    enriched_count += 1
 
-                if team_col_idx is not None:
-                    unique_teams = df.iloc[:, team_col_idx].dropna().unique()
-                    team_count = len([t for t in unique_teams if str(t).strip() and str(t) != 'nan'])
-
-                    if team_count <= 2:
-                        self.contest_type = 'showdown'
-                        print(f"🎯 SHOWDOWN DETECTED ({team_count} teams)")
-                    else:
-                        self.contest_type = 'classic'
-                        print(f"🏈 CLASSIC CONTEST ({team_count} teams)")
-
-            # Update salary cap for showdown
-            if self.contest_type == 'showdown':
-                self.salary_cap = 50000
-                print("💰 Showdown salary cap: $50,000")
-
-            # COLUMN DETECTION
-            column_map = {}
-            roster_position_idx = None
-
-            for i, col in enumerate(df.columns):
-                col_lower = str(col).lower().strip()
-
-                # Check for Roster Position column specifically
-                if 'roster position' in col_lower:
-                    roster_position_idx = i
-                    print(f"   Found Roster Position column at index {i}")
-
-                # Name column detection
-                if any(name in col_lower for name in ['name', 'player']):
-                    if 'name' in col_lower and '+' not in col_lower and 'name' not in column_map:
-                        column_map['name'] = i
-
-                # Position column detection
-                elif any(pos in col_lower for pos in ['position']) and 'roster' not in col_lower:
-                    if 'position' not in column_map:
-                        column_map['position'] = i
-
-                # Team column detection
-                elif any(team in col_lower for team in ['team', 'teamabbrev', 'tm']):
-                    if 'team' not in column_map:
-                        column_map['team'] = i
-
-                # Salary column detection
-                elif any(sal in col_lower for sal in ['salary', 'sal', 'cost']):
-                    if 'salary' not in column_map:
-                        column_map['salary'] = i
-
-                # Projection column detection
-                elif any(proj in col_lower for proj in ['avgpointspergame', 'fppg', 'projection', 'points']):
-                    if 'projection' not in column_map:
-                        column_map['projection'] = i
-
-            # Debug: Show detected columns
-            print(f"📋 Detected columns:")
-            for field, idx in column_map.items():
-                print(f"   {field}: column {idx} ('{df.columns[idx]}')")
-
-            # Parse players
-            players = []
-            multi_position_players = []
-
-            for idx, row in df.iterrows():
-                try:
-                    # Get position string - prioritize Roster Position for multi-positions
-                    position_str = ""
-
-                    if roster_position_idx is not None:
-                        position_str = str(row.iloc[roster_position_idx]).strip()
-
-                    # If empty or nan, try regular Position column
-                    if not position_str or position_str.lower() == 'nan':
-                        position_str = str(row.iloc[column_map.get('position', 1)]).strip()
-
-                    player_data = {
-                        'id': idx + 1,
-                        'name': str(row.iloc[column_map.get('name', 0)]).strip(),
-                        'position': position_str,  # Pass the full position string
-                        'team': str(row.iloc[column_map.get('team', 2)]).strip(),
-                        'salary': row.iloc[column_map.get('salary', 3)],
-                        'projection': row.iloc[column_map.get('projection', 4)]
-                    }
-
-                    player = AdvancedPlayer(player_data)
-
-                    # SHOWDOWN POSITION OVERRIDE
-                    if self.contest_type == 'showdown':
-                        player.positions = ['CPT', 'UTIL']
-                        player.primary_position = 'UTIL'
-                        player.showdown_eligible = True
-
-                    # Track multi-position players
-                    if len(player.positions) > 1:
-                        multi_position_players.append(f"{player.name} ({'/'.join(player.positions)})")
-
-                    if player.name and player.salary > 0:
-                        players.append(player)
-
-                except Exception as e:
-                    print(f"Error parsing row {idx}: {e}")
-                    continue
-
-            self.players = players
-
-            # Show multi-position players
-            if multi_position_players:
-                print(f"\n🔄 Found {len(multi_position_players)} multi-position players:")
-                for mp in multi_position_players[:10]:  # Show first 10
-                    print(f"   {mp}")
-                if len(multi_position_players) > 10:
-                    print(f"   ... and {len(multi_position_players) - 10} more")
-
-
-
-            print(f"✅ Loaded {len(self.players)} valid {self.contest_type.upper()} players")
-
-            # Position statistics
-            multi_position_count = sum(1 for p in self.players if len(p.positions) > 1)
-            single_position_count = sum(1 for p in self.players if len(p.positions) == 1)
-            print(f"📊 Position stats: {multi_position_count} multi-position, {single_position_count} single-position")
-
-            return True
+            print(f"✅ Vegas data: {enriched_count}/{len(eligible_players)} players enriched")
 
         except Exception as e:
-            print(f"❌ Error loading CSV: {e}")
+            print(f"❌ Vegas enrichment failed: {e}")
             import traceback
             traceback.print_exc()
-            return False
 
-    def apply_manual_selection(self, manual_input: str) -> int:
-        """Apply manual player selection with enhanced matching"""
-        if not manual_input:
-            return 0
+    def enrich_with_statcast_priority(self):
+        """Priority Statcast enrichment with correct method names"""
+        if not self.statcast_fetcher:
+            print("⚠️ Statcast fetcher not available")
+            return
 
-        # Parse manual input
-        manual_names = []
-        for delimiter in [',', ';', '\n', '|']:
-            if delimiter in manual_input:
-                manual_names = [name.strip() for name in manual_input.split(delimiter)]
-                break
-        else:
-            manual_names = [manual_input.strip()]
+        print("🔬 Priority Statcast enrichment for confirmed players...")
 
-        manual_names = [name for name in manual_names if name and len(name) > 2]
+        # Get all confirmed/manual players
+        priority_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
 
-        if not manual_names:
-            return 0
+        print(f"🎯 Enriching ALL {len(priority_players)} confirmed players with Statcast...")
 
-        print(f"🎯 Processing manual selection: {len(manual_names)} players")
+        # Use parallel method for better performance
+        try:
+            statcast_results = self.statcast_fetcher.fetch_multiple_players_parallel(priority_players)
 
-        matches = 0
-        for manual_name in manual_names:
-            best_match = None
-            best_score = 0
+            enriched_count = 0
+            failed_count = 0
 
-            for player in self.players:
-                similarity = self._name_similarity(manual_name, player.name)
-                if similarity > best_score and similarity >= 0.6:  # Lowered threshold
-                    best_score = similarity
-                    best_match = player
-
-            if best_match:
-                best_match.set_manual_selected()
-                matches += 1
-                print(f"   ✅ {manual_name} → {best_match.name} ({best_score:.2f})")
-            else:
-                # Try partial matching
-                for player in self.players:
-                    if manual_name.lower() in player.name.lower():
-                        player.set_manual_selected()
-                        matches += 1
-                        print(f"   ✅ {manual_name} → {player.name} (partial)")
-                        break
+            # Apply results to each player
+            for player in priority_players:
+                if player.name in statcast_results:
+                    statcast_data = statcast_results[player.name]
+                    if statcast_data and statcast_data != 'Realistic Fallback (Fast)':
+                        player.apply_statcast_data(statcast_data)
+                        enriched_count += 1
+                    else:
+                        failed_count += 1
                 else:
-                    print(f"   ❌ {manual_name} → No match found")
+                    failed_count += 1
 
-        return matches
+            print(f"✅ Statcast enriched: {enriched_count}/{len(priority_players)} players")
+            if failed_count > 0:
+                print(f"⚠️ Failed to enrich: {failed_count} players")
 
+        except Exception as e:
+            print(f"❌ Statcast parallel fetch failed: {e}")
+            # Fallback to individual fetching
+            enriched_count = 0
+            failed_count = 0
 
-    def _name_similarity(self, name1: str, name2: str) -> float:
-        """Enhanced name similarity matching"""
-        name1 = name1.lower().strip()
-        name2 = name2.lower().strip()
+            for i, player in enumerate(priority_players):
+                if (i + 1) % 10 == 0:
+                    print(f"   Progress: {i + 1}/{len(priority_players)} players...")
 
-        # Remove common punctuation
-        for char in ["'", ".", "-", " jr", " sr", " iii", " ii"]:
-            name1 = name1.replace(char, "")
-            name2 = name2.replace(char, "")
+                try:
+                    statcast_data = self.statcast_fetcher.fetch_player_data(
+                        player.name,
+                        player.primary_position
+                    )
 
-        if name1 == name2:
-            return 1.0
+                    if statcast_data and statcast_data != 'Realistic Fallback (Fast)':
+                        player.apply_statcast_data(statcast_data)
+                        enriched_count += 1
+                    else:
+                        failed_count += 1
 
-        # Check if one name contains the other
-        if name1 in name2 or name2 in name1:
-            return 0.9
+                except Exception as e:
+                    failed_count += 1
+                    if failed_count <= 3:
+                        print(f"   ⚠️ Failed for {player.name}: {e}")
 
-        # Check last name match
-        parts1 = name1.split()
-        parts2 = name2.split()
+            print(f"✅ Statcast enriched: {enriched_count}/{len(priority_players)} players")
+            if failed_count > 0:
+                print(f"⚠️ Failed to enrich: {failed_count} players")
 
-        if parts1 and parts2:
-            # Last name exact match
-            if parts1[-1] == parts2[-1]:
-                return 0.85
+    def apply_park_factors(self):
+        """Apply park factors using built-in constants"""
+        if not REAL_DATA_SOURCES.get('park_factors', False):
+            print("⚠️ Park factors disabled in REAL_DATA_SOURCES")
+            return
 
-            # First initial + last name match
-            if len(parts1[0]) > 0 and len(parts2[0]) > 0:
-                if parts1[0][0] == parts2[0][0] and parts1[-1] == parts2[-1]:
-                    return 0.8
+        print("🏟️ Priority park factors for confirmed players...")
 
-        # Levenshtein distance for close matches
-        from difflib import SequenceMatcher
-        return SequenceMatcher(None, name1, name2).ratio()
-    # !/usr/bin/env python3
-    """
-    CORE OPTIMIZER UPDATES - NO ARTIFICIAL BOOSTS
-    ==============================================
-    Clean optimization without inflating confirmed players
-    """
+        eligible_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
+        adjusted_count = 0
 
-    # Add these methods to bulletproof_dfs_core.py
+        for player in eligible_players:
+            if player.team in PARK_FACTORS:
+                factor = PARK_FACTORS[player.team]
+
+                # Apply factor based on position
+                if player.primary_position == 'P':
+                    # Invert for pitchers (pitcher-friendly = good for pitchers)
+                    adjusted_factor = 2.0 - factor
+                else:
+                    # Direct for hitters
+                    adjusted_factor = factor
+
+                if abs(adjusted_factor - 1.0) > 0.01:  # Only adjust if meaningful
+                    old_score = player.enhanced_score
+                    player.enhanced_score *= adjusted_factor
+
+                    # Store the adjustment info
+                    player.park_factors = {
+                        'park_team': player.team,
+                        'factor': adjusted_factor,
+                        'original_factor': factor,
+                        'adjustment': player.enhanced_score - old_score
+                    }
+
+                    adjusted_count += 1
+
+                    # Log significant adjustments
+                    if abs(adjusted_factor - 1.0) > 0.05:
+                        change_pct = (adjusted_factor - 1.0) * 100
+                        print(f"   {player.name} ({player.primary_position}) at {player.team}: "
+                              f"{old_score:.1f} → {player.enhanced_score:.1f} "
+                              f"({change_pct:+.0f}% park adjustment)")
+
+        print(f"✅ Park factors: {adjusted_count}/{len(eligible_players)} confirmed players adjusted")
+
+    def _apply_recent_form_all_players(self):
+        """Apply recent form analysis to ALL confirmed players without limits"""
+        if not REAL_DATA_SOURCES.get('recent_form', False):
+            print("⚠️ Recent form disabled in REAL_DATA_SOURCES")
+            return
+
+        try:
+            from real_recent_form import RealRecentFormAnalyzer
+            form_analyzer = RealRecentFormAnalyzer(days_back=7)
+
+            # Get ALL confirmed players
+            players_to_analyze = [p for p in self.players if p.is_confirmed]
+            total_players = len(players_to_analyze)
+
+            if not players_to_analyze:
+                print("   ⚠️ No confirmed players to analyze")
+                return
+
+            print(f"   Analyzing {total_players} players (ALL confirmed)")
+
+            # Call the form analyzer
+            form_analyzer.enrich_players_with_form(players_to_analyze)
+
+            # Apply form adjustments
+            adjusted_count = 0
+            hot_count = 0
+            cold_count = 0
+
+            for player in players_to_analyze:
+                # Check if player has form data
+                if hasattr(player, 'form_rating') and player.form_rating != 1.0:
+                    # Apply the form rating adjustment
+                    original_score = player.enhanced_score
+                    player.enhanced_score *= player.form_rating
+                    adjusted_count += 1
+
+                    # Track hot/cold
+                    if hasattr(player, 'hot_streak') and player.hot_streak:
+                        hot_count += 1
+                    elif player.form_rating < 0.9:
+                        cold_count += 1
+
+                    # Add tracking info
+                    player.form_applied = True
+                    player.form_adjustment = player.enhanced_score - original_score
+
+                    # Log significant adjustments
+                    if abs(player.form_rating - 1.0) > 0.1:
+                        change_pct = (player.form_rating - 1.0) * 100
+                        print(f"      {player.name}: {original_score:.1f} → {player.enhanced_score:.1f} "
+                              f"({change_pct:+.0f}% form adjustment)")
+
+            # Report results
+            print(f"   ✅ Analyzed {adjusted_count}/{total_players} players successfully")
+            if hot_count:
+                print(f"   🔥 {hot_count} HOT players identified and boosted")
+            if cold_count:
+                print(f"   ❄️ {cold_count} COLD players identified and reduced")
+
+        except Exception as e:
+            print(f"⚠️ Recent form failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _apply_comprehensive_statistical_analysis(self, players):
+        """Apply comprehensive statistical analysis with PRIORITY 1 improvements"""
+        print(f"📊 ENHANCED Statistical Analysis: {len(players)} players")
+        print("🎯 PRIORITY 1 FEATURES: Variable Confidence + Enhanced Statcast + Position Weighting + Recent Form")
+
+        if not players:
+            return
+
+        if ENHANCED_STATS_AVAILABLE:
+            # Use enhanced statistical analysis engine
+            adjusted_count = apply_enhanced_statistical_analysis(players, verbose=True)
+            print(f"✅ Enhanced Analysis: {adjusted_count} players optimized with Priority 1 improvements")
+
+            # Apply recent form adjustments if available
+            if hasattr(self, 'form_analyzer'):
+                form_adjusted = 0
+                for player in players:
+                    if hasattr(player, '_recent_performance') and player._recent_performance:
+                        adjustment = self.form_analyzer.apply_form_adjustments(player)
+                        if adjustment != 1.0:
+                            form_adjusted += 1
+
+                if form_adjusted > 0:
+                    print(f"📈 Recent Form: {form_adjusted} players adjusted based on hot/cold streaks")
+        else:
+            # Fallback to basic analysis
+            print("⚠️ Using basic analysis - enhanced engine not found")
+            self._apply_basic_statistical_analysis(players)
+
+    def _apply_basic_statistical_analysis(self, players):
+        """Fallback basic statistical analysis"""
+        print(f"📊 Basic statistical analysis: {len(players)} players")
+
+        CONFIDENCE_THRESHOLD = 0.80
+        MAX_TOTAL_ADJUSTMENT = 0.20
+
+        adjusted_count = 0
+        for player in players:
+            total_adjustment = 0.0
+
+            # DFF Analysis
+            if hasattr(player, 'dff_data') and player.dff_data and player.dff_data.get('ppg_projection', 0) > 0:
+                dff_projection = player.dff_data['ppg_projection']
+                if dff_projection > player.projection:
+                    dff_adjustment = min((dff_projection - player.projection) / player.projection * 0.3,
+                                         0.10) * CONFIDENCE_THRESHOLD
+                    total_adjustment += dff_adjustment
+
+            # Vegas Environment Analysis
+            if hasattr(player, 'vegas_data') and player.vegas_data:
+                team_total = player.vegas_data.get('team_total', 4.5)
+
+                if player.primary_position == 'P':
+                    opp_total = player.vegas_data.get('opponent_total', 4.5)
+                    if opp_total < 4.0:
+                        vegas_adjustment = min((4.5 - opp_total) / 4.5 * 0.4, 0.08) * CONFIDENCE_THRESHOLD
+                        total_adjustment += vegas_adjustment
+                else:
+                    if team_total > 5.0:
+                        vegas_adjustment = min((team_total - 4.5) / 4.5 * 0.5, 0.08) * CONFIDENCE_THRESHOLD
+                        total_adjustment += vegas_adjustment
+
+            # Apply cap
+            if total_adjustment > MAX_TOTAL_ADJUSTMENT:
+                total_adjustment = MAX_TOTAL_ADJUSTMENT
+
+            # Apply adjustment
+            if total_adjustment > 0.03:
+                adjustment_points = player.enhanced_score * total_adjustment
+                player.enhanced_score += adjustment_points
+                adjusted_count += 1
+
+        print(f"✅ Basic Analysis: {adjusted_count}/{len(players)} players adjusted")
+
+    # ========================================================================
+    # LINEUP OPTIMIZATION
+    # ========================================================================
+
+    def optimize_lineup_with_mode(self) -> Tuple[List[AdvancedPlayer], float]:
+        """Optimize lineup using true integer programming optimization"""
+        print(f"\n🎯 OPTIMAL LINEUP GENERATION - {self.optimization_mode.upper()}")
+        print("=" * 80)
+
+        # Get eligible players based on mode
+        eligible_players = self.get_eligible_players_by_mode()
+
+        if not eligible_players:
+            print("❌ No eligible players found")
+            return [], 0
+
+        print(f"📊 Optimizing with {len(eligible_players)} eligible players")
+
+        # Create optimizer
+        optimizer = OptimalLineupOptimizer(salary_cap=self.salary_cap)
+
+        # Run optimization based on contest type
+        if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
+            result = self.optimize_showdown_lineup_fixed(eligible_players)
+        else:
+            result = optimizer.optimize_classic_lineup(eligible_players, use_confirmations=False)
+
+        if result.optimization_status == "Optimal" and result.lineup:
+            # Use special display for showdown
+            if self.contest_type == 'showdown':
+                self.display_showdown_lineup(result.lineup, result.total_score, result.total_salary)
+            else:
+                # Classic display
+                print(f"\n✅ OPTIMAL LINEUP FOUND!")
+                print(f"💰 Total Salary: ${result.total_salary:,} / ${self.salary_cap:,}")
+                print(f"📈 Projected Points: {result.total_score:.2f}")
+                print(f"📊 Positions Filled: {result.positions_filled}")
+
+                print("\n📋 LINEUP PLAYERS:")
+                print("-" * 60)
+                for i, player in enumerate(result.lineup, 1):
+                    pos = getattr(player, 'assigned_position', player.primary_position)
+                    score = getattr(player, 'enhanced_score', player.projection)
+                    print(
+                        f"{i:2d}. {pos:<4} {player.name:<20} {player.team:<4} ${player.salary:>6,} → {score:>6.1f} pts")
+                print("-" * 60)
+
+            return result.lineup, result.total_score
+        else:
+            print(f"❌ Optimization failed: {result.optimization_status}")
+            return [], 0
+
+    def optimize_showdown_lineup_fixed(self, players: List) -> 'OptimizationResult':
+        """Showdown optimization using MILP only"""
+        print("\n🎰 SHOWDOWN LINEUP OPTIMIZATION (MILP ONLY)")
+        print("=" * 60)
+
+        if len(players) < 6:
+            print(f"❌ Need at least 6 players, have {len(players)}")
+            return self._create_failed_result("Not enough players")
+
+        print(f"🎯 Optimizing with {len(players)} eligible players")
+
+        # Show player breakdown
+        position_types = {}
+        for player in players:
+            if hasattr(player, 'original_positions'):
+                for pos in player.original_positions:
+                    position_types[pos] = position_types.get(pos, 0) + 1
+
+        print(f"📊 Player types available: {position_types}")
+
+        # Use MILP optimizer
+        try:
+            from optimal_lineup_optimizer import OptimalLineupOptimizer
+            optimizer = OptimalLineupOptimizer(salary_cap=self.salary_cap)
+            result = optimizer.optimize_showdown_lineup(players)
+
+            if result and result.optimization_status == "Optimal":
+                print("✅ MILP optimization successful")
+                return result
+            else:
+                print(f"❌ MILP optimization failed: {result.optimization_status if result else 'No result'}")
+                return result if result else self._create_failed_result("MILP optimization failed")
+
+        except Exception as e:
+            print(f"❌ MILP optimization error: {e}")
+            import traceback
+            traceback.print_exc()
+            return self._create_failed_result(f"MILP error: {str(e)}")
+
+    def create_showdown_player_constraints(self, players: List) -> Dict:
+        """Create constraints to prevent selecting same person twice"""
+        print("\n🔒 Creating showdown player constraints...")
+
+        # Group players by actual person (same name)
+        person_groups = {}
+        for i, player in enumerate(players):
+            name_key = player.name.lower().strip()
+            if name_key not in person_groups:
+                person_groups[name_key] = []
+            person_groups[name_key].append(i)  # Store player index
+
+        # Find groups with multiple versions (CPT + UTIL)
+        constraint_groups = []
+        for name, player_indices in person_groups.items():
+            if len(player_indices) > 1:
+                constraint_groups.append(player_indices)
+                if len(constraint_groups) <= 5:  # Show first 5
+                    print(f"   {name.title()}: indices {player_indices}")
+
+        print(f"   Found {len(constraint_groups)} players with multiple versions")
+
+        return {
+            'person_groups': person_groups,
+            'constraint_groups': constraint_groups
+        }
+
+    def _person_aware_showdown_milp(self, players: List, constraints: Dict) -> 'OptimizationResult':
+        """MILP optimization that respects person constraints"""
+        if not MILP_AVAILABLE:
+            raise Exception("PuLP not available")
+
+        import pulp
+
+        prob = pulp.LpProblem("DFS_Showdown_PersonAware", pulp.LpMaximize)
+
+        # Decision variables
+        x = {}
+        for i in range(len(players)):
+            x[i] = pulp.LpVariable(f"x_{i}", cat='Binary')
+
+        # Objective: maximize points
+        prob += pulp.lpSum([x[i] * players[i].enhanced_score for i in range(len(players))])
+
+        # Constraint 1: Exactly 6 players selected
+        prob += pulp.lpSum(x.values()) == 6
+
+        # Constraint 2: Exactly 1 captain
+        captain_indices = []
+        for i, player in enumerate(players):
+            if 'CPT' in player.positions:
+                captain_indices.append(i)
+
+        prob += pulp.lpSum([x[i] for i in captain_indices]) == 1
+
+        # Constraint 3: Exactly 5 utility players
+        util_indices = []
+        for i, player in enumerate(players):
+            if 'UTIL' in player.positions and 'CPT' not in player.positions:
+                util_indices.append(i)
+
+        prob += pulp.lpSum([x[i] for i in util_indices]) == 5
+
+        # Constraint 4: Each person can only be selected once
+        for person_indices in constraints['constraint_groups']:
+            prob += pulp.lpSum([x[i] for i in person_indices]) <= 1
+
+        # Constraint 5: Salary cap
+        prob += pulp.lpSum([x[i] * players[i].salary for i in range(len(players))]) <= self.salary_cap
+
+        # Solve
+        solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=15)
+        status = prob.solve(solver)
+
+        if status == pulp.LpStatusOptimal:
+            return self._extract_person_aware_solution(players, x, constraints)
+        else:
+            raise Exception(f"MILP failed with status: {pulp.LpStatus[status]}")
+
+    def _extract_person_aware_solution(self, players: List, x: Dict, constraints: Dict) -> 'OptimizationResult':
+        """Extract solution ensuring no person appears twice"""
+        selected_players = []
+        total_salary = 0
+        total_score = 0
+        positions_filled = {'CPT': 0, 'UTIL': 0}
+
+        selected_indices = []
+        for i, player in enumerate(players):
+            if x[i].value() == 1:
+                selected_indices.append(i)
+                selected_players.append(player)
+                total_salary += player.salary
+                total_score += player.enhanced_score
+
+                if 'CPT' in player.positions:
+                    positions_filled['CPT'] += 1
+                    player.assigned_position = 'CPT'
+                    print(f"✅ Captain: {player.name} ({player.team}) - ${player.salary:,}")
+                else:
+                    positions_filled['UTIL'] += 1
+                    player.assigned_position = 'UTIL'
+                    print(f"✅ Utility: {player.name} ({player.team}) - ${player.salary:,}")
+
+        # Validation: Check for person duplicates
+        selected_names = [p.name.lower() for p in selected_players]
+        unique_names = set(selected_names)
+
+        if len(selected_names) != len(unique_names):
+            print(f"❌ PERSON DUPLICATE DETECTED!")
+            for name in selected_names:
+                if selected_names.count(name) > 1:
+                    print(f"   Duplicate person: {name}")
+
+            from optimal_lineup_optimizer import OptimizationResult
+            return OptimizationResult(
+                lineup=[], total_score=0, total_salary=0,
+                positions_filled={}, optimization_status="Person duplicate detected"
+            )
+
+        # Show team distribution
+        team_counts = {}
+        for player in selected_players:
+            team_counts[player.team] = team_counts.get(player.team, 0) + 1
+        print(f"📊 Team distribution: {team_counts}")
+
+        # Final validation
+        if len(selected_players) != 6:
+            print(f"❌ Wrong lineup size: {len(selected_players)}")
+        elif positions_filled['CPT'] != 1:
+            print(f"❌ Wrong captain count: {positions_filled['CPT']}")
+        elif positions_filled['UTIL'] != 5:
+            print(f"❌ Wrong utility count: {positions_filled['UTIL']}")
+        else:
+            print(f"✅ Lineup validation passed")
+
+        from optimal_lineup_optimizer import OptimizationResult
+        return OptimizationResult(
+            lineup=selected_players,
+            total_score=total_score,
+            total_salary=total_salary,
+            positions_filled=positions_filled,
+            optimization_status="Optimal"
+        )
+
+    def _person_aware_greedy_fallback(self, players: List, constraints: Dict) -> 'OptimizationResult':
+        """Greedy fallback that respects person constraints"""
+        print("🔄 Using person-aware greedy fallback...")
+
+        # Create person lookup
+        person_to_players = {}
+        for i, player in enumerate(players):
+            name_key = player.name.lower()
+            if name_key not in person_to_players:
+                person_to_players[name_key] = []
+            person_to_players[name_key].append((i, player))
+
+        # For each person, pick their best version
+        best_options = []
+
+        for name, player_options in person_to_players.items():
+            if len(player_options) == 1:
+                # Only one version available
+                best_options.append(player_options[0])
+            else:
+                # Multiple versions - need to try both captain and utility versions
+                for idx, player in player_options:
+                    value = player.enhanced_score / (player.salary / 1000)
+                    best_options.append((idx, player, value))
+
+        # Sort by value
+        best_options.sort(key=lambda x: x[2] if len(x) > 2 else x[1].enhanced_score / (x[1].salary / 1000),
+                          reverse=True)
+
+        best_lineup = None
+        best_score = 0
+
+        # Try different combinations respecting person constraints
+        for attempt in range(50):  # Try 50 different combinations
+            lineup = []
+            used_persons = set()
+            remaining_salary = self.salary_cap
+            captain_selected = False
+
+            # Shuffle for variety
+            import random
+            random.shuffle(best_options)
+
+            for option in best_options:
+                if len(option) == 2:
+                    idx, player = option
+                    value = player.enhanced_score / (player.salary / 1000)
+                else:
+                    idx, player, value = option
+
+                person_name = player.name.lower()
+
+                # Skip if person already used
+                if person_name in used_persons:
+                    continue
+
+                # Skip if salary too high
+                if player.salary > remaining_salary:
+                    continue
+
+                # Check position requirements
+                can_add = False
+                if 'CPT' in player.positions and not captain_selected:
+                    can_add = True
+                    captain_selected = True
+                    player.assigned_position = 'CPT'
+                elif 'UTIL' in player.positions and 'CPT' not in player.positions and len(lineup) < 6:
+                    can_add = True
+                    player.assigned_position = 'UTIL'
+
+                if can_add:
+                    lineup.append(player)
+                    used_persons.add(person_name)
+                    remaining_salary -= player.salary
+
+                    if len(lineup) == 6:
+                        break
+
+            if len(lineup) == 6 and captain_selected:
+                total_score = sum(p.enhanced_score for p in lineup)
+                if total_score > best_score:
+                    best_score = total_score
+                    best_lineup = lineup[:]
+
+                    print(f"✅ Found lineup with captain: {total_score:.2f} points")
+
+        if best_lineup:
+            total_salary = sum(p.salary for p in best_lineup)
+
+            from optimal_lineup_optimizer import OptimizationResult
+            return OptimizationResult(
+                lineup=best_lineup, total_score=best_score, total_salary=total_salary,
+                positions_filled={'CPT': 1, 'UTIL': 5}, optimization_status="Greedy"
+            )
+        else:
+            from optimal_lineup_optimizer import OptimizationResult
+            return OptimizationResult(
+                lineup=[], total_score=0, total_salary=0,
+                positions_filled={}, optimization_status="Greedy failed"
+            )
+
+    def _create_failed_result(self, reason: str):
+        """Create a failed optimization result"""
+        from optimal_lineup_optimizer import OptimizationResult
+        return OptimizationResult(
+            lineup=[], total_score=0, total_salary=0,
+            positions_filled={}, optimization_status=reason
+        )
+
+    # ========================================================================
+    # CONTEST-SPECIFIC OPTIMIZATION
+    # ========================================================================
 
     def generate_contest_lineups(self, count: int = 20,
                                  contest_type: str = 'gpp',
                                  min_salary_pct: float = 0.95,
                                  diversity_factor: float = 0.7,
                                  max_exposure: float = 0.6) -> List[Dict]:
-        """
-        Generate multiple lineups for specific contest type
-        NO ARTIFICIAL BOOSTS - Pure optimization
-        """
-
+        """Generate multiple lineups for specific contest type"""
         print(f"\n🎰 GENERATING {count} {contest_type.upper()} LINEUPS")
         print("=" * 60)
 
         # Get eligible players
-        eligible = self.filter_eligible_players()
+        eligible = self.get_eligible_players_by_mode()
 
         if len(eligible) < 10:
             print(f"❌ Not enough eligible players: {len(eligible)}")
@@ -1512,14 +2275,12 @@ class BulletproofDFSCore:
         generated_lineups = []
         player_usage = {}
 
-        # Contest-specific strategy adjustments (WITHOUT artificial boosts)
+        # Contest-specific strategy adjustments
         if contest_type == 'cash':
             # For cash games, we want HIGH FLOOR players
-            # Sort by floor (consistency) rather than ceiling
             eligible = self._sort_by_floor(eligible)
         elif contest_type == 'gpp':
             # For GPPs, we want HIGH CEILING players
-            # Sort by ceiling (upside) rather than floor
             eligible = self._sort_by_ceiling(eligible)
 
         successful = 0
@@ -1554,10 +2315,11 @@ class BulletproofDFSCore:
                 adjusted_players.append(adj_player)
 
             # Optimize based on contest type
-            if contest_type == 'showdown':
-                result = self.optimize_showdown_lineup(adjusted_players)
+            if self.contest_type == 'showdown':
+                result = self.optimize_showdown_lineup_fixed(adjusted_players)
             else:
-                result = self.optimize_classic_lineup(adjusted_players)
+                optimizer = OptimalLineupOptimizer(salary_cap=self.salary_cap)
+                result = optimizer.optimize_classic_lineup(adjusted_players, use_confirmations=False)
 
             # Validate lineup
             if result and result.optimization_status == "Optimal":
@@ -1594,44 +2356,8 @@ class BulletproofDFSCore:
 
         return generated_lineups
 
-    def optimize_for_contest(self, contest_type: str = 'gpp') -> Tuple[List, float]:
-        """
-        Optimize single lineup for specific contest type
-        NO ARTIFICIAL BOOSTS
-        """
-        print(f"\n🎯 OPTIMIZING SINGLE {contest_type.upper()} LINEUP")
-
-        # Get eligible players
-        eligible = self.filter_eligible_players()
-
-        if not eligible:
-            return [], 0.0
-
-        # Sort by appropriate metric for contest type
-        if contest_type == 'cash':
-            # Cash games: prioritize floor/consistency
-            eligible = self._sort_by_floor(eligible)
-        elif contest_type == 'gpp':
-            # GPPs: prioritize ceiling/upside
-            eligible = self._sort_by_ceiling(eligible)
-
-        # Run optimization
-        if contest_type == 'showdown':
-            result = self.optimize_showdown_lineup(eligible)
-        else:
-            result = self.optimize_classic_lineup(eligible)
-
-        if result and result.optimization_status == "Optimal":
-            print(f"✅ Optimal {contest_type} lineup found: {result.total_score:.2f} points")
-            return result.lineup, result.total_score
-
-        return [], 0.0
-
     def _sort_by_floor(self, players: List) -> List:
-        """
-        Sort players by floor (consistency) for cash games
-        Uses actual data, not artificial boosts
-        """
+        """Sort players by floor (consistency) for cash games"""
         for player in players:
             # Calculate floor based on real factors
             floor_score = player.enhanced_score
@@ -1653,18 +2379,15 @@ class BulletproofDFSCore:
         return sorted(players, key=lambda x: getattr(x, '_floor_score', x.enhanced_score), reverse=True)
 
     def _sort_by_ceiling(self, players: List) -> List:
-        """
-        Sort players by ceiling (upside) for GPPs
-        Uses actual data, not artificial boosts
-        """
+        """Sort players by ceiling (upside) for GPPs"""
         for player in players:
             # Calculate ceiling based on real factors
             ceiling_score = player.enhanced_score
 
             # Power metrics increase ceiling
-            if hasattr(player, '_statcast_data') and player._statcast_data:
-                hard_hit = player._statcast_data.get('Hard_Hit', 0)
-                barrel = player._statcast_data.get('Barrel', 0)
+            if hasattr(player, 'statcast_data') and player.statcast_data:
+                hard_hit = player.statcast_data.get('Hard_Hit', 0)
+                barrel = player.statcast_data.get('Barrel', 0)
 
                 if hard_hit > 40:  # Elite hard hit rate
                     ceiling_score *= 1.15
@@ -1675,8 +2398,8 @@ class BulletproofDFSCore:
                     ceiling_score *= 1.10
 
             # Vegas environment affects ceiling
-            if hasattr(player, '_vegas_data') and player._vegas_data:
-                team_total = player._vegas_data.get('team_total', 4.5)
+            if hasattr(player, 'vegas_data') and player.vegas_data:
+                team_total = player.vegas_data.get('team_total', 4.5)
                 if team_total > 5.5:  # High scoring game
                     ceiling_score *= 1.12
                 elif team_total > 5.0:
@@ -1692,7 +2415,7 @@ class BulletproofDFSCore:
         return sorted(players, key=lambda x: getattr(x, '_ceiling_score', x.enhanced_score), reverse=True)
 
     def _calculate_lineup_ceiling(self, lineup: List) -> float:
-        """Calculate lineup ceiling (no artificial inflation)"""
+        """Calculate lineup ceiling"""
         ceiling = 0
         for player in lineup:
             player_ceiling = getattr(player, '_ceiling_score', player.enhanced_score * 1.25)
@@ -1700,7 +2423,7 @@ class BulletproofDFSCore:
         return ceiling
 
     def _calculate_lineup_floor(self, lineup: List) -> float:
-        """Calculate lineup floor (no artificial inflation)"""
+        """Calculate lineup floor"""
         floor = 0
         for player in lineup:
             player_floor = getattr(player, '_floor_score', player.enhanced_score * 0.75)
@@ -1777,16 +2500,8 @@ class BulletproofDFSCore:
             for stack, count in sorted(stack_counts.items(), key=lambda x: x[1], reverse=True)[:5]:
                 print(f"   {stack}: {count} lineups")
 
-    def _copy_player(self, player):
-        """Create a deep copy of player"""
-        import copy
-        return copy.deepcopy(player)
-
-    # Export functionality
     def export_lineups_for_upload(self, lineups: List[Dict], filename: str = "dfs_lineups_upload.csv"):
-        """
-        Export lineups in DraftKings upload format
-        """
+        """Export lineups in DraftKings upload format"""
         import csv
 
         with open(filename, 'w', newline='') as f:
@@ -1816,1121 +2531,685 @@ class BulletproofDFSCore:
         print(f"✅ Exported {len(lineups)} lineups to {filename}")
         return filename
 
-    def detect_confirmed_players(self) -> int:
-        """FIXED: Apply confirmations to player objects"""
-        print("\n🔍 SMART CONFIRMATION DETECTION - STRICT MODE")
-        print("=" * 60)
+    # ========================================================================
+    # UTILITY METHODS
+    # ========================================================================
 
-        # CRITICAL: Reset all confirmations first
-        self.reset_all_confirmations()
+    def _name_similarity(self, name1: str, name2: str) -> float:
+        """Enhanced name matching with special handling for common variations"""
+        name1 = name1.lower().strip()
+        name2 = name2.lower().strip()
 
-        if not self.confirmation_system:
-            print("⚠️ Smart confirmation system not available")
-            return 0
+        # Remove common suffixes
+        for suffix in [' jr', ' jr.', ' sr', ' sr.', ' iii', ' ii', ' iv', ' v']:
+            name1 = name1.replace(suffix, '')
+            name2 = name2.replace(suffix, '')
 
-        # Update CSV players
-        if hasattr(self.confirmation_system, 'csv_players'):
-            self.confirmation_system.csv_players = self.players
-            self.confirmation_system.csv_teams = set(p.team for p in self.players if p.team)
+        # Exact match
+        if name1 == name2:
+            return 1.0
 
-        # Get all confirmations
-        lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
+        # Check if one contains the other
+        if name1 in name2 or name2 in name1:
+            return 0.95
 
-        # CRITICAL FIX: Actually apply confirmations to players!
-        confirmed_count = 0
+        # Split names
+        parts1 = name1.split()
+        parts2 = name2.split()
 
-        # Process regular players
-        for player in self.players:
-            if player.primary_position != 'P':  # Non-pitchers
-                is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
-                    player.name, player.team
-                )
-                if is_confirmed:
-                    player.is_confirmed = True
-                    player.add_confirmation_source("mlb_lineup")
-                    if batting_order:
-                        player.batting_order = batting_order
-                    confirmed_count += 1
-                    print(f"✅ Confirmed: {player.name} ({player.team}) - Batting {batting_order}")
+        if len(parts1) >= 2 and len(parts2) >= 2:
+            # Last name exact match
+            if parts1[-1] == parts2[-1]:
+                # First name initial match
+                if parts1[0][0] == parts2[0][0]:
+                    return 0.9
+                # Check common nicknames
+                if self._are_nicknames(parts1[0], parts2[0]):
+                    return 0.85
 
-        # Process pitchers
-        for player in self.players:
-            if player.primary_position == 'P':
-                is_confirmed = self.confirmation_system.is_pitcher_confirmed(
-                    player.name, player.team
-                )
-                if is_confirmed:
-                    player.is_confirmed = True
-                    player.add_confirmation_source("mlb_starter")
-                    confirmed_count += 1
-                    print(f"✅ Confirmed pitcher: {player.name} ({player.team})")
+        # Fuzzy match
+        from difflib import SequenceMatcher
+        return SequenceMatcher(None, name1, name2).ratio()
 
-        print(f"\n📊 Total confirmed: {confirmed_count} players")
+    def _are_nicknames(self, name1: str, name2: str) -> bool:
+        """Check if two names are common nicknames"""
+        nicknames = {
+            # Common nicknames
+            'mike': 'michael', 'michael': 'mike',
+            'chris': 'christopher', 'christopher': 'chris',
+            'dave': 'david', 'david': 'dave',
+            'rob': 'robert', 'robert': 'rob', 'bob': 'robert',
+            'matt': 'matthew', 'matthew': 'matt',
+            'joe': 'joseph', 'joseph': 'joe',
+            'alex': 'alexander', 'alexander': 'alex',
+            'will': 'william', 'william': 'will',
+            'jake': 'jacob', 'jacob': 'jake',
+            'josh': 'joshua', 'joshua': 'josh',
+            'jon': 'jonathan', 'jonathan': 'jon',
+            'nick': 'nicholas', 'nicholas': 'nick',
+            'tony': 'anthony', 'anthony': 'tony',
+            'andy': 'andrew', 'andrew': 'andy',
+            'dan': 'daniel', 'daniel': 'dan',
+            'jim': 'james', 'james': 'jim',
+            'ed': 'edward', 'edward': 'ed',
+            'tom': 'thomas', 'thomas': 'tom',
+            'ben': 'benjamin', 'benjamin': 'ben',
+            'ken': 'kenneth', 'kenneth': 'ken',
+            'steve': 'stephen', 'stephen': 'steve',
+            'rick': 'richard', 'richard': 'rick',
+            'charlie': 'charles', 'charles': 'charlie',
+            'ted': 'theodore', 'theodore': 'ted',
+            'frank': 'francis', 'francis': 'frank',
+            'sam': 'samuel', 'samuel': 'sam',
+            'tim': 'timothy', 'timothy': 'tim',
+            'pat': 'patrick', 'patrick': 'pat',
+            'pete': 'peter', 'peter': 'pete',
 
-        # Apply DFF if available
-        if hasattr(self, 'current_dff_file') and self.current_dff_file:
-            print("\n🎯 APPLYING DFF RANKINGS...")
-            self.apply_dff_rankings(self.current_dff_file)
+            # Spanish/Latin nicknames common in baseball
+            'alex': 'alejandro', 'alejandro': 'alex',
+            'manny': 'manuel', 'manuel': 'manny',
+            'rafa': 'rafael', 'rafael': 'rafa',
+            'miggy': 'miguel', 'miguel': 'miggy',
+            'vlad': 'vladimir', 'vladimir': 'vlad',
 
-        # Apply enrichments only to confirmed players
-        if confirmed_count > 0:
-            print("\n📊 APPLYING ADVANCED ANALYTICS...")
-            self._apply_enrichments_to_confirmed_players()
-        else:
-            print("\n⚠️ NO PLAYERS CONFIRMED!")
-            print("💡 Try:")
-            print("1. Add manual players")
-            print("2. Check name matching between CSV and MLB data")
-            print("3. Use 'All Players' mode for testing")
-
-        return confirmed_count
-
-    def _apply_enrichments_to_confirmed_players(self):
-        """Apply all enrichments to confirmed players (DFF already applied)"""
-        # Get only confirmed players
-        truly_confirmed = [p for p in self.players if p.is_confirmed]
-        print(f"🎯 Enriching {len(truly_confirmed)} confirmed players...")
-
-        if not truly_confirmed:
-            print("⚠️ No confirmed players to enrich")
-            return
-
-        # Note: DFF data was already applied in detect_confirmed_players()
-
-        # 1. Vegas Lines
-        if self.vegas_lines:
-            print("💰 Enriching with Vegas lines...")
-            self.enrich_with_vegas_lines()
-
-        # 2. Statcast Data (this can take a while)
-        if self.statcast_fetcher:
-            print("📊 Enriching with Statcast data...")
-            self.enrich_with_statcast_priority()
-
-        # 3. Park Factors
-        print("🏟️ Applying park factors...")
-        self.apply_park_factors()
-
-        # Recent Form (REAL game logs)
-        if REAL_DATA_SOURCES.get('recent_form', False):
-            print("✅ Applying recent form (real game logs)...")
-            try:
-                from real_recent_form import RealRecentFormAnalyzer
-                form_analyzer = RealRecentFormAnalyzer(days_back=7)
-                
-                # Only analyze confirmed players to save API calls
-                players_to_analyze = truly_confirmed[:30]  # Limit to 30
-                
-                if players_to_analyze:
-                    form_analyzer.enrich_players_with_form(players_to_analyze)
-                    if 'data_sources_used' in locals():
-                        data_sources_used.append("Recent Form")
-                    
-                    # Report hot/cold players
-                    hot_players = [p for p in players_to_analyze if hasattr(p, 'hot_streak') and p.hot_streak]
-                    cold_players = [p for p in players_to_analyze if hasattr(p, 'form_rating') and p.form_rating < 0.9]
-                    
-                    if hot_players:
-                        print(f"   🔥 {len(hot_players)} HOT players identified")
-                    if cold_players:
-                        print(f"   ❄️ {len(cold_players)} COLD players identified")
-                else:
-                    print("   ⚠️ No confirmed players to analyze")
-                    
-            except Exception as e:
-                print(f"⚠️ Recent form failed: {e}")
-
-
-        # Recent Form (REAL game logs)
-        if REAL_DATA_SOURCES.get('recent_form', False):
-            print("✅ Applying recent form (real game logs)...")
-            try:
-                from real_recent_form import RealRecentFormAnalyzer
-                form_analyzer = RealRecentFormAnalyzer(days_back=7)
-                
-                # Only analyze confirmed players to save API calls
-                players_to_analyze = truly_confirmed[:30]  # Limit to 30
-                
-                if players_to_analyze:
-                    form_analyzer.enrich_players_with_form(players_to_analyze)
-                    if 'data_sources_used' in locals():
-                        data_sources_used.append("Recent Form")
-                    
-                    # Report hot/cold players
-                    hot_players = [p for p in players_to_analyze if hasattr(p, 'hot_streak') and p.hot_streak]
-                    cold_players = [p for p in players_to_analyze if hasattr(p, 'form_rating') and p.form_rating < 0.9]
-                    
-                    if hot_players:
-                        print(f"   🔥 {len(hot_players)} HOT players identified")
-                    if cold_players:
-                        print(f"   ❄️ {len(cold_players)} COLD players identified")
-                else:
-                    print("   ⚠️ No confirmed players to analyze")
-                    
-            except Exception as e:
-                print(f"⚠️ Recent form failed: {e}")
-
-
-        # 4. Batting Order (if available)
-        if hasattr(self, 'enrich_with_batting_order'):
-            print("🔢 Enriching with batting order...")
-            self.enrich_with_batting_order()
-
-        # 5. Recent Form (if available)
-        if hasattr(self, 'enrich_with_recent_form'):
-            print("📈 Analyzing recent form...")
-            self.enrich_with_recent_form()
-
-        # 6. Statistical Analysis (combines all data sources)
-        print("🔬 Applying enhanced statistical analysis...")
-        self._apply_comprehensive_statistical_analysis(truly_confirmed)
-
-        # Show summary of enrichments
-        enrichment_summary = {
-            'DFF': sum(1 for p in truly_confirmed if hasattr(p, 'dff_data') and p.dff_data),
-            'Vegas': sum(1 for p in truly_confirmed if hasattr(p, 'vegas_data') and p.vegas_data),
-            'Statcast': sum(1 for p in truly_confirmed if hasattr(p, 'statcast_data') and p.statcast_data),
-            'Batting Order': sum(1 for p in truly_confirmed if hasattr(p, 'batting_order') and p.batting_order)
+            # Baseball-specific common nicknames
+            'aj': 'aaron', 'cj': 'christopher', 'dj': 'david',
+            'tj': 'thomas', 'jp': 'john', 'jd': 'james'
         }
 
-        print(f"\n📊 Enrichment Summary:")
-        for source, count in enrichment_summary.items():
-            print(f"   {source}: {count}/{len(truly_confirmed)} players")
+        name1_lower = name1.lower().strip()
+        name2_lower = name2.lower().strip()
 
-        print("✅ All enrichments applied")
+        # Direct nickname match
+        if nicknames.get(name1_lower) == name2_lower or nicknames.get(name2_lower) == name1_lower:
+            return True
 
-    def _validate_confirmations(self):
-        """Validate that ONLY appropriate players are confirmed"""
-        print("\n🔍 VALIDATING CONFIRMATIONS...")
+        # Check if both map to same full name
+        if name1_lower in nicknames and name2_lower in nicknames:
+            if nicknames[name1_lower] == nicknames[name2_lower]:
+                return True
 
-        issues = []
+        # Handle initials
+        if len(name1_lower) == 2 and '.' not in name1_lower and len(name2_lower) > 2:
+            if name1_lower[0] == name2_lower[0]:
+                return True
 
-        # Check all players
-        for player in self.players:
-            if player.is_confirmed:
-                # Verify confirmation sources
-                if not player.confirmation_sources:
-                    issues.append(f"{player.name} marked confirmed but no sources")
+        return False
 
-                # Extra validation for pitchers
-                if player.primary_position == 'P':
-                    if 'mlb_starter' not in player.confirmation_sources:
-                        issues.append(f"Pitcher {player.name} confirmed but not MLB starter")
+    def _copy_player(self, player):
+        """Create a deep copy of player"""
+        import copy
+        return copy.deepcopy(player)
 
-        if issues:
-            print("⚠️ CONFIRMATION ISSUES FOUND:")
-            for issue in issues:
-                print(f"   - {issue}")
+    def clean_player_name_for_matching(self, name: str) -> str:
+        """Clean player name for better matching"""
+        if not name:
+            return ''
+
+        # Remove common suffixes
+        name = str(name).strip()
+        for suffix in [' Jr.', ' Jr', ' Sr.', ' Sr', ' III', ' II', ' IV', ' V']:
+            name = name.replace(suffix, '')
+
+        # Remove periods from initials
+        name = name.replace('.', '')
+
+        # Normalize spaces
+        name = ' '.join(name.split())
+
+        return name
+
+    # ========================================================================
+    # DFS UPGRADE METHODS
+    # ========================================================================
+
+    def get_cached_data(self, key: str, fetch_func, category: str = 'default'):
+        """Use smart caching for any data fetch"""
+        if UPGRADES_AVAILABLE:
+            return smart_cache.get_or_fetch(key, fetch_func, category)
         else:
-            print("✅ All confirmations validated")
-
-    def _can_fill_position(self, player, position: str) -> bool:
-        """Enhanced to show multi-position eligibility"""
-        can_fill = super()._can_fill_position(player, position)
-
-        # Debug output for multi-position players
-        if len(player.positions) > 1 and can_fill:
-            print(f"   🔄 {player.name} can fill {position} (positions: {'/'.join(player.positions)})")
-
-        return can_fill
-
-    # Add this method to your BulletproofDFSCore class to fix lineup display:
-
-    def optimize_lineup_with_mode(self) -> Tuple[List[AdvancedPlayer], float]:
-        """
-        FIXED: Optimize lineup with proper result display
-        """
-        print(f"\n🎯 OPTIMAL LINEUP GENERATION - {self.optimization_mode.upper()}")
-        print("=" * 80)
-
-        # Get eligible players
-        eligible_players = self.get_eligible_players_by_mode()
-        if not eligible_players:
-            print("❌ No eligible players found")
-            return [], 0
-
-        print(f"📊 Optimizing with {len(eligible_players)} eligible players")
-
-        # Detect contest type from player positions
-        showdown_players = sum(1 for p in eligible_players
-                               if hasattr(p, 'positions') and ('CPT' in p.positions or 'UTIL' in p.positions))
-        classic_players = sum(1 for p in eligible_players
-                              if hasattr(p, 'positions') and
-                              any(pos in p.positions for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']))
-
-        # Force contest type detection
-        if showdown_players > classic_players:
-            self.contest_type = 'showdown'
-            print(f"🎰 DETECTED: Showdown contest")
-        else:
-            self.contest_type = 'classic'
-            print(f"🏈 DETECTED: Classic contest")
-
-        # Create optimizer
-        from optimal_lineup_optimizer import OptimalLineupOptimizer
-        optimizer = OptimalLineupOptimizer(salary_cap=self.salary_cap)
-
-        # Run optimization
-        if self.contest_type == 'showdown':
-            print("\n🎰 Running SHOWDOWN optimization (1 CPT + 5 UTIL)")
-            result = optimizer.optimize_showdown_lineup(eligible_players)
-        else:
-            print("\n🏈 Running CLASSIC optimization (2P + 1C + 1B + 2B + 3B + SS + 3OF)")
-            result = optimizer.optimize_classic_lineup(eligible_players)
-
-        if result.optimization_status == "Optimal" and result.lineup:
-            print(f"\n✅ OPTIMAL LINEUP FOUND!")
-            print(f"💰 Total Salary: ${result.total_salary:,} / ${self.salary_cap:,}")
-            print(f"💵 Remaining: ${self.salary_cap - result.total_salary:,}")
-            print(f"📈 Projected Points: {result.total_score:.2f}")
-
-            # FIXED: Actually show the lineup players!
-            print(f"\n📋 OPTIMAL LINEUP DETAILS:")
-            print("=" * 60)
-
-            if self.contest_type == 'showdown':
-                # Show captain first
-                captain = None
-                utils = []
-
-                for player in result.lineup:
-                    pos = getattr(player, 'assigned_position', 'UTIL')
-                    if pos == 'CPT':
-                        captain = player
-                    else:
-                        utils.append(player)
-
-                # Display captain
-                if captain:
-                    multiplier = getattr(captain, 'multiplier', 1.5)
-                    salary_cost = int(captain.salary * multiplier)
-                    points_proj = captain.enhanced_score * multiplier
-                    print(f"   👑 CPT: {captain.name:<20} ${salary_cost:>7,} -> {points_proj:>6.1f} pts")
-
-                # Display utility players
-                for i, player in enumerate(utils, 1):
-                    print(f"   {i}. UTIL: {player.name:<20} ${player.salary:>7,} -> {player.enhanced_score:>6.1f} pts")
-
-            else:
-                # Classic lineup display
-                position_order = ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']
-                position_counts = {pos: 0 for pos in position_order}
-
-                for player in result.lineup:
-                    assigned_pos = getattr(player, 'assigned_position', player.primary_position)
-                    if assigned_pos in position_counts:
-                        position_counts[assigned_pos] += 1
-                        pos_display = f"{assigned_pos}{position_counts[assigned_pos]}" if assigned_pos in ['P',
-                                                                                                           'OF'] else assigned_pos
-                    else:
-                        pos_display = assigned_pos
-
-                    # Check for multi-position flexibility
-                    flex_indicator = "*" if len(getattr(player, 'positions', [])) > 1 else " "
-
-                    print(
-                        f"   {pos_display:<4}: {player.name:<20}{flex_indicator} ${player.salary:>7,} -> {player.enhanced_score:>6.1f} pts")
-
-            # Show team breakdown
-            team_counts = {}
-            for player in result.lineup:
-                team = getattr(player, 'team', 'UNK')
-                team_counts[team] = team_counts.get(team, 0) + 1
-
-            print(f"\n🏈 Team Breakdown:")
-            for team, count in sorted(team_counts.items()):
-                print(f"   {team}: {count} players")
-
-            # Show any stacks
-            stacks = [(team, count) for team, count in team_counts.items() if count >= 3]
-            if stacks:
-                print(f"\n🔥 Stacks Detected:")
-                for team, count in stacks:
-                    print(f"   💪 {team} {count}-stack")
-
-            return result.lineup, result.total_score
-        else:
-            print(f"\n❌ Optimization failed: {result.optimization_status}")
-
-            # Show helpful debug info
-            if len(eligible_players) < 6 and self.contest_type == 'showdown':
-                print(f"💡 Showdown needs 6 players, you have {len(eligible_players)}")
-            elif len(eligible_players) < 10 and self.contest_type == 'classic':
-                print(f"💡 Classic needs 10 players, you have {len(eligible_players)}")
-
-            return [], 0
-
-    def _basic_pitcher_fallback(self) -> int:
-        """Basic pitcher confirmation fallback"""
-        confirmed_pitchers = 0
-
-        # Group pitchers by team
-        teams_pitchers = {}
-        for player in self.players:
-            if player.primary_position == 'P':
-                if player.team not in teams_pitchers:
-                    teams_pitchers[player.team] = []
-                teams_pitchers[player.team].append(player)
-
-        # For each team, confirm the highest salary pitcher
-        for team, pitchers in teams_pitchers.items():
-            if pitchers:
-                # Sort by salary
-                pitchers.sort(key=lambda x: x.salary, reverse=True)
-                top_pitcher = pitchers[0]
-
-                # Confirm if clear salary leader or only pitcher
-                if len(pitchers) == 1 or (len(pitchers) > 1 and top_pitcher.salary - pitchers[1].salary >= 1000):
-                    top_pitcher.add_confirmation_source("fallback_salary_leader")
-                    confirmed_pitchers += 1
-                    print(f"🔄 Fallback pitcher: {top_pitcher.name} (${top_pitcher.salary:,})")
-
-        return confirmed_pitchers
-
-    def apply_dff_rankings(self, dff_file_path: str) -> bool:
-        """Enhanced DFF application with better matching - ONLY FOR DFF, doesn't affect other systems"""
-
-        if not dff_file_path or not os.path.exists(dff_file_path):
-            print("⚠️ No DFF file provided or file not found")
-            return False
-
-
-        # Local function for DFF-specific name cleaning
-
-        def apply_injury_list_to_players(self):
-            """Apply injury list to player pool"""
-            injury_list = self.fetch_mlb_injury_list()
-
-            injured_count = 0
-            for player in self.players:
-                if player.team in injury_list:
-                    # Check if player is on injury list
-                    for injured_name in injury_list[player.team]:
-                        if injured_name.lower() in player.name.lower() or player.name.lower() in injured_name.lower():
-                            player.set_injury_status('IL', f'On {player.team} injury list')
-                            injured_count += 1
-
-                            # Remove confirmation if exists
-                            if player.is_confirmed:
-                                player.is_confirmed = False
-                                player.confirmation_sources = []
-                                print(f"   ❌ Removed injured: {player.name} ({player.team})")
-                            break
-
-            if injured_count > 0:
-                print(f"✅ Marked {injured_count} players as injured")
-
-            return injured_count
-
-        def fetch_mlb_injury_list(self) -> Dict[str, List[str]]:
-            """
-            Fetch current MLB injury list from ESPN or other sources
-            Returns dict of team -> list of injured players
-            """
-            print("\n🏥 FETCHING MLB INJURY LIST...")
-
-            injured_players = {}
-
-            # Common known injured players (June 2024)
-            # UPDATE THIS LIST DAILY!
-            KNOWN_INJURIES = {
-                'BAL': ['Cedric Mullins', 'Tyler Wells', 'John Means'],
-                'LAA': ['Mike Trout', 'Anthony Rendon'],
-                'ATL': ['Ronald Acuna Jr.', 'Max Fried'],
-                'HOU': ['Jose Altuve', 'Cristian Javier'],
-                # Add more teams/players as needed
-            }
-
-            # You could also scrape from ESPN or use an API here
-            # For now, use the known list
-
-            total_injured = 0
-            for team, players in KNOWN_INJURIES.items():
-                injured_players[team] = players
-                total_injured += len(players)
-
-            print(f"📋 Found {total_injured} injured players across {len(KNOWN_INJURIES)} teams")
-
-            return injured_players
-
-        def clean_dff_name(name):
-            """Clean DFF names only - removes team abbreviations and normalizes"""
-            if not name:
-                return ''
-            # Remove team abbreviations in parentheses
-            name = re.sub(r'\s*\([^)]*\)', '', str(name)).strip()
-            # Remove extra spaces
-            name = ' '.join(name.split())
-            return name
-
-        try:
-            print(f"\n🎯 Loading DFF rankings: {Path(dff_file_path).name}")
-            df = pd.read_csv(dff_file_path)
-
-            print(f"📊 DFF Data Summary:")
-            print(f"   Rows: {len(df)}")
-            print(f"   Columns: {list(df.columns)[:5]}{'...' if len(df.columns) > 5 else ''}")
-
-            # Auto-detect important columns
-            name_col = None
-            proj_col = None
-            own_col = None
-            value_col = None
-            team_col = None
-
-            for col in df.columns:
-                col_lower = col.lower()
-                if not name_col and any(x in col_lower for x in ['name', 'player']):
-                    name_col = col
-                elif not proj_col and any(x in col_lower for x in ['projection', 'proj', 'ppg', 'fpts', 'points']):
-                    proj_col = col
-                elif not own_col and any(x in col_lower for x in ['own', 'ownership', '%']):
-                    own_col = col
-                elif not value_col and any(x in col_lower for x in ['value', 'val']):
-                    value_col = col
-                elif not team_col and any(x in col_lower for x in ['team', 'tm']):
-                    team_col = col
-
-            if not name_col:
-                print("❌ Could not find player name column in DFF file")
-                return False
-
-            print(f"📋 Detected DFF columns:")
-            print(f"   Name: '{name_col}'")
-            print(f"   Projection: '{proj_col}' {'✓' if proj_col else '✗'}")
-            print(f"   Ownership: '{own_col}' {'✓' if own_col else '✗'}")
-            print(f"   Value: '{value_col}' {'✓' if value_col else '✗'}")
-            print(f"   Team: '{team_col}' {'✓' if team_col else '✗'}")
-
-            # Debug: Show sample names
-            print(f"\n📋 Sample DFF names (first 5):")
-            for i, name in enumerate(df[name_col].head(5)):
-                print(f"   {i + 1}. {name}")
-
-            print(f"\n📋 Sample DK player names (first 5):")
-            for i, player in enumerate(self.players[:5]):
-                print(f"   {i + 1}. {player.name} ({player.team})")
-
-            # Match players
-            matches = 0
-            no_matches = []
-            eligible_enriched = 0
-            all_enriched = 0
-
-            for idx, row in df.iterrows():
-                try:
-                    # Get raw DFF name
-                    dff_name_raw = str(row[name_col]).strip()
-                    if not dff_name_raw or dff_name_raw == 'nan':
-                        continue
-
-                    # Clean DFF name (remove team abbreviations)
-                    dff_name = clean_dff_name(dff_name_raw)
-
-                    # Get team if available
-                    dff_team = str(row[team_col]).strip().upper() if team_col and pd.notna(row[team_col]) else None
-
-                    # Build DFF data dict
-                    dff_data = {
-                        'dff_name': dff_name,
-                        'source': 'DFF Rankings'
-                    }
-
-                    # Extract projection
-                    if proj_col and pd.notna(row[proj_col]):
-                        try:
-                            proj_str = str(row[proj_col]).replace('$', '').replace(',', '').strip()
-                            dff_data['ppg_projection'] = float(proj_str)
-                        except:
-                            pass
-
-                    # Extract ownership
-                    if own_col and pd.notna(row[own_col]):
-                        try:
-                            own_str = str(row[own_col]).replace('%', '').strip()
-                            dff_data['ownership'] = float(own_str)
-                        except:
-                            pass
-
-                    # Extract value
-                    if value_col and pd.notna(row[value_col]):
-                        try:
-                            dff_data['value'] = float(row[value_col])
-                        except:
-                            pass
-
-                    # Find best matching player using ORIGINAL name matching logic
-                    best_match = None
-                    best_score = 0
-
-                    for player in self.players:
-                        # Use your ORIGINAL _name_similarity method
-                        similarity = self._name_similarity(dff_name, player.name)
-
-                        # If we have team info, boost score for same team
-                        if dff_team and player.team == dff_team and similarity >= 0.7:
-                            similarity = min(1.0, similarity + 0.1)
-
-                        if similarity > best_score and similarity >= 0.7:  # 70% threshold
-                            best_score = similarity
-                            best_match = player
-
-                    if best_match and 'ppg_projection' in dff_data:
-                        # APPLY TO MATCHED PLAYER
-                        best_match.apply_dff_data(dff_data)
-                        matches += 1
-                        all_enriched += 1
-
-                        # Check if this player is eligible
-                        if best_match.is_eligible_for_selection(self.optimization_mode):
-                            eligible_enriched += 1
-
-                            # Show match details for first few or significant differences
-                            if eligible_enriched <= 5 or abs(dff_data['ppg_projection'] - best_match.base_score) > 2:
-                                proj = dff_data['ppg_projection']
-                                own = dff_data.get('ownership', 'N/A')
-                                match_indicator = "✅" if best_score >= 0.95 else f"🔄 ({best_score:.2f})"
-
-                                print(f"\n   {match_indicator} DFF MATCH: {dff_name} → {best_match.name}")
-                                if dff_name != dff_name_raw:
-                                    print(f"      (Original: {dff_name_raw})")
-                                print(f"      Team: {dff_team or 'N/A'} → {best_match.team}")
-                                print(f"      Projection: {proj:.1f} | Ownership: {own}%")
-                    else:
-                        no_matches.append(f"{dff_name_raw} ({dff_team or 'N/A'})")
-
-                except Exception as e:
-                    print(f"   ❌ Error processing row {idx}: {e}")
-                    continue
-
-            print(f"\n📊 DFF Integration Summary:")
-            print(f"   Total DFF players: {len(df)}")
-            print(f"   Matched to DK: {matches}")
-            print(f"   Applied to all: {all_enriched}")
-            print(f"   Eligible players enriched: {eligible_enriched}")
-            print(f"   Success rate: {(matches / len(df) * 100):.1f}%" if len(df) > 0 else "N/A")
-
-            # Show some unmatched for debugging
-            if no_matches and len(no_matches) <= 10:
-                print(f"\n❌ Unmatched DFF players (first 10):")
-                for name in no_matches[:10]:
-                    print(f"   - {name}")
-            elif no_matches:
-                print(f"\n❌ {len(no_matches)} DFF players didn't match")
-
-            # Special message if no eligible players got DFF
-            if eligible_enriched == 0 and matches > 0:
-                print(f"\n⚠️ WARNING: DFF matched {matches} players but NONE were eligible!")
-                print(f"   This usually means DFF players aren't in your confirmed/manual selections")
-                print(f"   Consider adding some DFF players to manual selections")
-
-            return matches > 0
-
-        except Exception as e:
-            print(f"❌ Error loading DFF data: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
-
-    def enrich_with_vegas_lines(self):
-        """Apply Vegas lines ONLY to players with meaningful data"""
-        if not self.vegas_lines:
-            print("⚠️ Vegas lines module not available")
-            return
-
-        print("💰 Applying Vegas lines where data exists...")
-        vegas_data = self.vegas_lines.get_vegas_lines()
-
-        if not vegas_data:
-            print("⚠️ No Vegas data available")
-            return
-
-        # Only apply to confirmed/eligible players with Vegas data
-        eligible_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
-
-        enriched_count = 0
-        for player in eligible_players:
-            if player.team in vegas_data:
-                team_vegas = vegas_data[player.team]
-                # Only apply if game total is significantly different from average (4.5)
-                game_total = team_vegas.get('total', 9.0)
-                if abs(game_total - 9.0) > 1.0:  # Only if total is <8 or >10
-                    player.apply_vegas_data(team_vegas)
-                    enriched_count += 1
-
-        print(f"✅ Vegas data: {enriched_count}/{len(eligible_players)} players with significant game environments")
-
-    def enrich_with_statcast_priority(self):
-        """FIXED: Priority Statcast enrichment - ALL confirmed players first"""
-        if not self.statcast_fetcher:
-            print("⚠️ Statcast fetcher not available")
-            return
-
-        print("🔬 Priority Statcast enrichment for confirmed players...")
-
-        # PRIORITY 1: ALL confirmed/manual players get Statcast data
-        priority_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
-
-        print(f"🎯 Enriching ALL {len(priority_players)} confirmed players with Statcast...")
-
-        enriched_count = 0
-        failed_count = 0
-
-        # Process ALL confirmed players (no limit!)
-        for i, player in enumerate(priority_players, 1):
-            try:
-                print(f"🔬 Statcast {i}/{len(priority_players)}: {player.name}...")
-
-                statcast_data = self.statcast_fetcher.fetch_player_data(player.name, player.primary_position)
-                if statcast_data:
-                    player.apply_statcast_data(statcast_data)
-                    enriched_count += 1
-                    print(f"   ✅ Success: {player.name}")
-                else:
-                    failed_count += 1
-                    print(f"   ⚠️ No data: {player.name}")
-
-            except Exception as e:
-                failed_count += 1
-                print(f"   ❌ Error for {player.name}: {e}")
-                continue
-
-        print(f"✅ Statcast Priority Complete: {enriched_count} enriched, {failed_count} failed")
-
-    def apply_park_factors(self):
-        """Apply park factors with REAL_DATA_SOURCES check"""
-        if not REAL_DATA_SOURCES.get('park_factors', False):
-            print("⚠️ Park factors disabled in REAL_DATA_SOURCES")
-            return 0
-        
-        """Apply park factors with REAL_DATA_SOURCES check"""
-        if not REAL_DATA_SOURCES.get('park_factors', False):
-            print("⚠️ Park factors disabled in REAL_DATA_SOURCES")
-            return 0
-        
-        """FIXED: Park factors for ALL confirmed players"""
-        print("🏟️ Priority park factors for confirmed players...")
-
-        eligible_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
-        adjusted_count = 0
-
-        for player in eligible_players:
-            if player.team in PARK_FACTORS:
-                factor = PARK_FACTORS[player.team]
-                old_score = player.enhanced_score
-                player.enhanced_score *= factor
-
-                player.park_factors = {
-                    'park_team': player.team,
-                    'factor': factor,
-                    'adjustment': player.enhanced_score - old_score
-                }
-
-                adjusted_count += 1
-
-        print(f"✅ Park factors: {adjusted_count}/{len(eligible_players)} confirmed players adjusted")
-
-    def get_eligible_players_by_mode(self):
-        """FIXED: Strict eligibility checking with validation"""
-
-        # First, validate all confirmations
-        self._validate_confirmations()
-
-        if self.optimization_mode == 'all':
-            # ALL PLAYERS MODE - No restrictions!
-            eligible = self.players.copy()
-            print(f"🌐 ALL PLAYERS MODE: {len(eligible)}/{len(self.players)} players eligible")
-        elif self.optimization_mode == 'manual_only':
-            eligible = [p for p in self.players if p.is_manual_selected]
-            print(f"🎯 MANUAL-ONLY MODE: {len(eligible)}/{len(self.players)} manually selected players")
-        elif self.optimization_mode == 'confirmed_only':
-            eligible = [p for p in self.players if p.is_confirmed and not p.is_manual_selected]
-            print(f"🔒 CONFIRMED-ONLY MODE: {len(eligible)}/{len(self.players)} confirmed players")
-        else:  # bulletproof
-            eligible = [p for p in self.players if p.is_confirmed or p.is_manual_selected]
-            print(f"🛡️ BULLETPROOF MODE: {len(eligible)}/{len(self.players)} players eligible")
-
-            # Show breakdown
-            confirmed_only = sum(1 for p in eligible if p.is_confirmed and not p.is_manual_selected)
-            manual_only = sum(1 for p in eligible if p.is_manual_selected and not p.is_confirmed)
-            both = sum(1 for p in eligible if p.is_confirmed and p.is_manual_selected)
-
-            print(f"   - Confirmed only: {confirmed_only}")
-            print(f"   - Manual only: {manual_only}")
-            print(f"   - Both confirmed & manual: {both}")
-
-        # CRITICAL: Extra validation for pitchers (skip in 'all' mode)
-        if self.optimization_mode != 'all':
-            eligible_pitchers = [p for p in eligible if p.primary_position == 'P']
-            print(f"\n⚾ PITCHER VALIDATION:")
-            print(f"   Total eligible pitchers: {len(eligible_pitchers)}")
-
-            for pitcher in eligible_pitchers[:5]:  # Show first 5
-                sources = ', '.join(pitcher.confirmation_sources) if pitcher.confirmation_sources else 'MANUAL'
-                print(f"   - {pitcher.name} ({pitcher.team}) - Sources: [{sources}]")
-
-        # Position breakdown
-        position_counts = {}
-        for player in eligible:
-            for pos in player.positions:
-                position_counts[pos] = position_counts.get(pos, 0) + 1
-
-        print(f"\n📍 Eligible position coverage: {position_counts}")
-
-        # Final safety check (skip in 'all' mode)
-        if self.optimization_mode in ['bulletproof', 'confirmed_only'] and self.optimization_mode != 'all':
-            # Remove any pitcher without proper confirmation
-            safe_eligible = []
-            removed_count = 0
-
-            for player in eligible:
-                if player.primary_position == 'P' and not player.is_manual_selected:
-                    # Pitcher MUST have mlb_starter confirmation
-                    if 'mlb_starter' not in player.confirmation_sources:
-                        print(f"   ❌ REMOVING unconfirmed pitcher: {player.name}")
-                        removed_count += 1
-                        continue
-                safe_eligible.append(player)
-
-            if removed_count > 0:
-                print(f"⚠️ Removed {removed_count} unconfirmed pitchers for safety")
-                eligible = safe_eligible
-
-        return eligible
-
-
-    def _apply_comprehensive_statistical_analysis(self, players):
-        """ENHANCED: Apply comprehensive statistical analysis with PRIORITY 1 improvements"""
-        print(f"📊 ENHANCED Statistical Analysis: {len(players)} players")
-        print("🎯 PRIORITY 1 FEATURES: Variable Confidence + Enhanced Statcast + Position Weighting + Recent Form")
-
-        if not players:
-            return
-
-        if ENHANCED_STATS_AVAILABLE:
-            # Use enhanced statistical analysis engine (PRIORITY 1 IMPROVEMENTS)
-            adjusted_count = apply_enhanced_statistical_analysis(players, verbose=True)
-            print(f"✅ Enhanced Analysis: {adjusted_count} players optimized with Priority 1 improvements")
-
-            # Apply recent form adjustments if available
-            if hasattr(self, 'form_analyzer'):
-                form_adjusted = 0
-                for player in players:
-                    if hasattr(player, '_recent_performance') and player._recent_performance:
-                        adjustment = self.form_analyzer.apply_form_adjustments(player)
-                        if adjustment != 1.0:
-                            form_adjusted += 1
-
-                if form_adjusted > 0:
-                    print(f"📈 Recent Form: {form_adjusted} players adjusted based on hot/cold streaks")
-        else:
-            # Fallback to basic analysis if enhanced engine not available
-            print("⚠️ Using basic analysis - enhanced engine not found")
-            self._apply_basic_statistical_analysis(players)
-
-    def _apply_basic_statistical_analysis(self, players):
-        """Fallback basic statistical analysis (original method)"""
-        print(f"📊 Basic statistical analysis: {len(players)} players")
-
-        CONFIDENCE_THRESHOLD = 0.80
-        MAX_TOTAL_ADJUSTMENT = 0.20
-
-        adjusted_count = 0
-        for player in players:
-            total_adjustment = 0.0
-
-            # DFF Analysis (basic)
-            if hasattr(player, 'dff_data') and player.dff_data and player.dff_data.get('ppg_projection', 0) > 0:
-                dff_projection = player.dff_data['ppg_projection']
-                if dff_projection > player.projection:
-                    dff_adjustment = min((dff_projection - player.projection) / player.projection * 0.3,
-                                         0.10) * CONFIDENCE_THRESHOLD
-                    total_adjustment += dff_adjustment
-
-            # Vegas Environment Analysis (basic)
-            if hasattr(player, 'vegas_data') and player.vegas_data:
-                team_total = player.vegas_data.get('team_total', 4.5)
-
-                if player.primary_position == 'P':
-                    opp_total = player.vegas_data.get('opponent_total', 4.5)
-                    if opp_total < 4.0:
-                        vegas_adjustment = min((4.5 - opp_total) / 4.5 * 0.4, 0.08) * CONFIDENCE_THRESHOLD
-                        total_adjustment += vegas_adjustment
-                else:
-                    if team_total > 5.0:
-                        vegas_adjustment = min((team_total - 4.5) / 4.5 * 0.5, 0.08) * CONFIDENCE_THRESHOLD
-                        total_adjustment += vegas_adjustment
-
-            # Apply cap
-            if total_adjustment > MAX_TOTAL_ADJUSTMENT:
-                total_adjustment = MAX_TOTAL_ADJUSTMENT
-
-            # Apply adjustment
-            if total_adjustment > 0.03:
-                adjustment_points = player.enhanced_score * total_adjustment
-                player.enhanced_score += adjustment_points
-                adjusted_count += 1
-
-        print(f"✅ Basic Analysis: {adjusted_count}/{len(players)} players adjusted")
-
-    
-    def optimize_lineup_with_mode(self) -> Tuple[List[AdvancedPlayer], float]:
-        """
-        UPDATED: Optimize lineup using true integer programming optimization
-        No greedy fill-ins - finds the globally optimal lineup
-        """
-        print(f"\n🎯 OPTIMAL LINEUP GENERATION - {self.optimization_mode.upper()}")
-        print("=" * 80)
-
-        # Get eligible players based on mode
-        eligible_players = self.get_eligible_players_by_mode()
-
-        if not eligible_players:
-            print("❌ No eligible players found")
-            return [], 0
-
-        print(f"📊 Optimizing with {len(eligible_players)} eligible players")
-
-        # Create optimizer
-        optimizer = OptimalLineupOptimizer(salary_cap=self.salary_cap)
-
-        # Run optimization based on contest type
-        if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
-            result = optimizer.optimize_showdown_lineup(eligible_players)
-        else:
-            # Don't use confirmations for artificial boosts
-            result = optimizer.optimize_classic_lineup(eligible_players, use_confirmations=False)
-
-        if result.optimization_status == "Optimal" and result.lineup:
-            print(f"\n✅ OPTIMAL LINEUP FOUND!")
-            print(f"💰 Total Salary: ${result.total_salary:,} / ${self.salary_cap:,}")
-            print(f"📈 Projected Points: {result.total_score:.2f}")
-            print(f"📊 Positions Filled: {result.positions_filled}")
-            # After the line that shows positions filled, add:
-            print("\n📋 LINEUP PLAYERS:")
-            print("-" * 60)
-            for i, player in enumerate(result.lineup, 1):
-                pos = getattr(player, 'assigned_position', player.primary_position)
-                score = getattr(player, 'enhanced_score', player.projection)
-                print(f"{i:2d}. {pos:<4} {player.name:<20} {player.team:<4} ${player.salary:>6,} → {score:>6.1f} pts")
-            print("-" * 60)
-            return result.lineup, result.total_score
-        else:
-            print(f"❌ Optimization failed: {result.optimization_status}")
-            return [], 0
-
-    def _complete_greedy_optimization(self, players):
-        """Complete greedy optimization that actually works"""
-
-        # Calculate value for each player
-        players_with_value = []
-        for player in players:
-            if player.salary > 0:
-                value = player.enhanced_score / (player.salary / 1000)
-                players_with_value.append((player, value))
-
-        # Sort by value (best first)
-        players_with_value.sort(key=lambda x: x[1], reverse=True)
-
-        lineup = []
-        remaining_salary = self.salary_cap
-        requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
-        filled = {pos: 0 for pos in requirements}
-
-        # Fill each position requirement
-        for pos, needed in requirements.items():
-            print(f"   Filling {pos}: need {needed}")
-
-            while filled[pos] < needed and len(lineup) < 10:
-                best_player = None
-                best_value = 0
-
-                for player, value in players_with_value:
-                    if (player not in lineup and
-                            pos in player.positions and
-                            player.salary <= remaining_salary):
-                        if value > best_value:
-                            best_value = value
-                            best_player = player
-
-                if best_player:
-                    lineup.append(best_player)
-                    remaining_salary -= best_player.salary
-                    filled[pos] += 1
-                    print(f"     Added: {best_player.name} (${best_player.salary:,})")
-                else:
-                    print(f"     ⚠️ Cannot fill {pos} with remaining budget ${remaining_salary}")
-                    break
-
-        # Verify lineup is complete
-        if len(lineup) == 10:
-            print(f"✅ Complete lineup built: {len(lineup)} players")
-            return lineup
-        else:
-            print(f"❌ Incomplete lineup: {len(lineup)}/10 players")
+            return fetch_func()
+
+    def generate_multiple_lineups(self, count: int = 20) -> list:
+        """Generate multiple unique lineups for GPPs"""
+        if not UPGRADES_AVAILABLE:
+            print("❌ Multi-lineup module not available")
             return []
 
+        print(f"\n🚀 Generating {count} lineups...")
 
-def optimized_pipeline_execution(core, dff_file):
-    """FIXED: Optimal order for maximum data enrichment"""
-    print("🔄 PRIORITY DATA ENRICHMENT PIPELINE")
-    print("=" * 50)
+        optimizer = MultiLineupOptimizer(self)
+        lineups = optimizer.generate_gpp_lineups(
+            num_lineups=count,
+            max_exposure=0.5,
+            min_salary=49000
+        )
 
-    # STEP 1: Apply DFF data FIRST (affects projections)
-    if dff_file and os.path.exists(dff_file):
-        print("1️⃣ Applying DFF rankings...")
-        core.apply_dff_rankings(dff_file)
+        # Show summary
+        optimizer.print_summary()
 
-    # STEP 2: Enrich with Vegas lines (affects game environment)
-    print("2️⃣ Applying Vegas lines...")
-    core.enrich_with_vegas_lines()
+        # Export for upload
+        upload_file = optimizer.export_for_upload('draftkings')
+        if upload_file:
+            print(f"\n📁 Upload file: {upload_file}")
 
-    # STEP 3: Enrich with Statcast (individual player metrics)
-    print("3️⃣ Applying Statcast data to ALL confirmed players...")
-    core.enrich_with_statcast_priority()
+        return lineups
 
-    # STEP 4: Apply park factors (venue adjustments)
-    print("4️⃣ Applying park factors...")
-    core.apply_park_factors()
+    def track_lineup_performance(self, lineup: list, contest_info: dict):
+        """Track lineup for future analysis"""
+        if not UPGRADES_AVAILABLE:
+            return None
 
-    # STEP 5: Apply batting order adjustments
-    if hasattr(core, 'enrich_with_batting_order'):
-        print("5️⃣ Applying batting order adjustments...")
-        core.enrich_with_batting_order()
+        contest_id = tracker.log_contest(lineup, contest_info)
 
-    # STEP 6: Apply recent form analysis (if available)
-    if hasattr(core, 'enrich_with_recent_form'):
-        print("6️⃣ Analyzing recent player form...")
-        core.enrich_with_recent_form()
+        # Also save to database if available
+        if hasattr(self, 'game_date'):
+            contest_info['date'] = self.game_date
 
-    print("✅ All data sources applied to confirmed players")
+        return contest_id
 
-# Entry point function for GUI compatibility
-def load_and_optimize_complete_pipeline(
-        dk_file: str,
-        dff_file: str = None,
-        manual_input: str = "",
-        contest_type: str = 'classic',
-        strategy: str = 'bulletproof'
-):
-    """Complete pipeline with all modes including enhanced pitcher detection"""
+    def get_performance_summary(self, days: int = 30):
+        """Get performance tracking summary"""
+        if not UPGRADES_AVAILABLE:
+            print("Performance tracking not available")
+            return
 
-    mode_descriptions = {
-        'bulletproof': 'Confirmed + Manual players',
-        'manual_only': 'Manual players ONLY (perfect for testing!)',
-        'confirmed_only': 'Confirmed players ONLY'
-    }
+        tracker.print_summary(days)
 
-    print("🚀 BULLETPROOF DFS OPTIMIZATION PIPELINE - WITH ENHANCED PITCHER DETECTION")
-    print("=" * 80)
-    print(f"🎯 Mode: {strategy} ({mode_descriptions.get(strategy, 'Unknown')})")
-    print("=" * 80)
+    def clear_cache(self, category: str = None):
+        """Clear cache by category or all"""
+        if UPGRADES_AVAILABLE:
+            smart_cache.clear(category)
+            print(f"🧹 Cleared cache: {category or 'all'}")
 
-    core = BulletproofDFSCore()
-    core.set_optimization_mode(strategy)
+    # ========================================================================
+    # DEBUG METHODS
+    # ========================================================================
 
-    # Pipeline execution
-    if not core.load_draftkings_csv(dk_file):
-        return [], 0, "Failed to load DraftKings data"
+    def debug_all_csv_players(self):
+        """Show ALL players in CSV to find the pitchers"""
+        print("\n🔍 ALL PLAYERS IN CSV (SORTED BY PROJECTION)")
+        print("=" * 80)
 
-    if manual_input:
-        manual_count = core.apply_manual_selection(manual_input)
-        print(f"✅ Manual selection: {manual_count} players")
+        # Sort all players by projection to find pitchers
+        all_sorted = sorted(self.players, key=lambda x: x.projection)
 
-        if strategy == 'manual_only' and manual_count == 0:
-            return [], 0, "Manual-only mode requires manual player selections"
+        print("LOWEST 20 PROJECTIONS (likely includes pitchers):")
+        for i, player in enumerate(all_sorted[:20]):
+            orig_pos = getattr(player, 'original_position', 'UNKNOWN')
+            print(f"{i + 1:2d}. {player.name:<20} ({player.team}) - "
+                  f"${player.salary:>6,} - {player.projection:>5.1f} pts - "
+                  f"Orig: {orig_pos}")
 
-    # Only try confirmations if not manual-only mode
-    if strategy != 'manual_only':
-        confirmed_count = core.detect_confirmed_players()
-        print(f"✅ Confirmed detection: {confirmed_count} players")
+        print("\n" + "-" * 80)
+        print("HIGHEST 10 PROJECTIONS (definitely hitters):")
+        for i, player in enumerate(all_sorted[-10:]):
+            orig_pos = getattr(player, 'original_position', 'UNKNOWN')
+            print(f"{i + 1:2d}. {player.name:<20} ({player.team}) - "
+                  f"${player.salary:>6,} - {player.projection:>5.1f} pts - "
+                  f"Orig: {orig_pos}")
 
-        if strategy == 'confirmed_only' and confirmed_count == 0:
-            return [], 0, "Confirmed-only mode requires confirmed players (try again during game hours)"
+        # Find projection gap
+        print("\n📊 PROJECTION ANALYSIS:")
+        projections = [p.projection for p in self.players if p.projection > 0]
+        if projections:
+            print(f"   Min: {min(projections):.1f}")
+            print(f"   Max: {max(projections):.1f}")
+            print(f"   Average: {sum(projections) / len(projections):.1f}")
 
-    # Apply data sources
-    optimized_pipeline_execution(core, dff_file)
+            # Look for gaps
+            sorted_proj = sorted(projections)
+            biggest_gap = 0
+            gap_at = 0
+            for i in range(1, len(sorted_proj)):
+                gap = sorted_proj[i] - sorted_proj[i - 1]
+                if gap > biggest_gap:
+                    biggest_gap = gap
+                    gap_at = sorted_proj[i - 1]
 
-    # Use mode-aware optimization
-    lineup, score = core.optimize_lineup_with_mode()
+            print(f"   Biggest gap: {biggest_gap:.2f} after {gap_at:.1f}")
 
-    if lineup:
-        total_salary = sum(p.salary for p in lineup)
-        pitcher_count = sum(1 for p in lineup if p.primary_position == 'P')
+    def debug_eligible_players(self):
+        """Show detailed info about eligible players"""
+        print("\n🔍 ELIGIBLE PLAYERS DETAILED DEBUG")
+        print("=" * 80)
 
-        summary = f"""
-✅ {strategy.upper().replace('_', '-')} OPTIMIZATION SUCCESS WITH ENHANCED PITCHER DETECTION
-===============================================================================
-Mode: {mode_descriptions.get(strategy, 'Unknown')}
-Players: {len(lineup)}/10
-Pitchers: {pitcher_count}/2 ← ENHANCED PITCHER DETECTION WORKING!
-Total Salary: ${total_salary:,}/{core.salary_cap:,}
-Projected Score: {score:.2f}
+        eligible = self.get_eligible_players_by_mode()
 
-LINEUP:
-"""
-        for i, player in enumerate(lineup, 1):
-            status = player.get_status_string()
-            summary += f"{i:2d}. {player.name:<20} {player.primary_position:<3} ${player.salary:,} {player.enhanced_score:.1f} | {status}\n"
+        # Group by team
+        by_team = {}
+        for player in eligible:
+            if player.team not in by_team:
+                by_team[player.team] = []
+            by_team[player.team].append(player)
 
-        print(summary)
-        return lineup, score, summary
-    else:
-        return [], 0, f"{strategy} optimization failed - see suggestions above"
+        print(f"Total eligible: {len(eligible)} players")
+        print(f"Teams represented: {list(by_team.keys())}")
 
+        # Show players by team
+        for team, players in sorted(by_team.items()):
+            print(f"\n{team} ({len(players)} players):")
 
-# ==============================================================================
-# CORRECTED INTEGRATION VERIFICATION TEST
-# Add this at the END of your bulletproof_dfs_core.py file (after all classes)
-# ==============================================================================
-def debug_player_confirmations(self):
-    """Debug method to show all player confirmation status"""
-    print("\n🔍 FULL PLAYER CONFIRMATION DEBUG")
-    print("=" * 80)
+            # Sort by salary to see variety
+            players.sort(key=lambda x: x.salary, reverse=True)
 
-    # Group by confirmation status
-    confirmed = []
-    manual = []
-    both = []
-    none = []
+            for p in players:
+                orig_pos = getattr(p, 'original_position', 'UNKNOWN')
+                sources = ', '.join(p.confirmation_sources) if p.confirmation_sources else 'No sources'
+                print(f"   {p.name:<20} ${p.salary:>6,} - Orig: {orig_pos:<4} - Sources: [{sources}]")
 
-    for player in self.players:
-        if player.is_confirmed and player.is_manual_selected:
-            both.append(player)
-        elif player.is_confirmed:
-            confirmed.append(player)
-        elif player.is_manual_selected:
-            manual.append(player)
-        else:
-            none.append(player)
+        # Check for pitchers specifically
+        print("\n⚾ PITCHER CHECK:")
+        pitchers_found = 0
+        for player in eligible:
+            orig_pos = getattr(player, 'original_position', 'UNKNOWN')
+            if orig_pos == 'P':
+                pitchers_found += 1
+                print(f"   Found pitcher: {player.name} ({player.team})")
 
-    # Show each group
-    if confirmed:
-        print(f"\n✅ CONFIRMED ONLY ({len(confirmed)} players):")
-        for p in confirmed:
-            sources = ', '.join(p.confirmation_sources)
-            print(f"   {p.name} ({p.team}) {p.primary_position} - Sources: [{sources}]")
+        if pitchers_found == 0:
+            print("   ❌ NO PITCHERS FOUND IN ELIGIBLE POOL!")
 
-    if manual:
-        print(f"\n🎯 MANUAL ONLY ({len(manual)} players):")
-        for p in manual:
+            # Check if there are pitchers in the full player list
+            all_pitchers = [p for p in self.players if getattr(p, 'original_position', p.primary_position) == 'P']
+            print(f"\n   Total pitchers in CSV: {len(all_pitchers)}")
+            if all_pitchers:
+                print("   Sample pitchers (not eligible):")
+                for p in all_pitchers[:5]:
+                    confirmed = "✅" if p.is_confirmed else "❌"
+                    print(f"      {confirmed} {p.name} ({p.team}) - Confirmed: {p.is_confirmed}")
+
+    def debug_player_confirmations(self):
+        """Debug method to show all player confirmation status"""
+        print("\n🔍 FULL PLAYER CONFIRMATION DEBUG")
+        print("=" * 80)
+
+        # Group by confirmation status
+        confirmed = []
+        manual = []
+        both = []
+        none = []
+
+        for player in self.players:
+            if player.is_confirmed and player.is_manual_selected:
+                both.append(player)
+            elif player.is_confirmed:
+                confirmed.append(player)
+            elif player.is_manual_selected:
+                manual.append(player)
+            else:
+                none.append(player)
+
+        # Show each group
+        if confirmed:
+            print(f"\n✅ CONFIRMED ONLY ({len(confirmed)} players):")
+            for p in confirmed:
+                sources = ', '.join(p.confirmation_sources)
+                print(f"   {p.name} ({p.team}) {p.primary_position} - Sources: [{sources}]")
+
+        if manual:
+            print(f"\n🎯 MANUAL ONLY ({len(manual)} players):")
+            for p in manual:
+                print(f"   {p.name} ({p.team}) {p.primary_position}")
+
+        if both:
+            print(f"\n🌟 CONFIRMED + MANUAL ({len(both)} players):")
+            for p in both:
+                sources = ', '.join(p.confirmation_sources)
+                print(f"   {p.name} ({p.team}) {p.primary_position} - Sources: [{sources}]")
+
+        print(f"\n❌ NOT ELIGIBLE ({len(none)} players) - First 20:")
+        for p in none[:20]:
             print(f"   {p.name} ({p.team}) {p.primary_position}")
 
-    if both:
-        print(f"\n🌟 CONFIRMED + MANUAL ({len(both)} players):")
-        for p in both:
-            sources = ', '.join(p.confirmation_sources)
-            print(f"   {p.name} ({p.team}) {p.primary_position} - Sources: [{sources}]")
+    def debug_player_counts(self):
+        """Debug method to verify player counts at each stage"""
+        print("\n🔍 PLAYER COUNT VERIFICATION")
+        print("=" * 60)
 
-    print(f"\n❌ NOT ELIGIBLE ({len(none)} players) - First 20:")
-    for p in none[:20]:
-        print(f"   {p.name} ({p.team}) {p.primary_position}")
+        total_players = len(self.players)
+        confirmed_players = sum(1 for p in self.players if p.is_confirmed)
+        eligible_players = len(self.get_eligible_players_by_mode())
+
+        print(f"Total players loaded: {total_players}")
+        print(f"Confirmed players: {confirmed_players}")
+        print(f"Eligible for optimization: {eligible_players}")
+
+        # Check enrichment status
+        with_dff = sum(1 for p in self.players if hasattr(p, 'dff_data') and p.dff_data)
+        with_vegas = sum(1 for p in self.players if hasattr(p, 'vegas_data') and p.vegas_data)
+        with_statcast = sum(1 for p in self.players if hasattr(p, 'statcast_data') and p.statcast_data)
+        with_form = sum(1 for p in self.players if hasattr(p, 'form_rating') and p.form_rating != 1.0)
+
+        print(f"\nEnrichment Coverage (out of {confirmed_players} confirmed):")
+        print(f"  DFF data: {with_dff}")
+        print(f"  Vegas data: {with_vegas}")
+        print(f"  Statcast data: {with_statcast}")
+        print(f"  Recent form: {with_form}")
+
+        if with_form < confirmed_players * 0.8:
+            print(f"\n⚠️ WARNING: Only {with_form}/{confirmed_players} players have form data!")
+            print(f"   This suggests the recent form analysis may be limited.")
+
+    def display_showdown_lineup(self, lineup: List, total_score: float, total_salary: int):
+        """Display showdown lineup with proper multipliers"""
+        print("\n🎰 SHOWDOWN LINEUP")
+        print("=" * 80)
+
+        # Separate captain and utils
+        captain = None
+        utils = []
+
+        for player in lineup:
+            if player.assigned_position == 'CPT':
+                captain = player
+            else:
+                utils.append(player)
+
+        # Display captain
+        if captain:
+            cap_salary = int(captain.salary * 1.5)
+            cap_score = captain.enhanced_score * 1.5
+            print(f"\n👑 CAPTAIN (1.5x multiplier):")
+            print(f"   {captain.name} ({captain.team})")
+            print(f"   Base: ${captain.salary:,} → {captain.enhanced_score:.1f} pts")
+            print(f"   Captain: ${cap_salary:,} → {cap_score:.1f} pts")
+
+        # Display utilities
+        print(f"\n⚡ UTILITY PLAYERS:")
+        for i, player in enumerate(utils, 1):
+            print(f"   {i}. {player.name} ({player.team}) - ${player.salary:,} → {player.enhanced_score:.1f} pts")
+
+        # Recalculate totals to be sure
+        actual_salary = 0
+        actual_score = 0
+
+        if captain:
+            actual_salary += int(captain.salary * 1.5)
+            actual_score += captain.enhanced_score * 1.5
+
+        for util in utils:
+            actual_salary += util.salary
+            actual_score += util.enhanced_score
+
+        print(f"\n📊 TOTALS:")
+        print(f"   Salary: ${actual_salary:,} / $50,000 (${50000 - actual_salary:,} remaining)")
+        print(f"   Projected: {actual_score:.2f} points")
+
+        # Team stacking
+        team_counts = {}
+        for player in lineup:
+            team_counts[player.team] = team_counts.get(player.team, 0) + 1
+
+        print(f"\n🏈 Team Distribution:")
+        for team, count in sorted(team_counts.items(), key=lambda x: x[1], reverse=True):
+            print(f"   {team}: {count} players")
+
+    def fix_known_player_positions(self):
+        """Manually fix positions for known players who are incorrectly parsed"""
+        position_fixes = {
+            'freddie freeman': ['1B', '3B'],
+            'mookie betts': ['2B', 'SS', 'OF'],
+            'gleyber torres': ['2B'],
+            'jose altuve': ['2B'],
+            'nolan arenado': ['3B'],
+            'manny machado': ['3B', 'SS'],
+            'trea turner': ['SS', '2B'],
+            'marcus semien': ['2B', 'SS'],
+            'jazz chisholm jr': ['2B', 'OF'],
+            'jazz chisholm': ['2B', 'OF'],
+            'vladimir guerrero jr': ['1B'],
+            'vladimir guerrero': ['1B'],
+            'pete alonso': ['1B'],
+            'paul goldschmidt': ['1B'],
+            'matt olson': ['1B'],
+            'rafael devers': ['3B'],
+            'austin riley': ['3B'],
+            'anthony rendon': ['3B'],
+            'alex bregman': ['3B'],
+            'jose ramirez': ['3B'],
+            'matt chapman': ['3B']
+        }
+
+        fixed_count = 0
+
+        for player in self.players:
+            player_name_lower = player.name.lower().strip()
+
+            # Check if this player needs position fix
+            for fix_name, correct_positions in position_fixes.items():
+                if fix_name in player_name_lower or player_name_lower in fix_name:
+                    # Only fix if currently just UTIL
+                    if player.positions == ['UTIL']:
+                        old_positions = player.positions.copy()
+                        player.positions = correct_positions
+                        player.primary_position = correct_positions[0]
+                        fixed_count += 1
+                        print(f"   Fixed {player.name}: {old_positions} → {correct_positions}")
+                    break
+
+        if fixed_count > 0:
+            print(f"\n✅ Fixed positions for {fixed_count} players")
+
+        # Recount positions
+        self._show_position_stats()
+
+    def debug_showdown_scoring(self, lineup: List):
+        """Debug showdown scoring calculations"""
+        print("\n🔍 SHOWDOWN SCORING DEBUG")
+        print("=" * 60)
+
+        total_salary = 0
+        total_score = 0
+
+        for player in lineup:
+            if player.assigned_position == 'CPT':
+                multiplier = 1.5
+                salary_used = int(player.salary * multiplier)
+                points = player.enhanced_score * multiplier
+                print(f"Captain: {player.name}")
+                print(f"  Base: ${player.salary:,} → {player.enhanced_score:.1f} pts")
+                print(f"  With 1.5x: ${salary_used:,} → {points:.1f} pts")
+            else:
+                salary_used = player.salary
+                points = player.enhanced_score
+                print(f"Utility: {player.name} - ${salary_used:,} → {points:.1f} pts")
+
+            total_salary += salary_used
+            total_score += points
+
+        print(f"\nCalculated totals:")
+        print(f"  Salary: ${total_salary:,}")
+        print(f"  Score: {total_score:.2f}")
+
+
+
+
+
+    def debug_contest_type_detection(self):
+        """Debug why contest type detection is failing"""
+        print("\n🔍 CONTEST TYPE DEBUG")
+        print("=" * 60)
+
+        print(f"Current contest_type: {self.contest_type}")
+        print(f"Total players: {len(self.players)}")
+
+        # Analyze player positions
+        position_counts = {}
+        showdown_count = 0
+        classic_count = 0
+
+        print(f"\n📊 Position Analysis (first 10 players):")
+        for i, player in enumerate(self.players[:10]):
+            positions = getattr(player, 'positions', [])
+            primary_pos = getattr(player, 'primary_position', 'Unknown')
+
+            print(f"   {i + 1}. {player.name}:")
+            print(f"      Primary: {primary_pos}")
+            print(f"      All positions: {positions}")
+
+            # Count position types
+            if 'CPT' in positions or 'UTIL' in positions:
+                showdown_count += 1
+            if any(pos in positions for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']):
+                classic_count += 1
+
+            for pos in positions:
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        print(f"\n📈 Position Summary:")
+        for pos, count in sorted(position_counts.items()):
+            print(f"   {pos}: {count} players")
+
+        print(f"\n🎯 Contest Type Indicators:")
+        print(f"   Showdown indicators (CPT/UTIL): {showdown_count}")
+        print(f"   Classic indicators (P/C/1B/etc): {classic_count}")
+
+        # Recommendation
+        if showdown_count > classic_count:
+            print(f"\n💡 RECOMMENDATION: This is a SHOWDOWN contest")
+            print(f"   Force with: core.contest_type = 'showdown'")
+        else:
+            print(f"\n💡 RECOMMENDATION: This is a CLASSIC contest")
+            print(f"   Force with: core.contest_type = 'classic'")
+
+        return {
+            'showdown_count': showdown_count,
+            'classic_count': classic_count,
+            'position_counts': position_counts,
+            'recommended_type': 'showdown' if showdown_count > classic_count else 'classic'
+        }
+
+    def debug_showdown_player_pool(self):
+        """Show what's in the showdown player pool"""
+        print("\n🎰 SHOWDOWN PLAYER POOL DEBUG")
+        print("=" * 60)
+
+        eligible = self.get_eligible_players_by_mode()
+
+        # Group by original position
+        by_original_pos = {}
+        for player in eligible:
+            orig_pos = getattr(player, 'original_position', 'UNKNOWN')
+            if orig_pos not in by_original_pos:
+                by_original_pos[orig_pos] = []
+            by_original_pos[orig_pos].append(player)
+
+        print(f"Total eligible: {len(eligible)} players")
+        print("\nBy original position:")
+        for pos, players in sorted(by_original_pos.items()):
+            print(f"   {pos}: {len(players)} players")
+            # Show first few
+            for p in players[:3]:
+                print(f"      - {p.name} ({p.team}) ${p.salary:,}")
+
+    def debug_showdown_scoring(self, lineup: List):
+        """Debug showdown scoring calculations"""
+        print("\n🔍 SHOWDOWN SCORING DEBUG")
+        print("=" * 60)
+
+        total_salary = 0
+        total_score = 0
+
+        for player in lineup:
+            if player.assigned_position == 'CPT':
+                multiplier = 1.5
+                salary_used = int(player.salary * multiplier)
+                points = player.enhanced_score * multiplier
+                print(f"Captain: {player.name}")
+                print(f"  Base: ${player.salary:,} → {player.enhanced_score:.1f} pts")
+                print(f"  With 1.5x: ${salary_used:,} → {points:.1f} pts")
+            else:
+                salary_used = player.salary
+                points = player.enhanced_score
+                print(f"Utility: {player.name} - ${salary_used:,} → {points:.1f} pts")
+
+            total_salary += salary_used
+            total_score += points
+
+        print(f"\nCalculated totals:")
+        print(f"  Salary: ${total_salary:,}")
+        print(f"  Score: {total_score:.2f}")
+
+    def show_util_players(self):
+        """Show what UTIL players actually are"""
+        print("\n🔍 UTIL PLAYER ANALYSIS")
+        util_players = [p for p in self.players if 'UTIL' in p.positions]
+
+        print(f"Found {len(util_players)} UTIL players:")
+        for p in util_players[:10]:  # Show first 10
+            print(f"  {p.name} ({p.team}) - Positions: {'/'.join(p.positions)} - ${p.salary:,}")
+
+
+    def debug_position_coverage(self):
+        """Debug which positions are missing and find potential players"""
+        print("\n🔍 POSITION COVERAGE DEBUG")
+        print("=" * 60)
+
+        # Get eligible players
+        eligible = self.get_eligible_players_by_mode()
+
+        # Required positions for classic
+        required = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+
+        # Count available by position
+        available = {}
+        for player in eligible:
+            for pos in player.positions:
+                available[pos] = available.get(pos, 0) + 1
+
+        print("📋 Required vs Available:")
+        for pos, need in required.items():
+            have = available.get(pos, 0)
+            status = "✅" if have >= need else "❌"
+            print(f"   {status} {pos}: need {need}, have {have}")
+
+        # Find players who COULD play missing positions
+        print("\n🔍 Players who COULD fill missing positions (not eligible):")
+
+        for pos in ['1B', '2B', '3B']:
+            if available.get(pos, 0) < required[pos]:
+                print(f"\n{pos} candidates:")
+                candidates = [p for p in self.players if
+                              pos in p.positions and not p.is_eligible_for_selection(self.optimization_mode)]
+                for p in candidates[:5]:
+                    print(f"   - {p.name} ({p.team}) - {'/'.join(p.positions)}")
+
+
+
+    def debug_data_sources(self):
+        """Debug which data sources are actually available"""
+        print("\n🔍 DATA SOURCE AVAILABILITY CHECK")
+        print("=" * 50)
+
+        # Check each data source
+        print(f"Statcast Fetcher: {'✅ Available' if self.statcast_fetcher else '❌ Not initialized'}")
+        print(f"Vegas Lines: {'✅ Available' if self.vegas_lines else '❌ Not initialized'}")
+        print(
+            f"DFF Rankings: {'✅ Loaded' if hasattr(self, 'current_dff_file') and self.current_dff_file else '❌ Not loaded'}")
+        print(f"Confirmation System: {'✅ Available' if self.confirmation_system else '❌ Not initialized'}")
+        print(f"Form Analyzer: {'✅ Available' if self.form_analyzer else '❌ Not initialized'}")
+
+        # Check if APIs are working
+        if self.statcast_fetcher:
+            try:
+                result = self.statcast_fetcher.test_connection()
+                print(f"Statcast API Test: {'✅ Working' if result else '❌ Failed'}")
+            except:
+                print("Statcast API Test: ❌ Error")
+
+
+
+# ============================================================================
+# MODULE VERIFICATION
+# ============================================================================
+
 def verify_integration():
     """Verify all new modules are integrated correctly"""
     print("\n🧪 INTEGRATION VERIFICATION TEST")
     print("=" * 60)
 
-    # Check imports - using the actual variable names
+    # Check imports
     modules = {
         'Enhanced Stats Engine': ENHANCED_STATS_AVAILABLE,
         'Vegas Lines': VEGAS_AVAILABLE,
@@ -2995,7 +3274,10 @@ def verify_integration():
     return all(modules.values())
 
 
-# If running as a standalone test
+# ============================================================================
+# MAIN ENTRY POINT
+# ============================================================================
+
 if __name__ == "__main__":
     # This file should be imported, not run directly
     print("✅ bulletproof_dfs_core module loaded successfully")
@@ -3003,166 +3285,7 @@ if __name__ == "__main__":
     print("   from bulletproof_dfs_core import BulletproofDFSCore")
     print("   core = BulletproofDFSCore()")
     print("   core.load_draftkings_csv('your_file.csv')")
-    # ==================== DFS UPGRADE METHODS ====================
+    print("\n")
 
-    def get_cached_data(self, key: str, fetch_func, category: str = 'default'):
-        """Use smart caching for any data fetch"""
-        if UPGRADES_AVAILABLE:
-            return smart_cache.get_or_fetch(key, fetch_func, category)
-        else:
-            return fetch_func()
-
-    def generate_multiple_lineups(self, count: int = 20) -> list:
-        """Generate multiple unique lineups for GPPs"""
-        if not UPGRADES_AVAILABLE:
-            print("❌ Multi-lineup module not available")
-            return []
-
-        print(f"\n🚀 Generating {count} lineups...")
-
-        optimizer = MultiLineupOptimizer(self)
-        lineups = optimizer.generate_gpp_lineups(
-            num_lineups=count,
-            max_exposure=0.5,
-            min_salary=49000
-        )
-
-        # Show summary
-        optimizer.print_summary()
-
-        # Export for upload
-        upload_file = optimizer.export_for_upload('draftkings')
-        if upload_file:
-            print(f"\n📁 Upload file: {upload_file}")
-
-        return lineups
-
-    def track_lineup_performance(self, lineup: list, contest_info: dict):
-        """Track lineup for future analysis"""
-        if not UPGRADES_AVAILABLE:
-            return None
-
-        contest_id = tracker.log_contest(lineup, contest_info)
-
-        # Also save to database if available
-        if hasattr(self, 'game_date'):
-            contest_info['date'] = self.game_date
-
-        return contest_id
-
-    def get_performance_summary(self, days: int = 30):
-        """Get performance tracking summary"""
-        if not UPGRADES_AVAILABLE:
-            print("Performance tracking not available")
-            return
-
-        tracker.print_summary(days)
-
-
-    def debug_confirmations(self):
-        """Debug why players aren't getting confirmed"""
-        print("\n🔍 DEBUG: Player Confirmation Status")
-        print("=" * 60)
-
-        # Check lineup matches
-        confirmed_count = 0
-        for player in self.players:
-            if self.confirmation_system:
-                is_confirmed, order = self.confirmation_system.is_player_confirmed(
-                    player.name, player.team
-                )
-                if is_confirmed:
-                    print(f"✅ {player.name} ({player.team}) - Confirmed, batting {order}")
-                    player.add_confirmation_source("mlb_lineup")
-                    player.is_confirmed = True
-                    confirmed_count += 1
-                else:
-                    # Check if team has lineup
-                    if hasattr(self.confirmation_system, 'confirmed_lineups'):
-                        if player.team in self.confirmation_system.confirmed_lineups:
-                            # Team has lineup but player not in it
-                            lineup_players = self.confirmation_system.confirmed_lineups[player.team]
-                            print(f"❌ {player.name} ({player.team}) - Team has lineup but player not matched")
-                            # Show what names ARE in the lineup for this team
-                            print(f"   Lineup has: {', '.join(p['name'] for p in lineup_players[:3])}...")
-
-        # Check pitcher matches
-        pitchers = [p for p in self.players if p.primary_position == 'P']
-        for pitcher in pitchers:
-            if self.confirmation_system:
-                is_confirmed = self.confirmation_system.is_pitcher_confirmed(
-                    pitcher.name, pitcher.team
-                )
-                if is_confirmed:
-                    print(f"✅ {pitcher.name} ({pitcher.team}) - Confirmed starter")
-                    pitcher.add_confirmation_source("mlb_starter")
-                    pitcher.is_confirmed = True
-                    confirmed_count += 1
-
-        print(f"\n📊 Total confirmed: {confirmed_count}/{len(self.players)} players")
-        return confirmed_count
-
-
-    # Add this debug method to your BulletproofDFSCore class:
-
-    def debug_contest_type_detection(self):
-        """Debug why contest type detection is failing"""
-        print("\n🔍 CONTEST TYPE DEBUG")
-        print("=" * 60)
-
-        print(f"Current contest_type: {self.contest_type}")
-        print(f"Total players: {len(self.players)}")
-
-        # Analyze player positions
-        position_counts = {}
-        showdown_count = 0
-        classic_count = 0
-
-        print(f"\n📊 Position Analysis (first 10 players):")
-        for i, player in enumerate(self.players[:10]):
-            positions = getattr(player, 'positions', [])
-            primary_pos = getattr(player, 'primary_position', 'Unknown')
-
-            print(f"   {i + 1}. {player.name}:")
-            print(f"      Primary: {primary_pos}")
-            print(f"      All positions: {positions}")
-
-            # Count position types
-            if 'CPT' in positions or 'UTIL' in positions:
-                showdown_count += 1
-            if any(pos in positions for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']):
-                classic_count += 1
-
-            for pos in positions:
-                position_counts[pos] = position_counts.get(pos, 0) + 1
-
-        print(f"\n📈 Position Summary:")
-        for pos, count in sorted(position_counts.items()):
-            print(f"   {pos}: {count} players")
-
-        print(f"\n🎯 Contest Type Indicators:")
-        print(f"   Showdown indicators (CPT/UTIL): {showdown_count}")
-        print(f"   Classic indicators (P/C/1B/etc): {classic_count}")
-
-        # Recommendation
-        if showdown_count > classic_count:
-            print(f"\n💡 RECOMMENDATION: This is a SHOWDOWN contest")
-            print(f"   Force with: core.contest_type = 'showdown'")
-        else:
-            print(f"\n💡 RECOMMENDATION: This is a CLASSIC contest")
-            print(f"   Force with: core.contest_type = 'classic'")
-
-        return {
-            'showdown_count': showdown_count,
-            'classic_count': classic_count,
-            'position_counts': position_counts,
-            'recommended_type': 'showdown' if showdown_count > classic_count else 'classic'
-        }
-
-    def clear_cache(self, category: str = None):
-        """Clear cache by category or all"""
-        if UPGRADES_AVAILABLE:
-            smart_cache.clear(category)
-            print(f"🧹 Cleared cache: {category or 'all'}")
-
-
+    # Optionally run verification
+    verify_integration()

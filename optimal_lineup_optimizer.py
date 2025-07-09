@@ -42,6 +42,33 @@ class OptimalLineupOptimizer:
             'UTIL': 5  # Utility
         }
 
+    def check_for_duplicate_players(self):
+        """Check if there are duplicate players in the pool"""
+        print("\n🔍 CHECKING FOR DUPLICATE PLAYERS")
+        print("=" * 60)
+
+        # Check by name
+        name_counts = {}
+        for player in self.players:
+            name_key = f"{player.name}_{player.team}"
+            if name_key not in name_counts:
+                name_counts[name_key] = []
+            name_counts[name_key].append(player)
+
+        # Find duplicates
+        duplicates_found = False
+        for name_key, players in name_counts.items():
+            if len(players) > 1:
+                duplicates_found = True
+                print(f"❌ DUPLICATE: {name_key} appears {len(players)} times")
+                for i, p in enumerate(players):
+                    print(f"   {i + 1}. ID: {p.id}, Salary: ${p.salary}, Positions: {p.positions}")
+
+        if not duplicates_found:
+            print("✅ No duplicate players found")
+
+        return duplicates_found
+
     def optimize_classic_lineup(self, players: List, use_confirmations: bool = False) -> OptimizationResult:
         """
         FIXED: Classic lineup optimization with exact position requirements
@@ -258,79 +285,155 @@ class OptimalLineupOptimizer:
         return {'feasible': True, 'reason': 'Valid'}
 
     def _safe_showdown_milp_optimization(self, players: List) -> OptimizationResult:
-        """Safe showdown MILP optimization"""
-        prob = pulp.LpProblem("DFS_Showdown", pulp.LpMaximize)
+        """Safe showdown MILP optimization with proper duplicate handling"""
 
-        # Decision variables
-        captain_vars = {}
-        util_vars = {}
-        for i, player in enumerate(players):
-            captain_vars[i] = pulp.LpVariable(f"cpt_{i}", cat='Binary')
-            util_vars[i] = pulp.LpVariable(f"util_{i}", cat='Binary')
+        # First, handle the duplicate player issue properly
+        # Group players by name to identify captain/utility pairs
+        name_groups = {}
+        for player in players:
+            name_key = player.name.lower().strip()
+            if name_key not in name_groups:
+                name_groups[name_key] = []
+            name_groups[name_key].append(player)
 
-        # Objective: Captain gets 1.5x points
+        # Create a clean player list with indices
+        player_indices = []
+        player_list = []
+        idx = 0
+
+        for name, group in name_groups.items():
+            if len(group) == 2:
+                # Assume higher salary is captain version
+                group.sort(key=lambda p: p.salary, reverse=True)
+                captain_version = group[0]
+                util_version = group[1]
+
+                # Add both versions with proper indexing
+                player_indices.append({
+                    'captain_idx': idx,
+                    'util_idx': idx + 1,
+                    'name': name
+                })
+                player_list.extend([captain_version, util_version])
+                idx += 2
+            else:
+                # Single version - can be used as either
+                player_indices.append({
+                    'captain_idx': idx,
+                    'util_idx': idx,
+                    'name': name
+                })
+                player_list.append(group[0])
+                idx += 1
+
+        print(f"🎯 Optimizing with {len(name_groups)} unique players")
+
+        # Create problem
+        prob = pulp.LpProblem("DFS_Showdown_Fixed", pulp.LpMaximize)
+
+        # Decision variables - one for each player as captain or utility
+        x = {}  # x[i,role] = 1 if player i is selected for role (0=captain, 1=utility)
+
+        for i in range(len(player_list)):
+            x[i, 0] = pulp.LpVariable(f"captain_{i}", cat='Binary')  # As captain
+            x[i, 1] = pulp.LpVariable(f"util_{i}", cat='Binary')  # As utility
+
+        # Objective: Maximize total score (captain gets 1.5x)
         prob += pulp.lpSum([
-            captain_vars[i] * player.enhanced_score * 1.5 +
-            util_vars[i] * player.enhanced_score
-            for i, player in enumerate(players)
+            x[i, 0] * player_list[i].enhanced_score * 1.5 +  # Captain score
+            x[i, 1] * player_list[i].enhanced_score  # Utility score
+            for i in range(len(player_list))
         ])
 
-        # Constraints
-        prob += pulp.lpSum(captain_vars.values()) == 1  # Exactly 1 captain
-        prob += pulp.lpSum(util_vars.values()) == 5  # Exactly 5 utility
+        # Constraint 1: Exactly 1 captain
+        prob += pulp.lpSum([x[i, 0] for i in range(len(player_list))]) == 1
 
-        # Each player used at most once
-        for i in range(len(players)):
-            prob += captain_vars[i] + util_vars[i] <= 1
+        # Constraint 2: Exactly 5 utility players
+        prob += pulp.lpSum([x[i, 1] for i in range(len(player_list))]) == 5
 
-        # Salary constraint: Captain costs 1.5x
+        # Constraint 3: Each unique player can only be selected once (as captain OR utility)
+        for player_info in player_indices:
+            if player_info['captain_idx'] == player_info['util_idx']:
+                # Same index means only one version exists
+                idx = player_info['captain_idx']
+                prob += x[idx, 0] + x[idx, 1] <= 1
+            else:
+                # Different indices mean we have both versions
+                cap_idx = player_info['captain_idx']
+                util_idx = player_info['util_idx']
+                # Can only select one version total
+                prob += x[cap_idx, 0] + x[util_idx, 1] <= 1
+                # Can't select captain version as utility or vice versa
+                prob += x[cap_idx, 1] == 0
+                prob += x[util_idx, 0] == 0
+
+        # Constraint 4: Salary cap (captain costs 1.5x)
         prob += pulp.lpSum([
-            captain_vars[i] * player.salary * 1.5 +
-            util_vars[i] * player.salary
-            for i, player in enumerate(players)
+            x[i, 0] * player_list[i].salary * 1.5 +  # Captain salary
+            x[i, 1] * player_list[i].salary  # Utility salary
+            for i in range(len(player_list))
         ]) <= self.salary_cap
 
+        # Constraint 5: Must have players from both teams
+        teams = list(set(p.team for p in player_list))
+        if len(teams) >= 2:
+            for team in teams[:2]:
+                team_indices = [i for i, p in enumerate(player_list) if p.team == team]
+                if team_indices:
+                    prob += pulp.lpSum([
+                        x[i, 0] + x[i, 1] for i in team_indices
+                    ]) >= 1
+
         # Solve
-        solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=15)
+        solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=30)
         prob.solve(solver)
 
         if prob.status == pulp.LpStatusOptimal:
-            return self._extract_showdown_solution(players, captain_vars, util_vars)
+            return self._extract_showdown_solution_fixed(player_list, x)
         else:
-            raise Exception(f"Showdown MILP failed: {pulp.LpStatus[prob.status]}")
+            print(f"❌ MILP failed: {pulp.LpStatus[prob.status]}")
+            return self._greedy_showdown_fallback(players)
 
-    def _extract_showdown_solution(self, players: List, captain_vars: Dict, util_vars: Dict) -> OptimizationResult:
-        """Extract showdown solution"""
-        selected_players = []
+    def _extract_showdown_solution_fixed(self, player_list: List, x: Dict) -> OptimizationResult:
+        """Extract solution from fixed showdown optimization"""
+        lineup = []
         total_salary = 0
         total_score = 0
         positions_filled = {'CPT': 0, 'UTIL': 0}
 
-        # Extract captain
-        for i, player in enumerate(players):
-            if captain_vars[i].value() == 1:
-                player_copy = self._copy_player(player)
+        # Extract selected players
+        for i in range(len(player_list)):
+            # Check if selected as captain
+            if x[i, 0].value() == 1:
+                player_copy = self._copy_player(player_list[i])
                 player_copy.assigned_position = 'CPT'
                 player_copy.multiplier = 1.5
-                selected_players.append(player_copy)
-                total_salary += int(player.salary * 1.5)
-                total_score += player.enhanced_score * 1.5
+                player_copy.captain_salary = int(player_list[i].salary * 1.5)
+                player_copy.captain_score = player_list[i].enhanced_score * 1.5  # ADD THIS
+                lineup.append(player_copy)
+                total_salary += player_copy.captain_salary
+                total_score += player_copy.captain_score  # USE CAPTAIN SCORE
                 positions_filled['CPT'] = 1
-                break
+                print(
+                    f"✅ Captain: {player_copy.name} - ${player_copy.captain_salary:,} - {player_copy.captain_score:.1f} pts")
 
-        # Extract utility players
-        for i, player in enumerate(players):
-            if util_vars[i].value() == 1:
-                player_copy = self._copy_player(player)
+            # Check if selected as utility
+            elif x[i, 1].value() == 1:
+                player_copy = self._copy_player(player_list[i])
                 player_copy.assigned_position = 'UTIL'
                 player_copy.multiplier = 1.0
-                selected_players.append(player_copy)
-                total_salary += player.salary
-                total_score += player.enhanced_score
+                lineup.append(player_copy)
+                total_salary += player_list[i].salary
+                total_score += player_list[i].enhanced_score
                 positions_filled['UTIL'] += 1
+                print(
+                    f"✅ Utility: {player_copy.name} - ${player_list[i].salary:,} - {player_list[i].enhanced_score:.1f} pts")
+
+        # Sort lineup: Captain first, then utilities
+        lineup.sort(key=lambda p: 0 if p.assigned_position == 'CPT' else 1)
 
         return OptimizationResult(
-            lineup=selected_players,
+            lineup=lineup,
             total_score=total_score,
             total_salary=total_salary,
             positions_filled=positions_filled,
@@ -338,10 +441,22 @@ class OptimalLineupOptimizer:
         )
 
     def _copy_player(self, player):
-        """Safe player copying"""
+        """Safe player copying that preserves all attributes including team"""
         try:
-            return copy.deepcopy(player)
-        except:
+            import copy
+            player_copy = copy.deepcopy(player)
+
+            # Ensure critical attributes are preserved
+            critical_attrs = ['name', 'team', 'salary', 'id', 'positions', 'primary_position']
+            for attr in critical_attrs:
+                if hasattr(player, attr):
+                    setattr(player_copy, attr, getattr(player, attr))
+                else:
+                    print(f"⚠️ Missing attribute {attr} on {player.name}")
+
+            return player_copy
+        except Exception as e:
+            print(f"❌ Error copying player {player.name}: {e}")
             # Fallback: manual copy
             player_copy = type(player).__new__(type(player))
             for key, value in player.__dict__.items():
@@ -420,61 +535,105 @@ class OptimalLineupOptimizer:
             )
 
     def _greedy_showdown_fallback(self, players: List) -> OptimizationResult:
-        """Greedy fallback for showdown lineup"""
+        """Greedy fallback for showdown lineup with proper duplicate handling"""
         print("🔄 Using greedy showdown fallback...")
 
+        # Group players by name to handle duplicates
+        name_groups = {}
+        for player in players:
+            name_key = player.name.lower().strip()
+            if name_key not in name_groups:
+                name_groups[name_key] = []
+            name_groups[name_key].append(player)
+
+        # Create unique player list
+        unique_players = []
+        for name, group in name_groups.items():
+            if len(group) == 1:
+                unique_players.append(group[0])
+            else:
+                # Pick the one with better value for our pool
+                best_player = max(group, key=lambda p: p.enhanced_score / (p.salary / 1000) if p.salary > 0 else 0)
+                unique_players.append(best_player)
+
         # Sort by value
-        players_with_value = [(p, p.enhanced_score / (p.salary / 1000)) for p in players if p.salary > 0]
+        players_with_value = [(p, p.enhanced_score / (p.salary / 1000)) for p in unique_players if p.salary > 0]
         players_with_value.sort(key=lambda x: x[1], reverse=True)
 
         best_lineup = None
         best_score = 0
 
         # Try each player as captain
-        for captain_idx, (captain_player, _) in enumerate(players_with_value[:20]):  # Try top 20 as captain
+        for captain_idx, (captain_player, _) in enumerate(players_with_value[:20]):
             if captain_player.salary * 1.5 > self.salary_cap:
                 continue
 
             lineup = []
             remaining_salary = self.salary_cap
+            used_names = set()
 
             # Add captain
             captain_copy = self._copy_player(captain_player)
             captain_copy.assigned_position = 'CPT'
             captain_copy.multiplier = 1.5
+            captain_copy.captain_salary = int(captain_player.salary * 1.5)
             lineup.append(captain_copy)
-            remaining_salary -= int(captain_player.salary * 1.5)
+            remaining_salary -= captain_copy.captain_salary
+            used_names.add(captain_player.name.lower().strip())
 
             # Add 5 best utility players that fit
             for player, value in players_with_value:
-                if (len(lineup) < 6 and
-                        player != captain_player and
-                        player.salary <= remaining_salary):
-                    util_copy = self._copy_player(player)
-                    util_copy.assigned_position = 'UTIL'
-                    util_copy.multiplier = 1.0
-                    lineup.append(util_copy)
-                    remaining_salary -= player.salary
+                if len(lineup) >= 6:
+                    break
+
+                player_name = player.name.lower().strip()
+
+                # Skip if already used (as captain or utility)
+                if player_name in used_names:
+                    continue
+
+                # Skip if doesn't fit salary
+                if player.salary > remaining_salary:
+                    continue
+
+                # Add as utility
+                util_copy = self._copy_player(player)
+                util_copy.assigned_position = 'UTIL'
+                util_copy.multiplier = 1.0
+                lineup.append(util_copy)
+                remaining_salary -= player.salary
+                used_names.add(player_name)
 
             # Check if complete and better
             if len(lineup) == 6:
                 total_score = captain_player.enhanced_score * 1.5 + sum(p.enhanced_score for p in lineup[1:])
                 if total_score > best_score:
                     best_score = total_score
-                    best_lineup = lineup
+                    best_lineup = lineup[:]
 
         if best_lineup:
-            total_salary = sum(
-                int(p.salary * getattr(p, 'multiplier', 1.0)) for p in best_lineup
-            )
+            # Calculate actual total salary
+            total_salary = 0
+            for player in best_lineup:
+                if player.assigned_position == 'CPT':
+                    total_salary += int(player.salary * 1.5)
+                else:
+                    total_salary += player.salary
+
             return OptimizationResult(
-                lineup=best_lineup, total_score=best_score, total_salary=total_salary,
-                positions_filled={'CPT': 1, 'UTIL': 5}, optimization_status="Greedy"
+                lineup=best_lineup,
+                total_score=best_score,
+                total_salary=total_salary,
+                positions_filled={'CPT': 1, 'UTIL': 5},
+                optimization_status="Greedy"
             )
         else:
             return OptimizationResult(
-                lineup=[], total_score=0, total_salary=0,
-                positions_filled={}, optimization_status="Greedy failed"
+                lineup=[],
+                total_score=0,
+                total_salary=0,
+                positions_filled={},
+                optimization_status="Greedy failed - could not build valid lineup"
             )
 
     def debug_infeasible_lineup(self, players: List):

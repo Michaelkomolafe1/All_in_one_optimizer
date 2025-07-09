@@ -108,38 +108,87 @@ class RealRecentFormAnalyzer:
         }
 
     def enrich_players_with_form(self, players):
-        """Add real form data to players"""
+        """Add real form data to players with progress tracking"""
         print(f"\n📊 Fetching real game logs for last {self.days_back} days...")
 
-        for i, player in enumerate(players):
-            if i % 5 == 0:
-                print(f"  Processing {i + 1}/{len(players)} players...")
+        # IMPORTANT: Process ALL players passed in, no limits!
+        total_to_process = len(players)
+        print(f"📊 Will analyze ALL {total_to_process} players")
 
-            # Skip if player already has recent form data
-            if hasattr(player, 'form_rating') and player.form_rating != 1.0:
-                continue
+        # Import progress tracker if available
+        try:
+            from progress_tracker import ProgressTracker
+            tracker = ProgressTracker(total_to_process, "Analyzing player form", show_eta=True)
+        except:
+            tracker = None
 
-            # Fetch real game data
-            game_data = self.get_player_game_logs(player.name)
+        successful_analyses = 0
+        failed_analyses = 0
 
-            # Calculate form metrics
-            metrics = self.calculate_form_metrics(game_data)
+        # Process ALL players - no slicing!
+        for i, player in enumerate(players):  # <-- Make sure there's no [:30] slice here
+            try:
+                # Update progress
+                if tracker:
+                    tracker.update(1, f"{player.name}")
+                else:
+                    # Fallback progress display
+                    if (i + 1) % 5 == 0 or i == total_to_process - 1:
+                        print(f"  Processing {i + 1}/{total_to_process} players...")
 
-            # Apply to player
-            player.form_rating = metrics['form_rating']
-            player.hot_streak = metrics['hot_streak']
-            player.recent_avg = metrics['recent_avg']
-            player.recent_ops = metrics['recent_ops']
 
-            # Add descriptive attributes
-            if metrics['hot_streak']:
-                player.form_description = f"🔥 HOT: .{int(metrics['recent_avg'] * 1000)} last {self.days_back}d"
-            elif metrics['form_rating'] < 0.9:
-                player.form_description = f"❄️ COLD: .{int(metrics['recent_avg'] * 1000)} last {self.days_back}d"
-            else:
-                player.form_description = f"AVG: .{int(metrics['recent_avg'] * 1000)} last {self.days_back}d"
 
-            # Small delay to avoid rate limiting
-            time.sleep(0.1)
+                # Skip if player already has recent form data
+                if hasattr(player, 'form_rating') and player.form_rating != 1.0:
+                    continue
 
-        print(f"✅ Form analysis complete for {len(players)} players")
+                # Fetch real game data
+                game_data = self.get_player_game_logs(player.name)
+
+                # Calculate form metrics
+                metrics = self.calculate_form_metrics(game_data)
+
+                # Apply to player
+                player.form_rating = metrics['form_rating']
+                player.hot_streak = metrics['hot_streak']
+                player.recent_avg = metrics['recent_avg']
+                player.recent_ops = metrics['recent_ops']
+
+                # Add descriptive attributes
+                if metrics['hot_streak']:
+                    player.form_description = f"🔥 HOT: .{int(metrics['recent_avg'] * 1000)} last {self.days_back}d"
+                elif metrics['form_rating'] < 0.9:
+                    player.form_description = f"❄️ COLD: .{int(metrics['recent_avg'] * 1000)} last {self.days_back}d"
+                else:
+                    player.form_description = f"AVG: .{int(metrics['recent_avg'] * 1000)} last {self.days_back}d"
+
+                # Track success
+                if metrics['games_played'] > 0:
+                    successful_analyses += 1
+                else:
+                    failed_analyses += 1
+
+                # Small delay to avoid rate limiting
+                time.sleep(0.1)
+
+            except Exception as e:
+                failed_analyses += 1
+                if tracker is None:  # Only print errors if no progress tracker
+                    print(f"⚠️ Error analyzing {player.name}: {e}")
+
+        # Finish progress tracking
+        if tracker:
+            tracker.finish()
+
+        print(f"✅ Form analysis complete: {successful_analyses} successful, {failed_analyses} failed")
+
+        # Report hot/cold summary
+        hot_count = sum(1 for p in players if hasattr(p, 'hot_streak') and p.hot_streak)
+        cold_count = sum(1 for p in players if hasattr(p, 'form_rating') and p.form_rating < 0.9)
+
+        if hot_count > 0:
+            print(f"   🔥 {hot_count} HOT players identified")
+        if cold_count > 0:
+            print(f"   ❄️ {cold_count} COLD players identified")
+
+        return successful_analyses
