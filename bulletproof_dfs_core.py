@@ -1763,6 +1763,39 @@ class BulletproofDFSCore:
         for source, count in enrichment_summary.items():
             print(f"   {source}: {count}/{len(truly_confirmed)} players")
 
+        # Apply recent form adjustments (FIXED - This ensures multipliers are applied to enhanced_score)
+        if hasattr(self, 'form_analyzer') and self.form_analyzer:
+            print("\n📊 Applying recent form multiplier adjustments...")
+            form_count = 0
+
+            for player in self.players:
+                if hasattr(player, 'enhanced_score'):
+                    try:
+                        original = player.enhanced_score
+                        form_data = self.form_analyzer.analyze_player_form(player)
+
+                        if form_data and 'form_score' in form_data:
+                            # Apply the multiplier - THIS IS THE KEY FIX
+                            player.enhanced_score = original * form_data['form_score']
+                            player.recent_form = {
+                                'multiplier': form_data['form_score'],
+                                'status': 'hot' if form_data['form_score'] > 1.05 else 'cold' if form_data[
+                                                                                                     'form_score'] < 0.95 else 'normal',
+                                'original_score': original,
+                                'adjusted_score': player.enhanced_score
+                            }
+                            form_count += 1
+
+                            # Log significant adjustments
+                            if abs(form_data['form_score'] - 1.0) > 0.05:
+                                status_emoji = '🔥' if player.recent_form['status'] == 'hot' else '❄️'
+                                print(
+                                    f"   {status_emoji} {player.name}: {original:.1f} → {player.enhanced_score:.1f} ({form_data['form_score']:.2f}x)")
+                    except Exception as e:
+                        pass
+
+            print(f"✅ Recent form multipliers applied to {form_count} players")
+
         print("✅ All enrichments applied")
 
     def enrich_with_vegas_lines(self):
