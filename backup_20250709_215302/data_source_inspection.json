@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-06-16T21:55:09.124857",
+  "results": {
+    "statcast": "MOSTLY REAL",
+    "vegas": "POSSIBLY REAL",
+    "park_factors": "HARDCODED",
+    "recent_form": "MISSING",
+    "dff": "MISSING",
+    "mlb_lineups": "REAL & FRESH"
+  },
+  "summary": {
+    "real": 3,
+    "fake": 2
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "starting_bankroll": 500.0,
+  "current_bankroll": 500.0,
+  "transactions": [
+    {
+      "date": "2025-06-06T17:29:07.808020",
+      "type": "Bankroll Adjustment",
+      "amount": 400.0,
+      "notes": "Bankroll adjusted from $100.00 to $500.00",
+      "balance": 500.0
+    }
+  ],
+  "contest_history": [],
+  "settings": {
+    "risk_tolerance": "very_aggressive",
+    "max_daily_risk": 0.3,
+    "kelly_multiplier": 0.25
+  }
+}
