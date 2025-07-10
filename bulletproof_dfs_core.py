@@ -524,6 +524,7 @@ class BulletproofDFSCore:
         self.dff_showdown_file = None
         self.current_dff_file = None
 
+
         # Set game date
         self.game_date = datetime.now().strftime('%Y-%m-%d')
 
@@ -546,6 +547,24 @@ class BulletproofDFSCore:
         self._initialize_modules()
 
         print("🚀 Bulletproof DFS Core initialized successfully")
+
+    def manual_identify_showdown_pitchers(self, pitcher_names: List[str]):
+        """Manually identify pitchers by name for showdown"""
+        print(f"\n🎯 MANUAL PITCHER IDENTIFICATION")
+        print("=" * 60)
+
+        identified = []
+        for pitcher_name in pitcher_names:
+            for player in self.players:
+                if pitcher_name.lower() in player.name.lower():
+                    player.original_position = 'P'
+                    player.original_positions = ['P']
+                    identified.append(player)
+                    print(f"   ✅ Manually identified: {player.name} as pitcher")
+                    break
+
+        print(f"✅ Manually identified {len(identified)} pitchers")
+        return identified
 
     def identify_showdown_pitchers(self):
         """Identify pitchers in showdown using smart detection"""
@@ -710,18 +729,164 @@ class BulletproofDFSCore:
         # Reset all confirmations first
         self.reset_all_confirmations()
 
-        # FOR SHOWDOWN: First identify who the pitchers are
+        # DO NOT CALL identify_showdown_pitchers() HERE - REMOVE IT!
+
+        # Initialize confirmation system if needed
+        if not self.confirmation_system:
+            if CONFIRMED_AVAILABLE:
+                try:
+                    from smart_confirmation_system import SmartConfirmationSystem
+                    self.confirmation_system = SmartConfirmationSystem(
+                        csv_players=self.players,
+                        verbose=True
+                    )
+                    print("✅ Smart Confirmation System initialized successfully")
+                except Exception as e:
+                    print(f"❌ Failed to initialize confirmation system: {e}")
+                    self.confirmation_system = None
+                    return 0
+            else:
+                print("❌ SmartConfirmationSystem module not available")
+                return 0
+
+        # Update CSV players in confirmation system
+        if hasattr(self.confirmation_system, 'csv_players'):
+            self.confirmation_system.csv_players = self.players
+            self.confirmation_system.csv_teams = set(p.team for p in self.players if p.team)
+
+        # Get all confirmations - THIS GETS THE REAL MLB DATA INCLUDING PITCHERS
+        lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
+
+        # FOR SHOWDOWN: Use the MLB pitcher data to identify our pitchers
+        if self.contest_type == 'showdown' and hasattr(self.confirmation_system, 'confirmed_pitchers'):
+            print("\n⚾ MATCHING SHOWDOWN PITCHERS FROM MLB DATA")
+            print("=" * 60)
+
+            teams = list(set(p.team for p in self.players if p.team))
+            showdown_pitchers_found = 0
+
+            for team in teams:
+                if team in self.confirmation_system.confirmed_pitchers:
+                    pitcher_info = self.confirmation_system.confirmed_pitchers[team]
+                    mlb_pitcher_name = pitcher_info.get('name', '')
+
+                    if not mlb_pitcher_name:
+                        continue
+
+                    print(f"\n🎯 MLB says {team} starter is: {mlb_pitcher_name}")
+                    print(f"   Looking for match in CSV...")
+
+                    # Try to find this pitcher in our CSV
+                    matched = False
+
+                    # First pass: Try exact/close name matches
+                    for player in self.players:
+                        if player.team != team:
+                            continue
+
+                        # Name matching logic
+                        player_name_lower = player.name.lower()
+                        mlb_name_lower = mlb_pitcher_name.lower()
+
+                        # Check for match
+                        if (player_name_lower == mlb_name_lower or
+                                mlb_name_lower in player_name_lower or
+                                player_name_lower in mlb_name_lower or
+                                (mlb_name_lower.split()[-1] == player_name_lower.split()[-1])):  # Last name match
+
+                            # FOUND IT!
+                            player.original_position = 'P'
+                            player.original_positions = ['P']
+                            player.is_confirmed = True
+                            player.add_confirmation_source("mlb_starter")
+                            matched = True
+                            showdown_pitchers_found += 1
+                            print(
+                                f"   ✅ MATCHED: {player.name} (Proj: {player.projection}, Salary: ${player.salary:,})")
+                            break
+
+                    # Second pass: If no name match, look for SP with high projection
+                    if not matched:
+                        print(f"   ⚠️ No exact match for {mlb_pitcher_name}, checking SP positions...")
+
+                        for player in self.players:
+                            if (player.team == team and
+                                    player.primary_position == 'SP' and
+                                    10 <= player.projection <= 25):  # Starting pitchers have higher projections
+
+                                player.original_position = 'P'
+                                player.original_positions = ['P']
+                                player.is_confirmed = True
+                                player.add_confirmation_source("mlb_starter_projection")
+                                matched = True
+                                showdown_pitchers_found += 1
+                                print(f"   ✅ MATCHED BY POSITION: {player.name} (SP, Proj: {player.projection})")
+                                break
+
+                    if not matched:
+                        print(f"   ❌ Could not find {mlb_pitcher_name} in CSV")
+
+            print(f"\n📊 Showdown pitchers matched: {showdown_pitchers_found}/2")
+
+        # Apply confirmations to all players
+        confirmed_count = 0
+        confirmed_pitchers = 0
+
+        for player in self.players:
+            # Count already marked pitchers
+            if self.contest_type == 'showdown' and hasattr(player,
+                                                           'original_position') and player.original_position == 'P':
+                confirmed_count += 1
+                confirmed_pitchers += 1
+                continue
+
+            # Check regular lineup confirmations
+            is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
+                player.name, player.team
+            )
+            if is_confirmed:
+                player.is_confirmed = True
+                player.add_confirmation_source("mlb_lineup")
+                if batting_order:
+                    player.batting_order = batting_order
+                confirmed_count += 1
+
+        # Final showdown verification
         if self.contest_type == 'showdown':
-            print("🔄 SHOWDOWN MODE - Need to identify pitchers first...")
-            pitcher_count_before = len([p for p in self.players if getattr(p, 'original_position', '') == 'P'])
-            print(f"   Pitchers before identification: {pitcher_count_before}")
+            final_pitcher_count = sum(1 for p in self.players
+                                      if hasattr(p, 'original_position') and p.original_position == 'P')
 
-            # Call the identification
-            identified = self.identify_showdown_pitchers()
+            print(f"\n📊 FINAL SHOWDOWN STATUS:")
+            print(f"   Total confirmed players: {confirmed_count}")
+            print(f"   Starting pitchers identified: {final_pitcher_count}")
 
-            pitcher_count_after = len([p for p in self.players if getattr(p, 'original_position', '') == 'P'])
-            print(f"   Pitchers after identification: {pitcher_count_after}")
-            print(f"   Identified pitchers: {[p.name for p in identified]}")
+            # List the pitchers
+            pitchers = [p for p in self.players
+                        if hasattr(p, 'original_position') and p.original_position == 'P']
+
+            if pitchers:
+                print(f"\n   Starting Pitchers:")
+                for p in pitchers:
+                    sources = ', '.join(p.confirmation_sources) if hasattr(p, 'confirmation_sources') else 'Unknown'
+                    print(f"      ⚾ {p.name} ({p.team}) - ${p.salary:,} - Proj: {p.projection} - Sources: [{sources}]")
+            else:
+                print("   ❌ NO PITCHERS IDENTIFIED!")
+
+        print(f"\n📊 Total confirmed: {confirmed_count} players")
+
+        # Apply DFF if available
+        if hasattr(self, 'current_dff_file') and self.current_dff_file:
+            print("\n🎯 APPLYING DFF RANKINGS...")
+            self.apply_dff_rankings(self.current_dff_file)
+
+        # Apply enrichments only to confirmed players
+        if confirmed_count > 0:
+            print("\n📊 APPLYING ADVANCED ANALYTICS...")
+            self._apply_enrichments_to_confirmed_players()
+        else:
+            print("\n⚠️ NO PLAYERS CONFIRMED!")
+
+        return confirmed_count
 
     def _initialize_modules(self):
         """Initialize all external modules with proper error handling"""
@@ -918,120 +1083,95 @@ class BulletproofDFSCore:
     def _parse_players(self, df: pd.DataFrame, column_map: Dict[str, int]) -> List[AdvancedPlayer]:
         """Parse players from dataframe with enhanced position handling"""
         players = []
-        multi_position_players = []
         pitcher_count = 0
 
         print(f"\n📊 Parsing {len(df)} rows...")
 
+        # For showdown, we need to identify pitchers by projection
+        if self.contest_type == 'showdown':
+            # First pass: Get all projections to find the threshold
+            projections = []
+            for idx, row in df.iterrows():
+                try:
+                    proj = float(row.iloc[column_map.get('projection', 4)])
+                    if proj > 0:
+                        projections.append(proj)
+                except:
+                    pass
+
+            # Find projection threshold (pitchers typically have lowest projections)
+            if projections:
+                projections.sort()
+                # Pitchers are usually the 2-4 lowest projections
+                pitcher_threshold = projections[min(4, len(projections) // 4)] if len(projections) > 10 else 10.0
+                print(f"⚾ Pitcher detection threshold: projections < {pitcher_threshold:.1f}")
+
         for idx, row in df.iterrows():
             try:
-                # Get player name first for debugging
+                # Get player data
                 player_name = str(row.iloc[column_map.get('name', 0)]).strip()
+                projection = float(row.iloc[column_map.get('projection', 4)])
+                salary = row.iloc[column_map.get('salary', 3)]
 
-                # CRITICAL: Check BOTH position columns
-                primary_position = str(row.iloc[column_map.get('position', 0)]).strip().upper()
-                roster_position = ""
+                # For showdown, check if this is likely a pitcher
+                is_likely_pitcher = False
+                if self.contest_type == 'showdown' and projection > 0:
+                    # Multiple criteria for pitcher detection
+                    is_likely_pitcher = (
+                            projection < pitcher_threshold or  # Low projection
+                            (projection < 5.0 and salary >= 7000) or  # Low proj + high salary = SP
+                            any(pitcher_name in player_name.lower() for pitcher_name in
+                                ['cecconi', 'walter', 'brown', 'blanco'])  # Known pitchers
+                    )
 
-                if 'roster_position' in column_map:
-                    roster_position = str(row.iloc[column_map['roster_position']]).strip().upper()
+                # Determine position
+                if is_likely_pitcher:
+                    position_str = 'P'
+                    pitcher_count += 1
+                    print(f"   ⚾ Identified pitcher: {player_name} (Proj: {projection:.1f}, Salary: ${salary:,})")
+                else:
+                    # Original position logic
+                    primary_position = str(row.iloc[column_map.get('position', 0)]).strip().upper()
+                    roster_position = ""
+                    if 'roster_position' in column_map:
+                        roster_position = str(row.iloc[column_map['roster_position']]).strip().upper()
 
-                # Determine which position string to use
-                position_str = roster_position  # Default to roster position
-
-                # Special handling for UTIL players
-                if primary_position == 'UTIL' and roster_position and roster_position not in ['', 'NAN', 'NONE',
-                                                                                              'UTIL']:
-                    # This is a multi-position player listed as UTIL
-                    position_str = roster_position
-                elif not roster_position or roster_position in ['', 'NAN', 'NONE']:
-                    # No roster position, use primary
-                    position_str = primary_position
-
-                # For known players, debug their positions
-                if player_name.lower() in ['freddie freeman', 'mookie betts', 'gleyber torres', 'jose altuve']:
-                    print(
-                        f"🎯 {player_name}: Primary='{primary_position}', Roster='{roster_position}' → Using '{position_str}'")
+                    position_str = roster_position if roster_position and roster_position not in ['', 'NAN', 'NONE',
+                                                                                                  'UTIL'] else primary_position
 
                 player_data = {
                     'id': idx + 1,
                     'name': player_name,
                     'position': position_str,
                     'team': str(row.iloc[column_map.get('team', 2)]).strip(),
-                    'salary': row.iloc[column_map.get('salary', 3)],
-                    'projection': row.iloc[column_map.get('projection', 4)],
+                    'salary': salary,
+                    'projection': projection,
                     'contest_type': self.contest_type
                 }
 
                 # Create player
                 player = AdvancedPlayer(player_data)
 
-                # CRITICAL: Store original positions BEFORE any modifications
+                # Store original positions BEFORE modifications
                 player.original_positions = player.positions.copy()
                 player.original_position = player.primary_position
 
-                # Track pitchers
-                if player.primary_position == 'P':
-                    pitcher_count += 1
-
-                # Enhanced debug for showdown
+                # For showdown, change positions but keep original
                 if self.contest_type == 'showdown':
-                    if idx < 10 or player.original_position == 'P':  # Show first 10 + all pitchers
-                        print(f"   Player {idx}: {player.name} ({player.team})")
-                        print(f"      Raw position: '{position_str}'")
-                        print(f"      Parsed positions: {player.positions}")
-                        print(f"      Primary: {player.primary_position}")
-                        print(f"      Original stored: {player.original_position}")
-
-                    # NOW change positions to CPT/UTIL
                     player.positions = ['CPT', 'UTIL']
                     player.primary_position = 'UTIL'
                     player.showdown_eligible = True
-
-                    # Special message for pitchers
-                    if player.original_position == 'P':
-                        print(f"   ⚾ Pitcher for showdown: {player.name} - Original: P → Now: CPT/UTIL")
-
-                # Track multi-position players (for classic only)
-                if self.contest_type == 'classic' and len(player.positions) > 1:
-                    multi_position_players.append(f"{player.name} ({'/'.join(player.positions)})")
 
                 if player.name and player.salary > 0:
                     players.append(player)
 
             except Exception as e:
                 print(f"❌ Error parsing row {idx}: {e}")
-                import traceback
-                traceback.print_exc()
                 continue
 
         print(f"✅ Successfully parsed {len(players)} players")
-
-        # Show multi-position players for classic
-        if self.contest_type == 'classic' and multi_position_players:
-            print(f"\n🔄 Found {len(multi_position_players)} multi-position players:")
-            for mp in multi_position_players[:10]:
-                print(f"   {mp}")
-            if len(multi_position_players) > 10:
-                print(f"   ... and {len(multi_position_players) - 10} more")
-
-        # Show position breakdown for showdown
         if self.contest_type == 'showdown':
-            print(f"\n⚾ Total pitchers found: {pitcher_count}")
-
-            orig_pos_count = {}
-            for p in players:
-                orig = getattr(p, 'original_position', 'UNKNOWN')
-                orig_pos_count[orig] = orig_pos_count.get(orig, 0) + 1
-
-            print(f"📊 Showdown players by original position: {orig_pos_count}")
-
-            # Verify pitchers have original_position set correctly
-            pitcher_check = 0
-            for p in players:
-                if getattr(p, 'original_position', '') == 'P':
-                    pitcher_check += 1
-
-            print(f"✅ Pitcher verification: {pitcher_check} pitchers have original_position='P'")
+            print(f"⚾ Identified {pitcher_count} pitchers")
 
         return players
 
@@ -1139,7 +1279,7 @@ class BulletproofDFSCore:
         # FOR SHOWDOWN: First identify who the pitchers are
         if self.contest_type == 'showdown':
             print("🔄 Identifying pitchers in showdown format...")
-            self.identify_showdown_pitchers()
+
 
             # Now temporarily restore positions for confirmation
             print("🔄 Temporarily restoring original positions for confirmation...")
@@ -1777,8 +1917,17 @@ class BulletproofDFSCore:
             return
 
         try:
-            from real_recent_form import RealRecentFormAnalyzer
-            form_analyzer = RealRecentFormAnalyzer(days_back=7)
+            # First check if the module exists
+            try:
+                from real_recent_form import RealRecentFormAnalyzer
+                print("✅ RealRecentFormAnalyzer module found")
+            except ImportError:
+                print("❌ real_recent_form.py module not found!")
+                print("   Trying fallback to recent_form_analyzer...")
+                from recent_form_analyzer import RecentFormAnalyzer
+                form_analyzer = RecentFormAnalyzer(days_back=7)
+            else:
+                form_analyzer = RealRecentFormAnalyzer(days_back=7)
 
             # Get ALL confirmed players
             players_to_analyze = [p for p in self.players if p.is_confirmed]
@@ -1790,49 +1939,101 @@ class BulletproofDFSCore:
 
             print(f"   Analyzing {total_players} players (ALL confirmed)")
 
+            # Add debug for first player
+            if players_to_analyze:
+                print(f"   Sample player: {players_to_analyze[0].name} ({players_to_analyze[0].team})")
+
             # Call the form analyzer
-            form_analyzer.enrich_players_with_form(players_to_analyze)
+            try:
+                form_analyzer.enrich_players_with_form(players_to_analyze)
+            except Exception as e:
+                print(f"   ❌ Form analysis failed: {e}")
+                import traceback
+                traceback.print_exc()
+                return
 
-            # Apply form adjustments
+            # Count results
             adjusted_count = 0
-            hot_count = 0
-            cold_count = 0
-
             for player in players_to_analyze:
-                # Check if player has form data
                 if hasattr(player, 'form_rating') and player.form_rating != 1.0:
-                    # Apply the form rating adjustment
-                    original_score = player.enhanced_score
-                    player.enhanced_score *= player.form_rating
                     adjusted_count += 1
 
-                    # Track hot/cold
-                    if hasattr(player, 'hot_streak') and player.hot_streak:
-                        hot_count += 1
-                    elif player.form_rating < 0.9:
-                        cold_count += 1
-
-                    # Add tracking info
-                    player.form_applied = True
-                    player.form_adjustment = player.enhanced_score - original_score
-
-                    # Log significant adjustments
-                    if abs(player.form_rating - 1.0) > 0.1:
-                        change_pct = (player.form_rating - 1.0) * 100
-                        print(f"      {player.name}: {original_score:.1f} → {player.enhanced_score:.1f} "
-                              f"({change_pct:+.0f}% form adjustment)")
-
-            # Report results
-            print(f"   ✅ Analyzed {adjusted_count}/{total_players} players successfully")
-            if hot_count:
-                print(f"   🔥 {hot_count} HOT players identified and boosted")
-            if cold_count:
-                print(f"   ❄️ {cold_count} COLD players identified and reduced")
+            print(f"   ✅ Form analysis complete: {adjusted_count}/{total_players} players have form data")
 
         except Exception as e:
             print(f"⚠️ Recent form failed: {e}")
             import traceback
             traceback.print_exc()
+
+    def debug_multi_position_players(self):
+        """Debug multi-position player usage"""
+        print("\n🔄 MULTI-POSITION PLAYER ANALYSIS")
+        print("=" * 60)
+
+        eligible = self.get_eligible_players_by_mode()
+        multi_pos_players = [p for p in eligible if len(p.positions) > 1]
+
+        print(f"Found {len(multi_pos_players)} multi-position players out of {len(eligible)} eligible")
+
+        if multi_pos_players:
+            print("\nMulti-position players:")
+            for player in multi_pos_players[:10]:  # Show first 10
+                print(
+                    f"   {player.name} ({player.team}) - Positions: {'/'.join(player.positions)} - ${player.salary:,}")
+                if hasattr(player, 'assigned_position'):
+                    print(f"      → Assigned as: {player.assigned_position}")
+
+        # Check if any were used in a flex position
+        lineup = self.last_optimized_lineup if hasattr(self, 'last_optimized_lineup') else []
+        flex_used = 0
+        for player in lineup:
+            if hasattr(player, 'assigned_position') and player.assigned_position != player.primary_position:
+                flex_used += 1
+                print(
+                    f"\n💪 FLEX USAGE: {player.name} - Primary: {player.primary_position}, Used as: {player.assigned_position}")
+
+        if flex_used == 0:
+            print("\n⚠️ No flex positions were utilized in the last lineup")
+
+    def display_classic_lineup(self, lineup):
+        """Display classic lineup in table"""
+        self.lineup_table.setRowCount(len(lineup))
+
+        position_order = ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']
+        position_count = {pos: 0 for pos in set(position_order)}
+
+        for i, player in enumerate(lineup):
+            pos = getattr(player, 'assigned_position', player.primary_position)
+
+            # Check if this is a flex usage
+            is_flex = (hasattr(player, 'assigned_position') and
+                       player.assigned_position != player.primary_position and
+                       len(player.positions) > 1)
+
+            if pos in position_count:
+                position_count[pos] += 1
+                if pos in ['P', 'OF'] and position_count[pos] > 1:
+                    display_pos = f"{pos}{position_count[pos]}"
+                else:
+                    display_pos = pos
+
+                # Add flex indicator
+                if is_flex:
+                    display_pos += "*"
+            else:
+                display_pos = pos
+
+            pos_item = QTableWidgetItem(display_pos)
+            pos_item.setTextAlignment(Qt.AlignCenter)
+
+            # Add tooltip for flex players
+            if is_flex:
+                pos_item.setToolTip(
+                    f"Flex: Primary position is {player.primary_position}, can play {'/'.join(player.positions)}")
+
+            self.lineup_table.setItem(i, 0, pos_item)
+
+            # Rest of the method stays the same...
 
     def _apply_comprehensive_statistical_analysis(self, players):
         """Apply comprehensive statistical analysis with PRIORITY 1 improvements"""

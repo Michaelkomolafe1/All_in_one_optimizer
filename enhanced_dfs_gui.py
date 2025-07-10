@@ -240,6 +240,9 @@ class OptimizationWorker(QThread):
 
             self.core.set_optimization_mode(self.settings['mode'])
 
+            # ========== REMOVED SHOWDOWN PITCHER API ==========
+            # We don't need it - the confirmation system handles pitchers correctly
+
             if self.settings.get('manual_players'):
                 self.progress.emit("Processing manual selections...")
                 count = self.core.apply_manual_selection(self.settings['manual_players'])
@@ -250,8 +253,14 @@ class OptimizationWorker(QThread):
                 confirmed = self.core.detect_confirmed_players()
                 self.progress.emit(f"Found {confirmed} confirmed players")
 
-            # ========== POSITION COVERAGE FIX ==========
-            # Only check position coverage for CLASSIC
+                # For showdown, show pitcher status
+                if self.core.contest_type == 'showdown':
+                    # Count pitchers that were identified
+                    pitcher_count = sum(1 for p in self.core.players
+                                        if hasattr(p, 'original_position') and p.original_position == 'P')
+                    self.progress.emit(f"✅ Identified {pitcher_count} starting pitchers via MLB data")
+
+            # ========== POSITION COVERAGE CHECK ==========
             if self.core.contest_type == 'classic':
                 self.progress.emit("Checking position coverage...")
                 self.core.debug_position_coverage()
@@ -271,28 +280,37 @@ class OptimizationWorker(QThread):
 
                 if missing_positions:
                     self.progress.emit(f"⚠️ Missing positions: {missing_positions}")
-
-                    # Try to fix known players first
                     self.progress.emit("Fixing known player positions...")
                     self.core.fix_known_player_positions()
-
-                    # If still missing, auto-select some
                     self.progress.emit("Auto-selecting top infielders...")
                     added = self.core.auto_select_top_infielders(count_per_position=2)
                     self.progress.emit(f"Added {added} infielders")
-            elif self.core.contest_type == 'showdown':
-                # Debug to see all players
-                self.core.debug_all_csv_players()
-
-                # Check eligible players
-                self.progress.emit("Checking showdown player pool...")
-                self.core.debug_eligible_players()
 
             elif self.core.contest_type == 'showdown':
-                # For showdown, debug eligible players to check for pitchers
-                self.progress.emit("Checking showdown player pool...")
-                self.core.debug_eligible_players()
-            # ========== END POSITION COVERAGE FIX ==========
+                # Show final showdown status
+                self.progress.emit("\n📊 Showdown player pool status:")
+
+                eligible = self.core.get_eligible_players_by_mode()
+                self.progress.emit(f"   Total eligible: {len(eligible)}")
+
+                # Show pitcher details
+                pitchers = [p for p in eligible
+                            if hasattr(p, 'original_position') and p.original_position == 'P']
+
+                if pitchers:
+                    self.progress.emit(f"   ⚾ Eligible starting pitchers: {len(pitchers)}")
+                    for p in pitchers:
+                        self.progress.emit(f"      {p.name} ({p.team}) - ${p.salary:,} - Proj: {p.projection}")
+                else:
+                    self.progress.emit("   ❌ NO ELIGIBLE PITCHERS FOUND!")
+
+                # Show position breakdown
+                orig_pos_counts = {}
+                for p in eligible:
+                    orig = getattr(p, 'original_position', 'UTIL')
+                    orig_pos_counts[orig] = orig_pos_counts.get(orig, 0) + 1
+                self.progress.emit(f"   By original position: {orig_pos_counts}")
+            # ========== END POSITION COVERAGE CHECK ==========
 
             if not self._is_running:
                 return
