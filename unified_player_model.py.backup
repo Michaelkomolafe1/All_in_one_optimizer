@@ -124,8 +124,8 @@ class UnifiedPlayer:
 
     def calculate_enhanced_score(self):
         """
-        Calculate enhanced score using weighted average instead of stacking
-        Prevents unrealistic 50-70% score inflation
+        Calculate enhanced score using ONLY real data
+        NO fake fallbacks - if data doesn't exist, component is skipped
         """
         # Reset score components
         self._score_components = {}
@@ -138,59 +138,56 @@ class UnifiedPlayer:
             base_score = self.base_projection
             self._score_components['base'] = 'base_projection'
         else:
+            # No projection available
             self.enhanced_score = 0
             return
 
-        # Collect adjustments with weights
-        adjustments = []
+        # Calculate multipliers from real data only
+        multipliers = []
 
-        # 1. Recent Performance (25% weight if available)
+        # 1. Recent Performance (40% weight if available)
         recent_mult = self._calculate_recent_performance()
         if recent_mult is not None:
-            adjustments.append(('recent_form', recent_mult, 0.25))
+            multipliers.append(('recent_form', recent_mult, 0.40))
+            self._score_components['recent_mult'] = recent_mult
 
-        # 2. Vegas Environment (20% weight if available)
+        # 2. Vegas Environment (30% weight if available)
         vegas_mult = self._calculate_vegas_environment()
         if vegas_mult is not None:
-            adjustments.append(('vegas', vegas_mult, 0.20))
+            multipliers.append(('vegas', vegas_mult, 0.30))
+            self._score_components['vegas_mult'] = vegas_mult
 
-        # 3. Matchup Quality (15% weight if available)
+        # 3. Matchup Quality (20% weight if available)
         matchup_mult = self._calculate_matchup_quality()
         if matchup_mult is not None:
-            adjustments.append(('matchup', matchup_mult, 0.15))
+            multipliers.append(('matchup', matchup_mult, 0.20))
+            self._score_components['matchup_mult'] = matchup_mult
 
         # 4. Park Factors (10% weight if available)
         park_mult = self._calculate_park_adjustment()
         if park_mult is not None:
-            adjustments.append(('park', park_mult, 0.10))
+            multipliers.append(('park', park_mult, 0.10))
+            self._score_components['park_mult'] = park_mult
 
-        # Calculate weighted score
-        if adjustments:
-            # Base projection gets remaining weight
-            total_adj_weight = sum(weight for _, _, weight in adjustments)
-            base_weight = max(0.3, 1.0 - total_adj_weight)  # Base gets at least 30%
+        # Apply weighted multipliers
+        if multipliers:
+            # Normalize weights to sum to 1.0
+            total_weight = sum(weight for _, _, weight in multipliers)
 
-            # Weighted calculation
-            final_score = base_score * base_weight
+            final_multiplier = 0
+            for name, mult, weight in multipliers:
+                normalized_weight = weight / total_weight
+                final_multiplier += mult * normalized_weight
 
-            for name, mult, weight in adjustments:
-                # Add weighted adjustment
-                final_score += base_score * mult * weight
-                self._score_components[f'{name}_mult'] = mult
-                self._score_components[f'{name}_weight'] = weight
-
-            self.enhanced_score = final_score
+            self.enhanced_score = base_score * final_multiplier
+            self._score_components['final_multiplier'] = final_multiplier
         else:
-            # No adjustments available
+            # No multipliers available - use base score
             self.enhanced_score = base_score
+            self._score_components['final_multiplier'] = 1.0
 
-        # Apply reasonable bounds (max ±30% from base)
-        max_allowed = base_score * 1.3
-        min_allowed = base_score * 0.7
-        self.enhanced_score = max(min_allowed, min(self.enhanced_score, max_allowed))
-
-        # Store final multiplier for transparency
-        self._score_components['final_multiplier'] = self.enhanced_score / base_score if base_score > 0 else 1.0
+        # Apply reasonable bounds
+        self.enhanced_score = max(base_score * 0.5, min(self.enhanced_score, base_score * 2.0))
 
     def _calculate_recent_performance(self) -> Optional[float]:
         """

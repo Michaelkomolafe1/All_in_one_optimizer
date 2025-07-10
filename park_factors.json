@@ -1,0 +1,189 @@
+{
+  "COL": {
+    "overall": 1.20,
+    "hitter_factor": 1.20,
+    "pitcher_factor": 0.80,
+    "name": "Coors Field",
+    "altitude_effect": true
+  },
+  "CIN": {
+    "overall": 1.12,
+    "hitter_factor": 1.12,
+    "pitcher_factor": 0.88,
+    "name": "Great American Ball Park"
+  },
+  "TEX": {
+    "overall": 1.10,
+    "hitter_factor": 1.10,
+    "pitcher_factor": 0.90,
+    "name": "Globe Life Field"
+  },
+  "PHI": {
+    "overall": 1.08,
+    "hitter_factor": 1.08,
+    "pitcher_factor": 0.92,
+    "name": "Citizens Bank Park"
+  },
+  "MIL": {
+    "overall": 1.06,
+    "hitter_factor": 1.06,
+    "pitcher_factor": 0.94,
+    "name": "American Family Field"
+  },
+  "BAL": {
+    "overall": 1.05,
+    "hitter_factor": 1.05,
+    "pitcher_factor": 0.95,
+    "name": "Oriole Park at Camden Yards"
+  },
+  "HOU": {
+    "overall": 1.04,
+    "hitter_factor": 1.04,
+    "pitcher_factor": 0.96,
+    "name": "Minute Maid Park"
+  },
+  "TOR": {
+    "overall": 1.03,
+    "hitter_factor": 1.03,
+    "pitcher_factor": 0.97,
+    "name": "Rogers Centre"
+  },
+  "BOS": {
+    "overall": 1.03,
+    "hitter_factor": 1.03,
+    "pitcher_factor": 0.97,
+    "name": "Fenway Park"
+  },
+  "NYY": {
+    "overall": 1.02,
+    "hitter_factor": 1.02,
+    "pitcher_factor": 0.98,
+    "name": "Yankee Stadium"
+  },
+  "CHC": {
+    "overall": 1.01,
+    "hitter_factor": 1.01,
+    "pitcher_factor": 0.99,
+    "name": "Wrigley Field"
+  },
+  "ARI": {
+    "overall": 1.00,
+    "hitter_factor": 1.00,
+    "pitcher_factor": 1.00,
+    "name": "Chase Field"
+  },
+  "ATL": {
+    "overall": 1.00,
+    "hitter_factor": 1.00,
+    "pitcher_factor": 1.00,
+    "name": "Truist Park"
+  },
+  "MIN": {
+    "overall": 0.99,
+    "hitter_factor": 0.99,
+    "pitcher_factor": 1.01,
+    "name": "Target Field"
+  },
+  "WSH": {
+    "overall": 0.98,
+    "hitter_factor": 0.98,
+    "pitcher_factor": 1.02,
+    "name": "Nationals Park"
+  },
+  "LAD": {
+    "overall": 0.98,
+    "hitter_factor": 0.98,
+    "pitcher_factor": 1.02,
+    "name": "Dodger Stadium"
+  },
+  "NYM": {
+    "overall": 0.97,
+    "hitter_factor": 0.97,
+    "pitcher_factor": 1.03,
+    "name": "Citi Field"
+  },
+  "LAA": {
+    "overall": 0.96,
+    "hitter_factor": 0.96,
+    "pitcher_factor": 1.04,
+    "name": "Angel Stadium"
+  },
+  "CHW": {
+    "overall": 0.96,
+    "hitter_factor": 0.96,
+    "pitcher_factor": 1.04,
+    "name": "Guaranteed Rate Field"
+  },
+  "CWS": {
+    "overall": 0.96,
+    "hitter_factor": 0.96,
+    "pitcher_factor": 1.04,
+    "name": "Guaranteed Rate Field"
+  },
+  "STL": {
+    "overall": 0.95,
+    "hitter_factor": 0.95,
+    "pitcher_factor": 1.05,
+    "name": "Busch Stadium"
+  },
+  "CLE": {
+    "overall": 0.94,
+    "hitter_factor": 0.94,
+    "pitcher_factor": 1.06,
+    "name": "Progressive Field"
+  },
+  "TB": {
+    "overall": 0.93,
+    "hitter_factor": 0.93,
+    "pitcher_factor": 1.07,
+    "name": "Tropicana Field"
+  },
+  "KC": {
+    "overall": 0.92,
+    "hitter_factor": 0.92,
+    "pitcher_factor": 1.08,
+    "name": "Kauffman Stadium"
+  },
+  "DET": {
+    "overall": 0.91,
+    "hitter_factor": 0.91,
+    "pitcher_factor": 1.09,
+    "name": "Comerica Park"
+  },
+  "SEA": {
+    "overall": 0.90,
+    "hitter_factor": 0.90,
+    "pitcher_factor": 1.10,
+    "name": "T-Mobile Park"
+  },
+  "OAK": {
+    "overall": 0.89,
+    "hitter_factor": 0.89,
+    "pitcher_factor": 1.11,
+    "name": "Oakland Coliseum"
+  },
+  "SF": {
+    "overall": 0.88,
+    "hitter_factor": 0.88,
+    "pitcher_factor": 1.12,
+    "name": "Oracle Park"
+  },
+  "SD": {
+    "overall": 0.87,
+    "hitter_factor": 0.87,
+    "pitcher_factor": 1.13,
+    "name": "Petco Park"
+  },
+  "MIA": {
+    "overall": 0.86,
+    "hitter_factor": 0.86,
+    "pitcher_factor": 1.14,
+    "name": "loanDepot park"
+  },
+  "PIT": {
+    "overall": 0.85,
+    "hitter_factor": 0.85,
+    "pitcher_factor": 1.15,
+    "name": "PNC Park"
+  }
+}

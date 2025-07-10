@@ -32,6 +32,33 @@ class SmartConfirmationSystem:
         if self.verbose and self.csv_teams:
             print(f"📊 CSV teams detected: {sorted(self.csv_teams)}")
 
+    def __init__(self):
+        # ... existing code ...
+        # Add this:
+        self._lineup_cache = {}
+        self._cache_timestamp = None
+
+    def get_mlb_lineups(self, date):
+        """Get MLB lineups with caching"""
+        from datetime import datetime, timedelta
+
+        # Check if we have cached data less than 2 hours old
+        if (self._cache_timestamp and
+                self._lineup_cache and
+                datetime.now() - self._cache_timestamp < timedelta(hours=2)):
+            print("📋 Using cached MLB lineups")
+            return self._lineup_cache
+
+        # Otherwise fetch fresh data
+        print("🌐 Fetching fresh MLB lineups")
+        lineups = self._fetch_mlb_lineups_original(date)  # Call original method
+
+        # Cache it
+        self._lineup_cache = lineups
+        self._cache_timestamp = datetime.now()
+
+        return lineups
+
     def get_all_confirmations(self) -> Tuple[int, int]:
         """Get confirmations from MLB API ONLY - NO FALLBACK"""
         print("🔍 SMART CONFIRMATION SYSTEM - NO FALLBACK MODE")

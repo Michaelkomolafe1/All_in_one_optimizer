@@ -38,6 +38,8 @@ warnings.filterwarnings('ignore')
 
 # DFS Upgrade Modules
 try:
+    from unified_player_model import UnifiedPlayer
+    from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
     from smart_cache import smart_cache
     from multi_lineup_optimizer import MultiLineupOptimizer
     from performance_tracker import tracker
@@ -547,6 +549,75 @@ class BulletproofDFSCore:
         self._initialize_modules()
 
         print("🚀 Bulletproof DFS Core initialized successfully")
+
+    def optimize_lineup_clean(self) -> Tuple[List[UnifiedPlayer], float]:
+        """New clean optimization method - NO BONUSES"""
+        from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
+
+        # Configure optimizer
+        config = OptimizationConfig(
+            salary_cap=self.salary_cap,
+            min_salary_usage=0.95,
+            use_correlation=True,
+            max_hitters_vs_pitcher=2
+        )
+
+        # Handle contest type
+        if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
+            config.position_requirements = {'CPT': 1, 'UTIL': 5}
+
+        optimizer = UnifiedMILPOptimizer(config)
+
+        # Convert players to UnifiedPlayer
+        unified_players = []
+        for p in self.players:
+            if isinstance(p, UnifiedPlayer):
+                up = p
+            else:
+                up = UnifiedPlayer(
+                    id=str(getattr(p, 'id', p.name)),
+                    name=p.name,
+                    team=p.team,
+                    salary=p.salary,
+                    primary_position=p.primary_position,
+                    positions=p.positions.copy(),
+                    base_projection=getattr(p, 'projection', 0)
+                )
+
+                # Copy status (NO BONUSES)
+                up.is_confirmed = getattr(p, 'is_confirmed', False)
+                up.is_manual_selected = getattr(p, 'is_manual_selected', False)
+
+                # Copy data if available
+                if hasattr(p, 'dff_data'):
+                    up.apply_dff_data(p.dff_data)
+                if hasattr(p, 'vegas_data'):
+                    up.apply_vegas_data(p.vegas_data)
+                if hasattr(p, 'statcast_data'):
+                    up.apply_statcast_data(p.statcast_data)
+
+            unified_players.append(up)
+
+        # Get strategy
+        strategy_map = {
+            'bulletproof': 'confirmed_plus_manual',
+            'all': 'all_players',
+            'manual_only': 'manual_only',
+            'confirmed_only': 'confirmed_plus_manual'
+        }
+        strategy = strategy_map.get(self.optimization_mode, 'balanced')
+
+        # Get manual selections
+        manual_text = getattr(self, 'manual_selections_text', '')
+
+        # Optimize!
+        lineup, score = optimizer.optimize_lineup(
+            unified_players,
+            strategy=strategy,
+            manual_selections=manual_text
+        )
+
+        return lineup, score
 
     def manual_identify_showdown_pitchers(self, pitcher_names: List[str]):
         """Manually identify pitchers by name for showdown"""
@@ -2028,45 +2099,7 @@ class BulletproofDFSCore:
         if flex_used == 0:
             print("\n⚠️ No flex positions were utilized in the last lineup")
 
-    def display_classic_lineup(self, lineup):
-        """Display classic lineup in table"""
-        self.lineup_table.setRowCount(len(lineup))
 
-        position_order = ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']
-        position_count = {pos: 0 for pos in set(position_order)}
-
-        for i, player in enumerate(lineup):
-            pos = getattr(player, 'assigned_position', player.primary_position)
-
-            # Check if this is a flex usage
-            is_flex = (hasattr(player, 'assigned_position') and
-                       player.assigned_position != player.primary_position and
-                       len(player.positions) > 1)
-
-            if pos in position_count:
-                position_count[pos] += 1
-                if pos in ['P', 'OF'] and position_count[pos] > 1:
-                    display_pos = f"{pos}{position_count[pos]}"
-                else:
-                    display_pos = pos
-
-                # Add flex indicator
-                if is_flex:
-                    display_pos += "*"
-            else:
-                display_pos = pos
-
-            pos_item = QTableWidgetItem(display_pos)
-            pos_item.setTextAlignment(Qt.AlignCenter)
-
-            # Add tooltip for flex players
-            if is_flex:
-                pos_item.setToolTip(
-                    f"Flex: Primary position is {player.primary_position}, can play {'/'.join(player.positions)}")
-
-            self.lineup_table.setItem(i, 0, pos_item)
-
-            # Rest of the method stays the same...
 
     def _apply_comprehensive_statistical_analysis(self, players):
         """Apply comprehensive statistical analysis with PRIORITY 1 improvements"""
@@ -2146,53 +2179,283 @@ class BulletproofDFSCore:
     # LINEUP OPTIMIZATION
     # ========================================================================
 
-    def optimize_lineup_with_mode(self) -> Tuple[List[AdvancedPlayer], float]:
-        """Optimize lineup using true integer programming optimization"""
-        print(f"\n🎯 OPTIMAL LINEUP GENERATION - {self.optimization_mode.upper()}")
+    def optimize_lineup_with_mode(self) -> Tuple[List[UnifiedPlayer], float]:
+        """Clean optimization - NO bonuses for confirmed/manual"""
+
+        # Check if we should use ceiling mode
+        settings = getattr(self, 'optimization_settings', {})
+        contest_type = settings.get('contest_type', 'cash')
+        lineup_count = settings.get('lineup_count', 1)
+
+        # If multiple lineups or GPP preset, use ceiling optimization
+        if ((lineup_count > 1 and contest_type == 'gpp') or
+                (hasattr(self, 'use_ceiling_mode') and self.use_ceiling_mode)):
+            print("\n🎯 GPP MODE DETECTED - Using Ceiling Optimization")
+            return self.optimize_lineup_with_ceiling()
+
+        # Otherwise use normal optimization
+        from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
+        from unified_player_model import UnifiedPlayer
+
+        print(f"\n🎯 CLEAN LINEUP OPTIMIZATION - {self.optimization_mode.upper()}")
         print("=" * 80)
 
-        # Get eligible players based on mode
-        eligible_players = self.get_eligible_players_by_mode()
+        # Configure optimizer
+        config = OptimizationConfig(
+            salary_cap=self.salary_cap,
+            min_salary_usage=0.95,
+            use_correlation=True,
+            max_hitters_vs_pitcher=4  # Your fix applied!
+        )
 
-        if not eligible_players:
-            print("❌ No eligible players found")
-            return [], 0
-
-        print(f"📊 Optimizing with {len(eligible_players)} eligible players")
-
-        # Create optimizer
-        optimizer = OptimalLineupOptimizer(salary_cap=self.salary_cap)
-
-        # Run optimization based on contest type
         if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
-            result = self.optimize_showdown_lineup_fixed(eligible_players)
-        else:
-            result = optimizer.optimize_classic_lineup(eligible_players, use_confirmations=False)
+            config.position_requirements = {'CPT': 1, 'UTIL': 5}
 
-        if result.optimization_status == "Optimal" and result.lineup:
-            # Use special display for showdown
-            if self.contest_type == 'showdown':
-                self.display_showdown_lineup(result.lineup, result.total_score, result.total_salary)
+        optimizer = UnifiedMILPOptimizer(config)
+
+        # Convert players to UnifiedPlayer
+        unified_players = []
+        for p in self.players:
+            if isinstance(p, UnifiedPlayer):
+                up = p
             else:
-                # Classic display
-                print(f"\n✅ OPTIMAL LINEUP FOUND!")
-                print(f"💰 Total Salary: ${result.total_salary:,} / ${self.salary_cap:,}")
-                print(f"📈 Projected Points: {result.total_score:.2f}")
-                print(f"📊 Positions Filled: {result.positions_filled}")
+                up = UnifiedPlayer(
+                    id=str(getattr(p, 'id', p.name)),
+                    name=p.name,
+                    team=p.team,
+                    salary=p.salary,
+                    primary_position=p.primary_position,
+                    positions=p.positions.copy(),
+                    base_projection=getattr(p, 'projection', 0)
+                )
 
-                print("\n📋 LINEUP PLAYERS:")
-                print("-" * 60)
-                for i, player in enumerate(result.lineup, 1):
-                    pos = getattr(player, 'assigned_position', player.primary_position)
-                    score = getattr(player, 'enhanced_score', player.projection)
-                    print(
-                        f"{i:2d}. {pos:<4} {player.name:<20} {player.team:<4} ${player.salary:>6,} → {score:>6.1f} pts")
-                print("-" * 60)
+                # Copy status (NO BONUSES)
+                up.is_confirmed = getattr(p, 'is_confirmed', False)
+                up.is_manual_selected = getattr(p, 'is_manual_selected', False)
 
-            return result.lineup, result.total_score
+                # Copy data
+                if hasattr(p, 'dff_data'):
+                    up.apply_dff_data(p.dff_data)
+                if hasattr(p, 'dff_l5_avg'):
+                    up.dff_l5_avg = p.dff_l5_avg
+
+            # Calculate enhanced score
+            up.calculate_enhanced_score()
+            unified_players.append(up)
+
+        # Apply all real data enrichments
+        optimizer.calculate_player_scores(unified_players)
+
+        # Get strategy
+        strategy_map = {
+            'bulletproof': 'confirmed_plus_manual',
+            'all': 'all_players',
+            'manual_only': 'manual_only',
+            'confirmed_only': 'confirmed_plus_manual'
+        }
+        strategy = strategy_map.get(self.optimization_mode, 'balanced')
+
+        # Get manual selections
+        manual_text = getattr(self, 'manual_selections_text', '')
+
+        # Optimize!
+        lineup, score = optimizer.optimize_lineup(
+            unified_players,
+            strategy=strategy,
+            manual_selections=manual_text
+        )
+
+        if lineup:
+            print(f"\n✅ OPTIMIZATION SUCCESSFUL!")
+            print(f"💰 Total Salary: ${sum(p.salary for p in lineup):,} / ${self.salary_cap:,}")
+            print(f"📈 Projected Points: {score:.2f}")
+
+            print("\n📋 LINEUP:")
+            print("-" * 60)
+            for i, player in enumerate(lineup, 1):
+                pos = getattr(player, 'assigned_position', player.primary_position)
+                conf = "✓" if player.is_confirmed else " "
+                manual = "M" if player.is_manual_selected else " "
+
+                print(
+                    f"{i:2d}. {pos:4s} {conf}{manual} {player.name:20s} {player.team:3s} ${player.salary:6,} → {player.enhanced_score:6.1f}")
+            print("-" * 60)
+
+            return lineup, score
         else:
-            print(f"❌ Optimization failed: {result.optimization_status}")
+            print("❌ No valid lineup found")
             return [], 0
+
+    def optimize_lineup_with_ceiling(self) -> Tuple[List[UnifiedPlayer], float]:
+        """Optimize for ceiling (GPP mode) - prioritizes upside"""
+        from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
+        from unified_player_model import UnifiedPlayer
+        import numpy as np
+
+        print("\n🚀 CEILING OPTIMIZATION MODE (GPP)")
+        print("=" * 60)
+
+        # Get eligible players
+        eligible = self.get_eligible_players_by_mode()
+
+        if len(eligible) < 10:
+            print(f"❌ Not enough eligible players: {len(eligible)}")
+            return [], 0
+
+        # Convert to UnifiedPlayers if needed
+        unified_players = []
+        for p in eligible:
+            if isinstance(p, UnifiedPlayer):
+                up = p
+            else:
+                up = UnifiedPlayer(
+                    id=str(getattr(p, 'id', p.name)),
+                    name=p.name,
+                    team=p.team,
+                    salary=p.salary,
+                    primary_position=p.primary_position,
+                    positions=p.positions.copy(),
+                    base_projection=getattr(p, 'projection', p.enhanced_score)
+                )
+
+                # Copy all data
+                up.is_confirmed = getattr(p, 'is_confirmed', False)
+                up.is_manual_selected = getattr(p, 'is_manual_selected', False)
+                up.enhanced_score = p.enhanced_score
+
+                # Copy data attributes
+                if hasattr(p, '_vegas_data'):
+                    up._vegas_data = p._vegas_data
+                if hasattr(p, 'statcast_data'):
+                    up.statcast_data = p.statcast_data
+                if hasattr(p, 'recent_scores'):
+                    up.recent_scores = p.recent_scores
+                if hasattr(p, 'dff_l5_avg'):
+                    up.dff_l5_avg = p.dff_l5_avg
+
+            unified_players.append(up)
+
+        # Calculate ceiling scores for all players
+        for player in unified_players:
+            # Start with enhanced score
+            ceiling = player.enhanced_score
+
+            # Boost for high variance (using recent scores if available)
+            if hasattr(player, 'recent_scores') and len(player.recent_scores) >= 3:
+                std_dev = np.std(player.recent_scores)
+                avg = np.mean(player.recent_scores)
+                if avg > 0:
+                    cv = std_dev / avg  # Coefficient of variation
+                    if cv > 0.3:  # High variance player
+                        ceiling *= 1.15
+                    elif cv > 0.2:
+                        ceiling *= 1.08
+
+            # Boost for good Vegas environment
+            if hasattr(player, '_vegas_data') and player._vegas_data:
+                implied_total = player._vegas_data.get('implied_total', 0)
+                if implied_total > 5.5:
+                    ceiling *= 1.12
+                elif implied_total > 5.0:
+                    ceiling *= 1.06
+
+            # Boost for power hitters (Statcast)
+            if hasattr(player, 'statcast_data') and player.statcast_data:
+                barrel_rate = player.statcast_data.get('barrel_rate', 0)
+                if barrel_rate > 12:  # Elite
+                    ceiling *= 1.10
+                elif barrel_rate > 8:
+                    ceiling *= 1.05
+
+            # Position-based volatility boost
+            if player.primary_position in ['OF', 'SS', '3B']:
+                ceiling *= 1.03
+            elif player.primary_position == 'P':
+                # Pitchers have high ceiling potential
+                ceiling *= 1.08
+
+            # Store ceiling score
+            player.ceiling_score = ceiling
+
+        print(
+            f"📊 Ceiling Score Range: {min(p.ceiling_score for p in unified_players):.1f} - {max(p.ceiling_score for p in unified_players):.1f}")
+
+        # Configure optimizer for GPPs
+        config = OptimizationConfig(
+            salary_cap=self.salary_cap,
+            min_salary_usage=0.93,  # Lower for GPPs
+            use_correlation=True,
+            max_hitters_vs_pitcher=4  # Allow bigger stacks
+        )
+
+        if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
+            config.position_requirements = {'CPT': 1, 'UTIL': 5}
+
+        optimizer = UnifiedMILPOptimizer(config)
+
+        # Temporarily replace enhanced_score with ceiling_score
+        original_scores = {}
+        for player in unified_players:
+            original_scores[player.name] = player.enhanced_score
+            player.enhanced_score = player.ceiling_score
+
+        # Get strategy
+        strategy_map = {
+            'bulletproof': 'high_ceiling',  # Use ceiling strategy for GPP
+            'all': 'all_players',
+            'manual_only': 'manual_only',
+            'confirmed_only': 'high_ceiling'
+        }
+        strategy = strategy_map.get(self.optimization_mode, 'high_ceiling')
+
+        # Get manual selections
+        manual_text = getattr(self, 'manual_selections_text', '')
+
+        # Optimize using ceiling scores
+        lineup, ceiling_score = optimizer.optimize_lineup(
+            unified_players,
+            strategy=strategy,
+            manual_selections=manual_text
+        )
+
+        # Restore original scores and calculate actual projected score
+        actual_score = 0
+        if lineup:
+            for player in unified_players:
+                player.enhanced_score = original_scores.get(player.name, player.enhanced_score)
+
+            # Calculate actual projected score
+            actual_score = sum(p.enhanced_score for p in lineup)
+
+            print(f"\n✅ CEILING LINEUP GENERATED")
+            print(f"💰 Total Salary: ${sum(p.salary for p in lineup):,} / ${self.salary_cap:,}")
+            print(f"🚀 Ceiling Score: {ceiling_score:.2f}")
+            print(f"📊 Regular Score: {actual_score:.2f}")
+            print(f"📈 Upside Factor: {(ceiling_score / actual_score - 1) * 100:.1f}%")
+
+            # Show high-variance players in lineup
+            high_variance = [p for p in lineup if
+                             hasattr(p, 'ceiling_score') and p.ceiling_score / p.enhanced_score > 1.1]
+            if high_variance:
+                print(f"\n💎 High Ceiling Players ({len(high_variance)}):")
+                for p in high_variance:
+                    upside = (p.ceiling_score / p.enhanced_score - 1) * 100
+                    print(f"   - {p.name}: +{upside:.0f}% upside")
+
+            print("\n📋 LINEUP:")
+            print("-" * 60)
+            for i, player in enumerate(lineup, 1):
+                pos = getattr(player, 'assigned_position', player.primary_position)
+                conf = "✓" if player.is_confirmed else " "
+
+                # Show ceiling score in parentheses
+                print(
+                    f"{i:2d}. {pos:4s} {conf} {player.name:20s} {player.team:3s} ${player.salary:6,} → {player.enhanced_score:5.1f} ({player.ceiling_score:5.1f})")
+            print("-" * 60)
+        else:
+            print("❌ No valid lineup found")
+
+        return lineup, actual_score
 
     def optimize_showdown_lineup_fixed(self, players: List) -> 'OptimizationResult':
         """Showdown optimization using MILP only"""

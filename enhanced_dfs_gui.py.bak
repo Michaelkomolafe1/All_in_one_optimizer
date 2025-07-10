@@ -283,8 +283,8 @@ class OptimizationWorker(QThread):
                     self.progress.emit("Fixing known player positions...")
                     self.core.fix_known_player_positions()
                     self.progress.emit("Auto-selecting top infielders...")
-
-
+                    added = self.core.auto_select_top_infielders(count_per_position=2)
+                    self.progress.emit(f"Added {added} infielders")
 
             elif self.core.contest_type == 'showdown':
                 # Show final showdown status
@@ -1430,7 +1430,7 @@ class DFSOptimizerGUI(QMainWindow):
             salary_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.lineup_table.setItem(i, 3, salary_item)
 
-            score = getattr(player, 'enhanced_score', player.base_projection)
+            score = getattr(player, 'enhanced_score', player.projection)
             proj_item = QTableWidgetItem(f"{score:.1f}")
             proj_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.lineup_table.setItem(i, 4, proj_item)
@@ -1481,7 +1481,7 @@ class DFSOptimizerGUI(QMainWindow):
             mult_item.setTextAlignment(Qt.AlignCenter)
             self.lineup_table.setItem(i, 4, mult_item)
 
-            base_score = getattr(player, 'enhanced_score', player.base_projection)
+            base_score = getattr(player, 'enhanced_score', player.projection)
             adj_score = base_score * multiplier
             proj_item = QTableWidgetItem(f"{adj_score:.1f}")
             proj_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -1565,7 +1565,7 @@ class DFSOptimizerGUI(QMainWindow):
                         'salary': player.salary
                     }
                 player_usage[key]['count'] += 1
-                score = getattr(player, 'enhanced_score', player.base_projection)
+                score = getattr(player, 'enhanced_score', player.projection)
                 player_usage[key]['total_score'] += score
 
         sorted_players = sorted(
@@ -1652,14 +1652,14 @@ class DFSOptimizerGUI(QMainWindow):
                             if self.contest_type == 'showdown':
                                 player_type = 'CPT' if j == 0 else 'UTIL'
                                 multiplier = 1.5 if j == 0 else 1.0
-                                score = getattr(player, 'enhanced_score', player.base_projection) * multiplier
+                                score = getattr(player, 'enhanced_score', player.projection) * multiplier
                                 writer.writerow([
                                     i + 1, player_type, player.name, player.team,
                                     int(player.salary * multiplier), f"{multiplier}x", score
                                 ])
                             else:
                                 pos = getattr(player, 'assigned_position', player.primary_position)
-                                score = getattr(player, 'enhanced_score', player.base_projection)
+                                score = getattr(player, 'enhanced_score', player.projection)
                                 writer.writerow([
                                     i + 1, pos, player.name, player.team, player.salary, score
                                 ])

@@ -1,0 +1,32 @@
+{
+  "project": "DFS Optimizer",
+  "version": "2.0",
+  "cleaned_date": "/home/mike/PycharmProjects/All_in_one_optimizer",
+  "essential_files": [
+    "bulletproof_dfs_core.py",
+    "enhanced_dfs_gui.py",
+    "professional_dfs_gui.py",
+    "unified_data_system.py",
+    "optimal_lineup_optimizer.py",
+    "smart_confirmation_system.py",
+    "unified_player_model.py",
+    "vegas_lines.py",
+    "simple_statcast_fetcher.py",
+    "enhanced_stats_engine.py",
+    "universal_csv_parser.py",
+    "utils/__init__.py",
+    "utils/cache_manager.py",
+    "utils/csv_utils.py",
+    "utils/profiler.py",
+    "utils/validator.py",
+    "utils/config.py",
+    "utils/lazy_imports.py",
+    "requirements.txt",
+    "config.json",
+    "DKSalaries_test.csv",
+    "DKSalaries_good.csv",
+    "test_simple.py",
+    "test_optimizations.py"
+  ],
+  "file_count": 1259
+}
