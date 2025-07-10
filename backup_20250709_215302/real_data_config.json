@@ -1,0 +1,36 @@
+{
+  "data_sources": {
+    "statcast": {
+      "enabled": true,
+      "use_cache": true,
+      "force_fresh": false,
+      "fallback_enabled": false
+    },
+    "vegas": {
+      "enabled": true,
+      "api_url": "YOUR_VEGAS_API_URL_HERE",
+      "fallback_enabled": false
+    },
+    "dff": {
+      "enabled": true,
+      "file_pattern": "DFF_MLB_cheatsheet_*.csv"
+    },
+    "mlb_lineups": {
+      "enabled": true,
+      "api_url": "https://statsapi.mlb.com/api/v1/"
+    },
+    "park_factors": {
+      "enabled": false,
+      "use_defaults": false
+    },
+    "recent_form": {
+      "enabled": false,
+      "days_back": 7
+    }
+  },
+  "optimizer_settings": {
+    "require_real_data": true,
+    "min_data_sources": 2,
+    "reject_players_without_data": true
+  }
+}
