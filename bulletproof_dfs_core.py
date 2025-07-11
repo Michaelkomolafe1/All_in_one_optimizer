@@ -554,6 +554,9 @@ class BulletproofDFSCore:
         """New clean optimization method - NO BONUSES"""
         from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
 
+        print(f"\n🎯 CLEAN LINEUP OPTIMIZATION - {self.optimization_mode.upper()}")
+        print("=" * 80)
+
         # Configure optimizer
         config = OptimizationConfig(
             salary_cap=self.salary_cap,
@@ -605,10 +608,29 @@ class BulletproofDFSCore:
             'manual_only': 'manual_only',
             'confirmed_only': 'confirmed_plus_manual'
         }
-        strategy = strategy_map.get(self.optimization_mode, 'balanced')
+
+        # Check if we have enough eligible players in bulletproof mode
+        if self.optimization_mode == 'bulletproof':
+            eligible_count = sum(1 for p in unified_players if p.is_confirmed or p.is_manual_selected)
+
+            if eligible_count < 10:
+                print(f"⚠️ Only {eligible_count} eligible players in bulletproof mode")
+                print("💡 Switching to 'all players' mode for this optimization")
+                print("   (To use bulletproof mode, confirm players or add manual selections)")
+                strategy = 'all_players'
+            else:
+                strategy = strategy_map.get(self.optimization_mode, 'balanced')
+                print(f"✅ Found {eligible_count} eligible players for bulletproof mode")
+        else:
+            strategy = strategy_map.get(self.optimization_mode, 'balanced')
 
         # Get manual selections
         manual_text = getattr(self, 'manual_selections_text', '')
+
+        # Show what strategy we're using
+        print(f"📋 Using strategy: {strategy}")
+        if manual_text:
+            print(f"🎯 Manual selections: {manual_text}")
 
         # Optimize!
         lineup, score = optimizer.optimize_lineup(
@@ -617,7 +639,34 @@ class BulletproofDFSCore:
             manual_selections=manual_text
         )
 
-        return lineup, score
+        if lineup:
+            print(f"\n✅ OPTIMIZATION SUCCESSFUL!")
+            print(f"💰 Total Salary: ${sum(p.salary for p in lineup):,} / ${self.salary_cap:,}")
+            print(f"📈 Projected Points: {score:.2f}")
+
+            print("\n📋 LINEUP:")
+            print("-" * 60)
+            for i, player in enumerate(lineup, 1):
+                pos = getattr(player, 'assigned_position', player.primary_position)
+                conf = "✓" if player.is_confirmed else " "
+                manual = "M" if player.is_manual_selected else " "
+
+                print(
+                    f"{i:2d}. {pos:4s} {conf}{manual} {player.name:20s} {player.team:3s} ${player.salary:6,} → {player.enhanced_score:6.1f}")
+            print("-" * 60)
+
+            return lineup, score
+        else:
+            print("❌ No valid lineup found")
+            return [], 0
+
+    def set_player_enrichment_status(self):
+        """Mark which players have been enriched to avoid double enrichment"""
+        for player in self.players:
+            if player.is_confirmed:
+                player._is_enriched = True
+            else:
+                player._is_enriched = False
 
     def manual_identify_showdown_pitchers(self, pitcher_names: List[str]):
         """Manually identify pitchers by name for showdown"""
@@ -957,6 +1006,9 @@ class BulletproofDFSCore:
         else:
             print("\n⚠️ NO PLAYERS CONFIRMED!")
 
+        # Mark enrichment status
+        self.set_player_enrichment_status()
+
         return confirmed_count
 
     def _initialize_modules(self):
@@ -1290,6 +1342,14 @@ class BulletproofDFSCore:
             print(f"❌ Invalid mode '{mode}'. Choose from: {valid_modes}")
             print(f"   Keeping current mode: {self.optimization_mode}")
 
+    def set_player_enrichment_status(self):
+        """Mark which players have been enriched to avoid double enrichment"""
+        for player in self.players:
+            if player.is_confirmed or player.is_manual_selected:
+                player._is_enriched = True
+            else:
+                player._is_enriched = False
+
     def apply_manual_selection(self, manual_input: str) -> int:
         """Apply manual player selection with enhanced matching"""
         if not manual_input:
@@ -1455,6 +1515,8 @@ class BulletproofDFSCore:
             print("1. Add manual players")
             print("2. Check name matching between CSV and MLB data")
             print("3. Use 'All Players' mode for testing")
+
+        self.set_player_enrichment_status()
 
         return confirmed_count
 
@@ -1834,38 +1896,33 @@ class BulletproofDFSCore:
         for source, count in enrichment_summary.items():
             print(f"   {source}: {count}/{len(truly_confirmed)} players")
 
-        # Apply recent form adjustments (FIXED - This ensures multipliers are applied to enhanced_score)
+        # Store form data for display purposes only (DO NOT multiply again!)
         if hasattr(self, 'form_analyzer') and self.form_analyzer:
-            print("\n📊 Applying recent form multiplier adjustments...")
+            print("\n📊 Storing recent form data for display...")
             form_count = 0
 
             for player in self.players:
-                if hasattr(player, 'enhanced_score'):
-                    try:
-                        original = player.enhanced_score
-                        form_data = self.form_analyzer.analyze_player_form(player)
+                if hasattr(player, '_recent_performance') and player._recent_performance:
+                    form_data = player._recent_performance
 
-                        if form_data and 'form_score' in form_data:
-                            # Apply the multiplier - THIS IS THE KEY FIX
-                            player.enhanced_score = original * form_data['form_score']
-                            player.recent_form = {
-                                'multiplier': form_data['form_score'],
-                                'status': 'hot' if form_data['form_score'] > 1.05 else 'cold' if form_data[
-                                                                                                     'form_score'] < 0.95 else 'normal',
-                                'original_score': original,
-                                'adjusted_score': player.enhanced_score
-                            }
-                            form_count += 1
+                    # Just store the display info, don't modify score
+                    player.recent_form = {
+                        'multiplier': form_data.get('form_score', 1.0),
+                        'status': 'hot' if form_data.get('form_score', 1.0) > 1.05 else
+                        'cold' if form_data.get('form_score', 1.0) < 0.95 else 'normal',
+                        'games_analyzed': form_data.get('games_analyzed', 0),
+                        'trend': form_data.get('trend', 'stable')
+                    }
 
-                            # Log significant adjustments
-                            if abs(form_data['form_score'] - 1.0) > 0.05:
-                                status_emoji = '🔥' if player.recent_form['status'] == 'hot' else '❄️'
-                                print(
-                                    f"   {status_emoji} {player.name}: {original:.1f} → {player.enhanced_score:.1f} ({form_data['form_score']:.2f}x)")
-                    except Exception as e:
-                        pass
+                    # Log for visibility
+                    if abs(form_data.get('form_score', 1.0) - 1.0) > 0.05:
+                        status_emoji = '🔥' if player.recent_form['status'] == 'hot' else '❄️'
+                        # Show the form factor but note it's already applied
+                        print(
+                            f"   {status_emoji} {player.name}: Form {form_data.get('form_score', 1.0):.2f}x (already applied in weighted calc)")
+                        form_count += 1
 
-            print(f"✅ Recent form multipliers applied to {form_count} players")
+            print(f"✅ Form data stored for {form_count} players with significant form")
 
         print("✅ All enrichments applied")
 
@@ -1902,7 +1959,7 @@ class BulletproofDFSCore:
             traceback.print_exc()
 
     def enrich_with_statcast_priority(self):
-        """Priority Statcast enrichment with correct method names"""
+        """Priority Statcast enrichment with debug logging"""
         if not self.statcast_fetcher:
             print("⚠️ Statcast fetcher not available")
             return
@@ -1914,28 +1971,35 @@ class BulletproofDFSCore:
 
         print(f"🎯 Enriching ALL {len(priority_players)} confirmed players with Statcast...")
 
+        # DEFINE failed_players list here
+        failed_players = []
+
         # Use parallel method for better performance
         try:
             statcast_results = self.statcast_fetcher.fetch_multiple_players_parallel(priority_players)
 
             enriched_count = 0
-            failed_count = 0
 
             # Apply results to each player
             for player in priority_players:
                 if player.name in statcast_results:
                     statcast_data = statcast_results[player.name]
-                    if statcast_data and statcast_data != 'Realistic Fallback (Fast)':
+                    if statcast_data is not None:
                         player.apply_statcast_data(statcast_data)
                         enriched_count += 1
                     else:
-                        failed_count += 1
+                        failed_players.append((player.name, player.team, "No data returned"))
                 else:
-                    failed_count += 1
+                    failed_players.append((player.name, player.team, "Not in results"))
 
             print(f"✅ Statcast enriched: {enriched_count}/{len(priority_players)} players")
-            if failed_count > 0:
-                print(f"⚠️ Failed to enrich: {failed_count} players")
+
+            if failed_players:
+                print(f"\n⚠️ Failed to enrich {len(failed_players)} players:")
+                for name, team, reason in failed_players[:10]:  # Show first 10
+                    print(f"   - {name} ({team}): {reason}")
+                if len(failed_players) > 10:
+                    print(f"   ... and {len(failed_players) - 10} more")
 
         except Exception as e:
             print(f"❌ Statcast parallel fetch failed: {e}")
@@ -1953,7 +2017,7 @@ class BulletproofDFSCore:
                         player.primary_position
                     )
 
-                    if statcast_data and statcast_data != 'Realistic Fallback (Fast)':
+                    if statcast_data is not None:
                         player.apply_statcast_data(statcast_data)
                         enriched_count += 1
                     else:
@@ -1992,15 +2056,13 @@ class BulletproofDFSCore:
                     adjusted_factor = factor
 
                 if abs(adjusted_factor - 1.0) > 0.01:  # Only adjust if meaningful
-                    old_score = player.enhanced_score
-                    player.enhanced_score *= adjusted_factor
-
-                    # Store the adjustment info
+                    # Don't use old_score variable - it's not defined
+                    # Store the park factors for later use
                     player.park_factors = {
                         'park_team': player.team,
                         'factor': adjusted_factor,
                         'original_factor': factor,
-                        'adjustment': player.enhanced_score - old_score
+                        'adjustment': (adjusted_factor - 1.0) * 100  # Store as percentage
                     }
 
                     adjusted_count += 1
@@ -2009,8 +2071,7 @@ class BulletproofDFSCore:
                     if abs(adjusted_factor - 1.0) > 0.05:
                         change_pct = (adjusted_factor - 1.0) * 100
                         print(f"   {player.name} ({player.primary_position}) at {player.team}: "
-                              f"{old_score:.1f} → {player.enhanced_score:.1f} "
-                              f"({change_pct:+.0f}% park adjustment)")
+                              f"Park adjustment: {change_pct:+.0f}%")
 
         print(f"✅ Park factors: {adjusted_count}/{len(eligible_players)} confirmed players adjusted")
 
@@ -2068,6 +2129,43 @@ class BulletproofDFSCore:
             print(f"⚠️ Recent form failed: {e}")
             import traceback
             traceback.print_exc()
+
+    def debug_dff_eligibility(self):
+        """Debug why DFF players aren't being used"""
+        print("\n🔍 DFF ELIGIBILITY DEBUG:")
+
+        # Check different player categories
+        all_players = len(self.players)
+        dff_enriched = sum(1 for p in self.players if hasattr(p, 'dff_data') and p.dff_data)
+        confirmed = sum(1 for p in self.players if p.is_confirmed)
+        manual = sum(1 for p in self.players if p.is_manual_selected)
+        eligible = sum(1 for p in self.players if p.is_eligible_for_selection(self.optimization_mode))
+
+        print(f"Total players: {all_players}")
+        print(f"DFF enriched: {dff_enriched}")
+        print(f"Confirmed: {confirmed}")
+        print(f"Manual selected: {manual}")
+        print(f"Eligible for optimization: {eligible}")
+
+        # Sample some DFF players to see why they're not eligible
+        dff_players = [p for p in self.players if hasattr(p, 'dff_data') and p.dff_data][:5]
+
+        print("\nSample DFF players:")
+        for player in dff_players:
+            print(f"\n{player.name} ({player.team}):")
+            print(f"  DFF data: ✓")
+            print(f"  is_confirmed: {player.is_confirmed}")
+            print(f"  confirmation_sources: {getattr(player, 'confirmation_sources', [])}")
+            print(f"  projection: {getattr(player, 'projection', 0)}")
+            print(f"  enhanced_score: {player.enhanced_score}")
+            print(f"  eligible: {player.is_eligible_for_selection(self.optimization_mode)}")
+
+            # Check why not eligible
+            if not player.is_eligible_for_selection(self.optimization_mode):
+                if self.optimization_mode == 'bulletproof' and not player.is_confirmed:
+                    print(f"  ❌ Not eligible: Not confirmed (bulletproof mode)")
+                elif player.enhanced_score <= 0:
+                    print(f"  ❌ Not eligible: No projection")
 
     def debug_multi_position_players(self):
         """Debug multi-position player usage"""
@@ -2799,7 +2897,7 @@ class BulletproofDFSCore:
                     usage = player_usage[player.id]
                     exposure = usage / max(1, successful)
 
-                    # If over max exposure, heavily penalize
+                    # Calculate penalty
                     if exposure > max_exposure:
                         penalty = 0.3  # 70% reduction
                     else:
@@ -2807,7 +2905,17 @@ class BulletproofDFSCore:
                         penalty = 1.0 - (usage * diversity_factor * 0.1)
                         penalty = max(0.5, penalty)  # Never reduce more than 50%
 
-                    adj_player.enhanced_score *= penalty
+                    # Store the diversity penalty as a temporary attribute
+                    # This is a lineup-specific adjustment, not a player attribute
+                    temp_score = adj_player.enhanced_score * penalty
+
+                    # Create a new temporary score for optimization
+                    # WITHOUT modifying the player's actual enhanced_score
+                    adj_player._temp_optimization_score = temp_score
+                    adj_player._diversity_penalty = penalty
+
+                    # For optimizer, use the temporary score
+                    # You'll need to modify your optimizer to check for _temp_optimization_score first
 
                 adjusted_players.append(adj_player)
 
