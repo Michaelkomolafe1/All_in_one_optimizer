@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """
 FAST PARALLEL STATCAST FETCHER
-=============================
-✅ 10x faster than sequential fetching
-✅ Parallel processing with ThreadPoolExecutor
-✅ Smart caching and error handling
-✅ Only processes confirmed players
 """
 
 import json
@@ -20,49 +15,47 @@ import os
 import sys
 import io
 
-# CRITICAL: Disable progress bars BEFORE importing pybaseball
+# CRITICAL: Disable ALL output before importing pybaseball
 os.environ['PYBASEBALL_NO_PROGRESS'] = '1'
 os.environ['PYBASEBALL_CACHE'] = '1'
 
-# Suppress tqdm if used
+
+# Suppress all output during pybaseball operations
+class SuppressOutput:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        self._original_stderr = sys.stderr
+        sys.stdout = io.StringIO()
+        sys.stderr = io.StringIO()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout = self._original_stdout
+        sys.stderr = self._original_stderr
+
+
+# Import pybaseball with suppression
 try:
-    import tqdm
+    with SuppressOutput():
+        import pybaseball
 
-    tqdm.tqdm.disable = True
-except:
-    pass
+        pybaseball.cache.enable()
 
-# Now import pybaseball AFTER setting environment
-try:
-    # Temporarily suppress output during import
-    old_stdout = sys.stdout
-    old_stderr = sys.stderr
-    sys.stdout = io.StringIO()
-    sys.stderr = io.StringIO()
+        # Monkey patch to suppress "Gathering player lookup table" message
+        original_playerid_lookup = pybaseball.playerid_lookup
 
-    import pybaseball
 
-    # Restore output
-    sys.stdout = old_stdout
-    sys.stderr = old_stderr
+        def silent_playerid_lookup(*args, **kwargs):
+            with SuppressOutput():
+                return original_playerid_lookup(*args, **kwargs)
 
-    # Enable cache but disable any progress indicators
-    pybaseball.cache.enable()
 
-    # Try to disable progress bar if method exists
-    if hasattr(pybaseball, 'disable_progress_bar'):
-        pybaseball.disable_progress_bar()
-
-    # Disable any verbose output
-    if hasattr(pybaseball, 'set_verbose'):
-        pybaseball.set_verbose(False)
+        pybaseball.playerid_lookup = silent_playerid_lookup
 
     PYBASEBALL_AVAILABLE = True
 
 except ImportError:
     PYBASEBALL_AVAILABLE = False
-    sys.stdout = old_stdout if 'old_stdout' in locals() else sys.stdout
-    sys.stderr = old_stderr if 'old_stderr' in locals() else sys.stderr
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -175,16 +168,17 @@ class FastStatcastFetcher:
                         with self.lock:
                             self.stats['successful_fetches'] += 1
                     else:
-                        # Use fallback
-                        position_type = 'pitcher' if player.primary_position == 'P' else 'batter'
-                        results[player.name] = self._create_fallback_data(player.name, position_type)
+                        # No fallback - real data only
+                        results[player.name] = None
                         with self.lock:
                             self.stats['failed_fetches'] += 1
 
+
                 except Exception as e:
+
                     logger.debug(f"Parallel fetch failed for {player.name}: {e}")
-                    position_type = 'pitcher' if player.primary_position == 'P' else 'batter'
-                    results[player.name] = self._create_fallback_data(player.name, position_type)
+
+                    results[player.name] = None
                     with self.lock:
                         self.stats['failed_fetches'] += 1
 
@@ -301,7 +295,7 @@ class FastStatcastFetcher:
             return None  # PATCHED: No fallback data(player_name, position_type)
 
     def get_player_id(self, player_name: str) -> Optional[int]:
-        """Get player ID with caching"""
+        """Get player ID with caching and output suppression"""
         cache_key = player_name.lower().strip()
         if cache_key in self.player_id_cache:
             return self.player_id_cache[cache_key]
@@ -317,7 +311,10 @@ class FastStatcastFetcher:
             first_name = name_parts[0]
             last_name = name_parts[-1]
 
-            lookup = pybaseball.playerid_lookup(last_name, first_name)
+            # Suppress output during lookup
+            with SuppressOutput():
+                lookup = pybaseball.playerid_lookup(last_name, first_name)
+
             if len(lookup) > 0:
                 player_id = int(lookup.iloc[0]['key_mlbam'])
                 self.player_id_cache[cache_key] = player_id
@@ -328,23 +325,31 @@ class FastStatcastFetcher:
 
         return None
 
-    def _create_fallback_data(self, player_name: str, position_type: str) -> Dict:
-        """Create realistic fallback data"""
-        fallback_base = self.realistic_fallbacks[position_type].copy()
+    def pre_cache_player_ids(self, players_list: List) -> None:
+        """Pre-cache all player IDs to avoid duplicate lookups"""
+        print(f"📋 Pre-caching player IDs for {len(players_list)} players...")
 
-        # Add slight randomization (±5%)
-        import random
-        for key, value in fallback_base.items():
-            if isinstance(value, (int, float)):
-                variation = value * 0.05
-                fallback_base[key] = value + random.uniform(-variation, variation)
+        uncached_players = [
+            p for p in players_list
+            if p.name.lower().strip() not in self.player_id_cache
+        ]
 
-        return {
-            **fallback_base,
-            'data_source': 'Realistic Fallback (Fast)',
-            'player_name': player_name,
-            'last_updated': datetime.now().isoformat()
-        }
+        if not uncached_players:
+            print("✅ All player IDs already cached")
+            return
+
+        print(f"🔍 Looking up {len(uncached_players)} new player IDs...")
+
+        with SuppressOutput():
+            for player in uncached_players:
+                self.get_player_id(player.name)
+
+        self.save_player_cache()
+        print(f"✅ Player ID cache updated: {len(self.player_id_cache)} total IDs")
+
+    def _create_fallback_data(self, player_name: str, position_type: str) -> None:
+        """No fallback data - real data only"""
+        return None
 
     def _safe_get_value(self, data, column: str, default: float) -> float:
         try:

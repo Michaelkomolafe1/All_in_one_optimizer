@@ -26,17 +26,16 @@ class SmartConfirmationSystem:
         self.confirmed_lineups = {}
         self.confirmed_pitchers = {}
 
+        # Add the cache attributes here
+        self._lineup_cache = {}
+        self._cache_timestamp = None
+
         # Extract teams from CSV for smart filtering
         self.csv_teams = self.data_system.get_teams_from_players(csv_players) if csv_players else set()
 
         if self.verbose and self.csv_teams:
             print(f"📊 CSV teams detected: {sorted(self.csv_teams)}")
 
-    def __init__(self):
-        # ... existing code ...
-        # Add this:
-        self._lineup_cache = {}
-        self._cache_timestamp = None
 
     def get_mlb_lineups(self, date):
         """Get MLB lineups with caching"""

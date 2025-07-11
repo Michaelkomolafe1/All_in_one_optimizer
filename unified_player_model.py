@@ -144,49 +144,70 @@ class UnifiedPlayer:
         # Collect adjustments with weights
         adjustments = []
 
-        # 1. Recent Performance (25% weight if available)
+        # 1. Recent Performance (15% weight if available)
         recent_mult = self._calculate_recent_performance()
         if recent_mult is not None:
-            adjustments.append(('recent_form', recent_mult, 0.25))
+            adjustments.append(('recent_form', recent_mult, 0.15))
 
         # 2. Vegas Environment (20% weight if available)
         vegas_mult = self._calculate_vegas_environment()
         if vegas_mult is not None:
             adjustments.append(('vegas', vegas_mult, 0.20))
 
-        # 3. Matchup Quality (15% weight if available)
+        # 3. Matchup/Statcast Quality (25% weight if available)
         matchup_mult = self._calculate_matchup_quality()
         if matchup_mult is not None:
-            adjustments.append(('matchup', matchup_mult, 0.15))
+            adjustments.append(('matchup', matchup_mult, 0.25))
 
-        # 4. Park Factors (10% weight if available)
+        # 4. Park Factors (5% weight if available)
         park_mult = self._calculate_park_adjustment()
         if park_mult is not None:
-            adjustments.append(('park', park_mult, 0.10))
+            adjustments.append(('park', park_mult, 0.05))
+
+        # 5. Batting order (5% weight if available - small factor)
+        if self.batting_order and self.batting_order <= 5:
+            # Top 5 in order get a small boost
+            if self.batting_order <= 2:
+                order_mult = 1.05  # 5% for 1-2 spots
+            elif self.batting_order <= 5:
+                order_mult = 1.03  # 3% for 3-5 spots
+            else:
+                order_mult = 0.98  # -2% for 6-9 spots
+            adjustments.append(('batting_order', order_mult, 0.05))
 
         # Calculate weighted score
         if adjustments:
-            # Base projection gets remaining weight
+            # Get total weight of adjustments
             total_adj_weight = sum(weight for _, _, weight in adjustments)
-            base_weight = max(0.3, 1.0 - total_adj_weight)  # Base gets at least 30%
 
-            # Weighted calculation
+            # Base projection gets remaining weight (30-40%)
+            base_weight = max(0.30, 1.0 - total_adj_weight)
+
+            # Start with weighted base
             final_score = base_score * base_weight
 
+            # Add weighted adjustments
             for name, mult, weight in adjustments:
-                # Add weighted adjustment
-                final_score += base_score * mult * weight
+                # Add the adjustment (mult - 1) * weight * base_score
+                adjustment = (mult - 1.0) * weight * base_score
+                final_score += base_score * (mult - 1.0) * weight
+
+                # Store for transparency
                 self._score_components[f'{name}_mult'] = mult
                 self._score_components[f'{name}_weight'] = weight
 
             self.enhanced_score = final_score
+
+            # Store weights
+            self._score_components['base_weight'] = base_weight
+            self._score_components['total_adjustment'] = (final_score / base_score) - 1.0
         else:
             # No adjustments available
             self.enhanced_score = base_score
 
-        # Apply reasonable bounds (max ±30% from base)
-        max_allowed = base_score * 1.3
-        min_allowed = base_score * 0.7
+        # Apply reasonable bounds (max ±35% from base)
+        max_allowed = base_score * 1.35
+        min_allowed = base_score * 0.65
         self.enhanced_score = max(min_allowed, min(self.enhanced_score, max_allowed))
 
         # Store final multiplier for transparency

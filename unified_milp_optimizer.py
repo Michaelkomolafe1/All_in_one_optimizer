@@ -65,6 +65,10 @@ class UnifiedMILPOptimizer:
         # Load real data sources
         self._initialize_data_sources()
 
+    def get_optimization_score(self, player):
+        """Get the score to use for optimization (temporary or enhanced)"""
+        return getattr(player, '_temp_optimization_score', player.enhanced_score)
+
     def _load_dfs_config(self):
         """Load configuration from dfs_config.json"""
         try:
@@ -151,17 +155,28 @@ class UnifiedMILPOptimizer:
     def calculate_player_scores(self, players: List[UnifiedPlayer]) -> List[UnifiedPlayer]:
         """
         Calculate enhanced scores using ONLY real data
-        Respects max_form_analysis_players configuration
+        Skip players that are already enriched
         """
+        # Count how many are already enriched
+        already_enriched = sum(1 for p in players if hasattr(p, '_is_enriched') and p._is_enriched)
+        if already_enriched > 0:
+            print(f"ℹ️ Skipping {already_enriched}/{len(players)} already enriched players")
+
         # Determine how many players to analyze for form
         form_limit = getattr(self, 'max_form_analysis_players', None)
 
         # Sort players by base projection for prioritization
-        sorted_players = sorted(players, key=lambda p: p.base_projection, reverse=True)
+        sorted_players = sorted(players, key=lambda p: getattr(p, 'base_projection', 0), reverse=True)
 
         for i, player in enumerate(sorted_players):
-            # Start with base projection
-            base_score = player.base_projection if player.base_projection > 0 else 0
+            # SKIP IF ALREADY ENRICHED (from confirmation phase)
+            if hasattr(player, '_is_enriched') and player._is_enriched:
+                continue
+
+            # Define base_score at the beginning of the loop
+            base_score = getattr(player, 'base_projection', 0)
+            if base_score <= 0:
+                base_score = getattr(player, 'projection', 0)
 
             # Skip if no base score
             if base_score == 0:
@@ -171,7 +186,7 @@ class UnifiedMILPOptimizer:
             # Only apply adjustments if we have REAL data
             multipliers = []
 
-            # 1. Recent Performance (if within limit or no limit)
+            # 1. Recent Performance (15% weight - reduced from 40%)
             if form_limit is None or i < form_limit:
                 # Try form analyzer first
                 if self.form_analyzer and hasattr(player, 'name'):
@@ -185,15 +200,15 @@ class UnifiedMILPOptimizer:
                 # Check if we have form data
                 if hasattr(player, '_recent_performance') and player._recent_performance:
                     form_mult = player._recent_performance.get('form_score', 1.0)
-                    multipliers.append(('recent_form', form_mult, 0.40))
+                    multipliers.append(('recent_form', form_mult, 0.15))
                 elif hasattr(player, 'dff_l5_avg') and player.dff_l5_avg is not None and player.dff_l5_avg > 0:
                     # Use DFF L5 average as recent form
-                    if player.base_projection > 0:
-                        form_mult = player.dff_l5_avg / player.base_projection
+                    if base_score > 0:
+                        form_mult = player.dff_l5_avg / base_score
                         form_mult = max(0.7, min(1.3, form_mult))  # Cap between 0.7-1.3
-                        multipliers.append(('dff_l5', form_mult, 0.40))
+                        multipliers.append(('dff_l5', form_mult, 0.15))
 
-            # 2. Vegas Environment (if real data available)
+            # 2. Vegas Environment (20% weight)
             if self.vegas_lines and hasattr(player, 'name') and hasattr(player, 'team'):
                 try:
                     vegas_data = self.vegas_lines.get_player_odds(player.name, player.team)
@@ -204,17 +219,17 @@ class UnifiedMILPOptimizer:
 
             vegas_mult = self._calculate_vegas_multiplier(player)
             if vegas_mult is not None:
-                multipliers.append(('vegas', vegas_mult, 0.30))
+                multipliers.append(('vegas', vegas_mult, 0.20))
 
-            # 3. Park Factors (if real data available)
+            # 3. Park Factors (5% weight - minor factor)
             if self.park_factors and player.team:
                 player._park_factors = self.park_factors
 
             park_mult = self._calculate_park_multiplier(player)
             if park_mult is not None:
-                multipliers.append(('park', park_mult, 0.15))
+                multipliers.append(('park', park_mult, 0.05))
 
-            # 4. Statcast/Matchup Quality (if real data available)
+            # 4. Statcast/Matchup Quality (25% weight - increased for data quality)
             if self.statcast and hasattr(player, 'name'):
                 try:
                     statcast_data = self.statcast.fetch_player_data(
@@ -228,26 +243,34 @@ class UnifiedMILPOptimizer:
 
             matchup_mult = self._calculate_matchup_multiplier(player)
             if matchup_mult is not None:
-                multipliers.append(('matchup', matchup_mult, 0.15))
+                multipliers.append(('matchup', matchup_mult, 0.25))
 
             # Apply weighted multipliers ONLY if we have real data
             if multipliers:
                 # Normalize weights
                 total_weight = sum(weight for _, _, weight in multipliers)
-                final_multiplier = sum(mult * (weight / total_weight)
-                                       for _, mult, weight in multipliers)
 
-                player.enhanced_score = base_score * final_multiplier
+                # Base projection gets remaining weight (35-40%)
+                base_weight = max(0.35, 1.0 - total_weight)
+
+                # Calculate final score
+                final_score = base_score * base_weight
+
+                for name, mult, weight in multipliers:
+                    final_score += base_score * (mult - 1.0) * weight
+
+                player.enhanced_score = final_score
 
                 # Store components for debugging
                 player._score_components = {
                     'base': base_score,
-                    'multipliers': [(n, m) for n, m, _ in multipliers],
-                    'final_mult': final_multiplier
+                    'base_weight': base_weight,
+                    'multipliers': [(n, m, w) for n, m, w in multipliers],
+                    'final': final_score
                 }
 
-                self.logger.debug(f"{player.name}: base={base_score:.1f}, "
-                                  f"multipliers={[(n, f'{m:.2f}') for n, m, _ in multipliers]}, "
+                self.logger.debug(f"{player.name}: base={base_score:.1f} ({base_weight:.0%}), "
+                                  f"adjustments={[(n, f'{(m - 1) * 100:+.0f}%', f'{w:.0%}') for n, m, w in multipliers]}, "
                                   f"final={player.enhanced_score:.1f}")
             else:
                 # No real data available - use base projection only
@@ -459,8 +482,10 @@ class UnifiedMILPOptimizer:
                     )
 
         # OBJECTIVE: Pure enhanced scores (no bonuses)
+        # OBJECTIVE: Use temporary score if exists (for diversity), otherwise enhanced score
+        # OBJECTIVE: Use optimization score (accounts for diversity penalties)
         objective = pulp.lpSum([
-            player_vars[i] * players[i].enhanced_score
+            player_vars[i] * self.get_optimization_score(players[i])
             for i in range(len(players))
         ])
 
@@ -644,7 +669,8 @@ class UnifiedMILPOptimizer:
                 player_copy = player.copy()
                 player_copy.assigned_position = assigned_pos
                 lineup.append(player_copy)
-                total_score += player.enhanced_score
+                # Use the same score that was used in optimization
+                total_score += self.get_optimization_score(player)
 
         return lineup, total_score
 
