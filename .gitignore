@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Cache and data
+cache/
+data/cache/
+data/statcast_cache/
+*.db
+*.log
+
+# IDE
+.idea/
+
+# Backups
+*.backup
+*.bak
+*_backup_*
+
+# Output
+output/
+exports/
+
+# Large files
+*.csv
+!sample_data/*.csv
