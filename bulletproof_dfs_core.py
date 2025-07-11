@@ -28,6 +28,11 @@ from difflib import SequenceMatcher
 # Third-party imports
 import numpy as np
 import pandas as pd
+# Import new optimization modules
+from unified_scoring_engine import get_scoring_engine, load_config_from_file
+from data_validator import get_validator
+from performance_optimizer import get_performance_optimizer
+
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
@@ -1111,6 +1116,11 @@ class BulletproofDFSCore:
 
             print(f"✅ Loaded {len(self.players)} valid {self.contest_type.upper()} players")
 
+            # Update validator with actual salary range
+            if self.validator and self.players:
+                self.validator.update_salary_range_from_players(self.players)
+
+
             # Show position statistics
             self._show_position_stats()
 
@@ -1918,7 +1928,7 @@ class BulletproofDFSCore:
         print("\n🔄 Recalculating enhanced scores...")
         for player in truly_confirmed:
             if hasattr(player, 'calculate_enhanced_score'):
-                player.calculate_enhanced_score()
+                self.scoring_engine.calculate_score(player) if self.scoring_engine else player.calculate_enhanced_score()
 
         print("✅ All enrichments complete!")
 

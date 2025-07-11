@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-UNIFIED MILP OPTIMIZER - COMPREHENSIVE CLEAN IMPLEMENTATION
-=====================================================
-No bonuses for confirmed/manual players - pure performance-based optimization
-Integrates all existing data systems with NO fake fallbacks
+UNIFIED MILP OPTIMIZER - FIXED COMPLETE VERSION
+==============================================
+Clean implementation with all optimizations included
 """
 
 import pulp
@@ -14,8 +13,18 @@ import numpy as np
 from datetime import datetime
 import json
 
-# Import your existing models and systems
+# Import unified player model
 from unified_player_model import UnifiedPlayer
+
+# Import new optimization modules
+try:
+    from unified_scoring_engine import get_scoring_engine
+    from performance_optimizer import get_performance_optimizer
+
+    OPTIMIZATION_MODULES_AVAILABLE = True
+except ImportError:
+    OPTIMIZATION_MODULES_AVAILABLE = False
+    print("⚠️ New optimization modules not available, using fallback")
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +71,9 @@ class UnifiedMILPOptimizer:
         # Load DFS configuration
         self._load_dfs_config()
 
+        # Load park factors if available
+        self.park_factors = self._load_park_factors()
+
         # Load real data sources
         self._initialize_data_sources()
 
@@ -70,24 +82,27 @@ class UnifiedMILPOptimizer:
         return getattr(player, '_temp_optimization_score', player.enhanced_score)
 
     def _load_dfs_config(self):
-        """Load configuration from dfs_config.json"""
+        """Load configuration from dfs_config.json or optimization_config.json"""
+        config_loaded = False
+
+        # Try optimization_config.json first
         try:
-            # Try to load existing dfs_config system
-            from dfs_config import dfs_config
+            with open('optimization_config.json', 'r') as f:
+                config_data = json.load(f)
 
-            # Update optimization config from file
-            self.config.salary_cap = dfs_config.get('optimization.salary_cap', 50000)
-            self.config.min_salary_usage = dfs_config.get('optimization.min_salary_usage', 0.95)
-            self.config.timeout_seconds = dfs_config.get('api_limits.timeout', 30)
+            self.config.salary_cap = config_data.get('optimization', {}).get('salary_cap', 50000)
+            self.config.min_salary_usage = config_data.get('optimization', {}).get('min_salary_usage', 0.95)
+            self.config.max_players_per_team = config_data.get('optimization', {}).get('max_players_per_team', 4)
+            self.max_form_analysis_players = config_data.get('optimization', {}).get('max_form_analysis_players', 100)
 
-            # Form analysis settings
-            self.max_form_analysis_players = dfs_config.get('optimization.max_form_analysis_players')
-
-            self.logger.info("✅ Loaded configuration from dfs_config.json")
+            self.logger.info("✅ Loaded configuration from optimization_config.json")
+            config_loaded = True
         except:
-            # Fallback to reading JSON directly
+            pass
+
+        # Fallback to dfs_config.json
+        if not config_loaded:
             try:
-                import json
                 with open('dfs_config.json', 'r') as f:
                     config_data = json.load(f)
 
@@ -95,46 +110,42 @@ class UnifiedMILPOptimizer:
                 self.config.min_salary_usage = config_data.get('optimization', {}).get('min_salary_usage', 0.95)
                 self.max_form_analysis_players = config_data.get('optimization', {}).get('max_form_analysis_players')
 
-                self.logger.info("✅ Loaded configuration from dfs_config.json (direct)")
+                self.logger.info("✅ Loaded configuration from dfs_config.json")
             except:
                 self.logger.warning("⚠️ Using default configuration")
 
-    def _initialize_data_sources(self):
-        """Initialize connections to real data sources"""
-        # Park factors - try multiple sources
-        self.park_factors = {}
-
-        # First try park_factors.json
+    def _load_park_factors(self) -> Dict[str, float]:
+        """Load park factors from file or use defaults"""
         try:
             with open('park_factors.json', 'r') as f:
-                self.park_factors = json.load(f)
-            self.logger.info("✅ Loaded park factors from park_factors.json")
+                return json.load(f)
         except:
-            # Try loading from bulletproof_dfs_core PARK_FACTORS constant
-            try:
-                from bulletproof_dfs_core import PARK_FACTORS
-                self.park_factors = {team: {'overall': factor} for team, factor in PARK_FACTORS.items()}
-                self.logger.info("✅ Loaded park factors from bulletproof_dfs_core")
-            except:
-                self.logger.warning("⚠️ Park factors not available")
+            # Default park factors for major parks
+            return {
+                'COL': 1.15,  # Coors Field
+                'BOS': 1.08,  # Fenway
+                'TEX': 1.06,  # Globe Life
+                'CIN': 1.05,  # Great American
+                'MIL': 1.04,  # Miller Park
+                'SF': 0.92,  # Oracle Park
+                'SD': 0.93,  # Petco
+                'NYM': 0.95,  # Citi Field
+                'SEA': 0.96,  # T-Mobile
+                'MIA': 0.97  # Marlins Park
+            }
 
+    def _initialize_data_sources(self):
+        """Initialize connections to real data sources"""
         # Recent form analyzer
         try:
             from recent_form_analyzer import RecentFormAnalyzer
-            from utils.cache_manager import cache
-            self.form_analyzer = RecentFormAnalyzer(cache_manager=cache)
+            self.form_analyzer = RecentFormAnalyzer()
             self.logger.info("✅ Recent form analyzer initialized")
         except:
-            try:
-                # Try without cache
-                from recent_form_analyzer import RecentFormAnalyzer
-                self.form_analyzer = RecentFormAnalyzer()
-                self.logger.info("✅ Recent form analyzer initialized (no cache)")
-            except:
-                self.form_analyzer = None
-                self.logger.warning("⚠️ Recent form analyzer not available")
+            self.form_analyzer = None
+            self.logger.warning("⚠️ Recent form analyzer not available")
 
-        # Statcast connection
+        # Statcast fetcher
         try:
             from simple_statcast_fetcher import SimpleStatcastFetcher
             self.statcast = SimpleStatcastFetcher()
@@ -153,283 +164,69 @@ class UnifiedMILPOptimizer:
             self.logger.warning("⚠️ Vegas lines not available")
 
     def calculate_player_scores(self, players: List[UnifiedPlayer]) -> List[UnifiedPlayer]:
-        """
-        Calculate enhanced scores using ONLY real data
-        Skip players that are already enriched
-        """
-        # Count how many are already enriched
-        already_enriched = sum(1 for p in players if hasattr(p, '_is_enriched') and p._is_enriched)
-        if already_enriched > 0:
-            print(f"ℹ️ Skipping {already_enriched}/{len(players)} already enriched players")
+        """Calculate enhanced scores using unified engine or fallback"""
 
-        # Determine how many players to analyze for form
-        form_limit = getattr(self, 'max_form_analysis_players', None)
+        if OPTIMIZATION_MODULES_AVAILABLE:
+            # Use new optimization system
+            engine = get_scoring_engine()
+            perf_opt = get_performance_optimizer()
 
-        # Sort players by base projection for prioritization
-        sorted_players = sorted(players, key=lambda p: getattr(p, 'base_projection', 0), reverse=True)
+            # Count already calculated
+            already_calculated = sum(1 for p in players if hasattr(p, '_score_calculated') and p._score_calculated)
+            if already_calculated > 0:
+                self.logger.info(f"Skipping {already_calculated}/{len(players)} already calculated players")
 
-        for i, player in enumerate(sorted_players):
-            # SKIP IF ALREADY ENRICHED (from confirmation phase)
-            if hasattr(player, '_is_enriched') and player._is_enriched:
-                continue
+            # Define cached scoring function
+            @perf_opt.cached(category='player_scores')
+            def score_player(player):
+                if hasattr(player, '_score_calculated') and player._score_calculated:
+                    return player.enhanced_score
+                return engine.calculate_score(player)
 
-            # Define base_score at the beginning of the loop
-            base_score = getattr(player, 'base_projection', 0)
-            if base_score <= 0:
-                base_score = getattr(player, 'projection', 0)
+            # Batch process all players
+            scores = perf_opt.batch_process(
+                players,
+                score_player,
+                batch_size=50,
+                max_workers=4
+            )
 
-            # Skip if no base score
-            if base_score == 0:
-                player.enhanced_score = 0
-                continue
+            # Apply scores
+            for player, score in zip(players, scores):
+                if score is not None:
+                    player.enhanced_score = score
+                    player._score_calculated = True
 
-            # Only apply adjustments if we have REAL data
-            multipliers = []
+            self.logger.info(f"Calculated scores for {len(players)} players")
 
-            # 1. Recent Performance (15% weight - reduced from 40%)
-            if form_limit is None or i < form_limit:
-                # Try form analyzer first
-                if self.form_analyzer and hasattr(player, 'name'):
-                    try:
-                        form_data = self.form_analyzer.analyze_player_form(player)
-                        if form_data:
-                            player.apply_recent_form(form_data)
-                    except Exception as e:
-                        self.logger.debug(f"Form analysis failed for {player.name}: {e}")
+        else:
+            # Fallback to original calculation method
+            self.logger.info("Using fallback score calculation")
 
-                # Check if we have form data
-                if hasattr(player, '_recent_performance') and player._recent_performance:
-                    form_mult = player._recent_performance.get('form_score', 1.0)
-                    multipliers.append(('recent_form', form_mult, 0.15))
-                elif hasattr(player, 'dff_l5_avg') and player.dff_l5_avg is not None and player.dff_l5_avg > 0:
-                    # Use DFF L5 average as recent form
-                    if base_score > 0:
-                        form_mult = player.dff_l5_avg / base_score
-                        form_mult = max(0.7, min(1.3, form_mult))  # Cap between 0.7-1.3
-                        multipliers.append(('dff_l5', form_mult, 0.15))
+            # Count how many are already enriched
+            already_enriched = sum(1 for p in players if hasattr(p, '_is_enriched') and p._is_enriched)
+            if already_enriched > 0:
+                print(f"ℹ️ Skipping {already_enriched}/{len(players)} already enriched players")
 
-            # 2. Vegas Environment (20% weight)
-            if self.vegas_lines and hasattr(player, 'name') and hasattr(player, 'team'):
-                try:
-                    vegas_data = self.vegas_lines.get_player_odds(player.name, player.team)
-                    if vegas_data:
-                        player.apply_vegas_data(vegas_data)
-                except:
-                    pass
+            # Determine how many players to analyze for form
+            form_limit = getattr(self, 'max_form_analysis_players', None)
 
-            vegas_mult = self._calculate_vegas_multiplier(player)
-            if vegas_mult is not None:
-                multipliers.append(('vegas', vegas_mult, 0.20))
+            # Sort players by base projection for prioritization
+            sorted_players = sorted(players, key=lambda p: getattr(p, 'base_projection', 0), reverse=True)
 
-            # 3. Park Factors (5% weight - minor factor)
-            if self.park_factors and player.team:
-                player._park_factors = self.park_factors
+            for i, player in enumerate(sorted_players):
+                # Skip if already enriched
+                if hasattr(player, '_is_enriched') and player._is_enriched:
+                    continue
 
-            park_mult = self._calculate_park_multiplier(player)
-            if park_mult is not None:
-                multipliers.append(('park', park_mult, 0.05))
-
-            # 4. Statcast/Matchup Quality (25% weight - increased for data quality)
-            if self.statcast and hasattr(player, 'name'):
-                try:
-                    statcast_data = self.statcast.fetch_player_data(
-                        player.name,
-                        player.primary_position
-                    )
-                    if statcast_data and isinstance(statcast_data, dict):
-                        player.apply_statcast_data(statcast_data)
-                except:
-                    pass
-
-            matchup_mult = self._calculate_matchup_multiplier(player)
-            if matchup_mult is not None:
-                multipliers.append(('matchup', matchup_mult, 0.25))
-
-            # Apply weighted multipliers ONLY if we have real data
-            if multipliers:
-                # Normalize weights
-                total_weight = sum(weight for _, _, weight in multipliers)
-
-                # Base projection gets remaining weight (35-40%)
-                base_weight = max(0.35, 1.0 - total_weight)
-
-                # Calculate final score
-                final_score = base_score * base_weight
-
-                for name, mult, weight in multipliers:
-                    final_score += base_score * (mult - 1.0) * weight
-
-                player.enhanced_score = final_score
-
-                # Store components for debugging
-                player._score_components = {
-                    'base': base_score,
-                    'base_weight': base_weight,
-                    'multipliers': [(n, m, w) for n, m, w in multipliers],
-                    'final': final_score
-                }
-
-                self.logger.debug(f"{player.name}: base={base_score:.1f} ({base_weight:.0%}), "
-                                  f"adjustments={[(n, f'{(m - 1) * 100:+.0f}%', f'{w:.0%}') for n, m, w in multipliers]}, "
-                                  f"final={player.enhanced_score:.1f}")
-            else:
-                # No real data available - use base projection only
-                player.enhanced_score = base_score
+                # Use existing calculate_enhanced_score method
+                if hasattr(player, 'calculate_enhanced_score'):
+                    player.calculate_enhanced_score()
+                else:
+                    # Fallback - just use base projection
+                    player.enhanced_score = getattr(player, 'base_projection', 0)
 
         return players
-
-    def _calculate_vegas_multiplier(self, player: UnifiedPlayer) -> Optional[float]:
-        """Calculate Vegas-based multiplier using REAL data only"""
-        if not hasattr(player, '_vegas_data') or not player._vegas_data:
-            return None
-
-        vegas = player._vegas_data
-
-        # Must have implied team total
-        if 'implied_total' not in vegas or vegas['implied_total'] <= 0:
-            return None
-
-        implied_total = vegas['implied_total']
-
-        if player.primary_position == 'P':
-            # For pitchers: opponent's implied total matters
-            if 'opponent_total' in vegas:
-                opp_total = vegas['opponent_total']
-                if opp_total < 3.0:
-                    return 1.30
-                elif opp_total < 3.5:
-                    return 1.20
-                elif opp_total < 4.0:
-                    return 1.10
-                elif opp_total < 4.5:
-                    return 1.00
-                elif opp_total < 5.0:
-                    return 0.90
-                else:
-                    return 0.80
-        else:
-            # For hitters: team's implied total
-            if implied_total > 5.5:
-                mult = 1.30
-            elif implied_total > 5.0:
-                mult = 1.20
-            elif implied_total > 4.5:
-                mult = 1.10
-            elif implied_total > 4.0:
-                mult = 1.00
-            elif implied_total > 3.5:
-                mult = 0.90
-            else:
-                mult = 0.80
-
-            # Adjust for game total if available
-            if 'game_total' in vegas:
-                if vegas['game_total'] > 11:
-                    mult *= 1.05
-                elif vegas['game_total'] < 7.5:
-                    mult *= 0.95
-
-            return mult
-
-        return None
-
-    def _calculate_park_multiplier(self, player: UnifiedPlayer) -> Optional[float]:
-        """Calculate park factor multiplier using REAL data only"""
-        if not self.park_factors or not player.team:
-            return None
-
-        # Get park factor for player's team
-        park_data = self.park_factors.get(player.team)
-
-        if park_data is None:
-            return None
-
-        # Handle different park factor formats
-        if isinstance(park_data, dict):
-            # Dictionary format with specific factors
-            if player.primary_position == 'P':
-                # Pitchers benefit from pitcher-friendly parks
-                factor = park_data.get('pitcher_factor')
-                if factor is None and 'overall' in park_data:
-                    # Invert overall factor for pitchers
-                    factor = 2.0 - park_data['overall']
-            else:
-                # Hitters benefit from hitter-friendly parks
-                factor = park_data.get('hitter_factor')
-                if factor is None:
-                    factor = park_data.get('overall')
-        else:
-            # Simple numeric factor (assume hitter-oriented)
-            try:
-                factor = float(park_data)
-                if player.primary_position == 'P':
-                    # Invert for pitchers (lower is better)
-                    factor = 2.0 - factor
-            except:
-                return None
-
-        if factor is None:
-            return None
-
-        # Ensure reasonable bounds
-        return max(0.85, min(factor, 1.15))
-
-    def _calculate_matchup_multiplier(self, player: UnifiedPlayer) -> Optional[float]:
-        """Calculate matchup quality using REAL data only"""
-        mult = 1.0
-        adjustments = 0
-
-        # Check Statcast matchup data if available
-        if hasattr(player, '_statcast_data') and player._statcast_data:
-            statcast = player._statcast_data
-
-            if player.primary_position == 'P':
-                # For pitchers: K rate and opponent quality
-                if 'k_rate' in statcast:
-                    k_rate = statcast['k_rate']
-                    if k_rate > 28:
-                        mult *= 1.10
-                        adjustments += 1
-                    elif k_rate > 25:
-                        mult *= 1.05
-                        adjustments += 1
-                    elif k_rate < 20:
-                        mult *= 0.95
-                        adjustments += 1
-
-                if 'opponent_ops' in statcast:
-                    opp_ops = statcast['opponent_ops']
-                    if opp_ops < 0.700:
-                        mult *= 1.08
-                        adjustments += 1
-                    elif opp_ops > 0.800:
-                        mult *= 0.92
-                        adjustments += 1
-            else:
-                # For hitters: barrel rate and pitcher matchup
-                if 'barrel_rate' in statcast:
-                    barrel = statcast['barrel_rate']
-                    if barrel > 12:
-                        mult *= 1.10
-                        adjustments += 1
-                    elif barrel > 10:
-                        mult *= 1.05
-                        adjustments += 1
-                    elif barrel < 6:
-                        mult *= 0.95
-                        adjustments += 1
-
-                if 'opposing_pitcher_era' in statcast:
-                    era = statcast['opposing_pitcher_era']
-                    if era > 5.0:
-                        mult *= 1.12
-                        adjustments += 1
-                    elif era < 3.0:
-                        mult *= 0.88
-                        adjustments += 1
-
-        # Only return if we made adjustments based on real data
-        return mult if adjustments > 0 else None
 
     def optimize_lineup(self, players: List[UnifiedPlayer],
                         strategy: str = 'balanced',
@@ -481,8 +278,6 @@ class UnifiedMILPOptimizer:
                         f"y_{i}_{pos}", cat='Binary'
                     )
 
-        # OBJECTIVE: Pure enhanced scores (no bonuses)
-        # OBJECTIVE: Use temporary score if exists (for diversity), otherwise enhanced score
         # OBJECTIVE: Use optimization score (accounts for diversity penalties)
         objective = pulp.lpSum([
             player_vars[i] * self.get_optimization_score(players[i])
@@ -599,55 +394,39 @@ class UnifiedMILPOptimizer:
 
                     if order2 - order1 == 1:  # Consecutive
                         # Small bonus for selecting both
-                        bonus = self.config.correlation_boost * min(
-                            players[idx1].enhanced_score,
-                            players[idx2].enhanced_score
-                        )
-
-                        # Binary variable for both selected
+                        bonus = players[idx1].enhanced_score * self.config.correlation_boost
                         correlation_terms.append(
                             bonus * player_vars[idx1] * player_vars[idx2]
                         )
 
-        return pulp.lpSum(correlation_terms) if correlation_terms else None
+        if correlation_terms:
+            return pulp.lpSum(correlation_terms)
+        return None
 
     def _add_pitcher_hitter_constraints(self, prob: pulp.LpProblem,
                                         players: List[UnifiedPlayer],
                                         player_vars: Dict):
-        """Add constraints limiting hitters against selected pitcher"""
-        # Find all pitchers
-        pitcher_indices = [i for i, p in enumerate(players)
-                           if p.primary_position == 'P']
+        """Add constraints to prevent selecting hitters against your own pitchers"""
+        # Find all pitcher indices
+        pitcher_indices = [i for i, p in enumerate(players) if p.primary_position == 'P']
 
+        # For each pitcher, limit opposing team hitters
         for p_idx in pitcher_indices:
             pitcher = players[p_idx]
-
-            # Find opposing team (from game info)
-            opp_team = self._get_opposing_team(pitcher)
-            if not opp_team:
+            if not pitcher.opponent:
                 continue
 
-            # Find opposing hitters
-            opp_hitters = [i for i, p in enumerate(players)
-                           if p.team == opp_team and p.primary_position != 'P']
+            # Find opposing team hitters
+            opp_hitter_indices = [
+                i for i, p in enumerate(players)
+                if p.team == pitcher.opponent and p.primary_position != 'P'
+            ]
 
-            if opp_hitters:
-                # If pitcher selected, limit opposing hitters
+            if opp_hitter_indices:
+                # Limit to max allowed
                 prob += pulp.lpSum([
-                    player_vars[h_idx] for h_idx in opp_hitters
-                ]) <= self.config.max_hitters_vs_pitcher + \
-                        10 * (1 - player_vars[p_idx])
-
-    def _get_opposing_team(self, player: UnifiedPlayer) -> Optional[str]:
-        """Extract opposing team from game info"""
-        if hasattr(player, 'game_info') and player.game_info:
-            # Parse game info (e.g., "NYY@BOS" or "LAD vs SF")
-            import re
-            match = re.search(r'(\w+)[@vs]+(\w+)', player.game_info)
-            if match:
-                team1, team2 = match.groups()
-                return team2 if team1 == player.team else team1
-        return None
+                    player_vars[h_idx] for h_idx in opp_hitter_indices
+                ]) <= self.config.max_hitters_vs_pitcher * (1 - player_vars[p_idx])
 
     def _extract_solution(self, players: List[UnifiedPlayer],
                           player_vars: Dict,
@@ -766,68 +545,76 @@ class StrategyFilter:
             for player in value_players:
                 if player not in base_set:
                     base_set.add(player)
-                    if len(base_set) >= 60:
-                        break
+                if len(base_set) >= 60:
+                    break
 
             return list(base_set)
 
-        else:  # 'all_players' or default
-            return players
+        else:
+            # Default: confirmed only
+            return confirmed_players
 
-    def _parse_manual_selections(self, players: List[UnifiedPlayer],
+    def _parse_manual_selections(self, all_players: List[UnifiedPlayer],
                                  manual_input: str) -> List[UnifiedPlayer]:
-        """Parse manual player selections"""
-        if not manual_input:
+        """Parse manual player selections from input string"""
+        if not manual_input or not manual_input.strip():
             return []
 
-        manual_players = []
-        manual_names = []
+        selected = []
+        names = [name.strip() for name in manual_input.split(',') if name.strip()]
 
-        # Try different delimiters
-        for delimiter in [',', ';', '\n', '|']:
-            if delimiter in manual_input:
-                manual_names = [n.strip() for n in manual_input.split(delimiter) if n.strip()]
-                break
-        else:
-            if manual_input.strip():
-                manual_names = [manual_input.strip()]
+        for name in names:
+            # Find best match
+            best_match = None
+            best_score = 0
 
-        # Match players
-        for manual_name in manual_names:
-            manual_lower = manual_name.lower()
-            matched = False
+            for player in all_players:
+                # Calculate similarity
+                score = self._name_similarity(name.lower(), player.name.lower())
+                if score > best_score and score > 0.7:  # 70% threshold
+                    best_score = score
+                    best_match = player
 
-            for player in players:
-                player_lower = player.name.lower()
+            if best_match:
+                # Mark as manually selected
+                best_match.is_manual_selected = True
+                selected.append(best_match)
+                self.logger.info(f"Manual selection: {best_match.name} matched for '{name}'")
+            else:
+                self.logger.warning(f"No match found for manual selection: '{name}'")
 
-                # Check full name or last name match
-                if (manual_lower in player_lower or
-                        (len(manual_lower.split()) == 1 and
-                         manual_lower in player_lower.split()[-1].lower())):
-                    manual_players.append(player)
-                    player.is_manual_selected = True
-                    matched = True
-                    self.logger.info(f"✓ Manual selection matched: {player.name}")
-                    break
+        return selected
 
-            if not matched:
-                self.logger.warning(f"⚠️ Manual selection not found: {manual_name}")
+    def _name_similarity(self, name1: str, name2: str) -> float:
+        """Calculate name similarity score"""
+        # Direct match
+        if name1 == name2:
+            return 1.0
 
-        return manual_players
+        # Partial match
+        if name1 in name2 or name2 in name1:
+            return 0.9
+
+        # Last name match
+        parts1 = name1.split()
+        parts2 = name2.split()
+        if parts1 and parts2 and parts1[-1] == parts2[-1]:
+            return 0.8
+
+        # Character-based similarity
+        from difflib import SequenceMatcher
+        return SequenceMatcher(None, name1, name2).ratio()
 
 
-# Example usage and testing
+# Convenience function for backwards compatibility
+def create_unified_optimizer(config: OptimizationConfig = None) -> UnifiedMILPOptimizer:
+    """Create a unified MILP optimizer instance"""
+    return UnifiedMILPOptimizer(config)
+
+
 if __name__ == "__main__":
-    # Test configuration
-    config = OptimizationConfig(
-        salary_cap=50000,
-        min_salary_usage=0.95,
-        use_correlation=True,
-        max_hitters_vs_pitcher=2
-    )
-
-    optimizer = UnifiedMILPOptimizer(config)
-
-    print("✅ Unified MILP Optimizer initialized")
-    print("📊 Using real data sources only (no fake fallbacks)")
-    print("🎯 Clean optimization with no manual/confirmed bonuses")
+    # Test basic functionality
+    print("Unified MILP Optimizer module loaded successfully")
+    optimizer = UnifiedMILPOptimizer()
+    print(f"Salary cap: ${optimizer.config.salary_cap}")
+    print(f"Position requirements: {optimizer.config.position_requirements}")

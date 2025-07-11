@@ -9,6 +9,8 @@ from typing import Dict, List, Optional, Union, Any
 from datetime import datetime
 import copy
 
+
+from unified_scoring_engine import get_scoring_engine
 # For park factors if not available elsewhere
 PARK_FACTORS = {
     # Extreme hitter-friendly
@@ -118,99 +120,16 @@ class UnifiedPlayer:
         self.data_quality_score = quality_points / max_points if max_points > 0 else 0
 
     def calculate_enhanced_score(self):
-        """
-        Calculate enhanced score using weighted average instead of stacking
-        FIXED: Prevents unrealistic 50-70% score inflation
-        """
-        # Reset score components
-        self._score_components = {}
+        """Calculate enhanced score using unified scoring engine"""
+        engine = get_scoring_engine()
+        self.enhanced_score = engine.calculate_score(self)
 
-        # Start with best available projection
-        if self.dff_projection > 0:
-            base_score = self.dff_projection
-            self._score_components['base'] = 'dff_projection'
-        elif self.base_projection > 0:
-            base_score = self.base_projection
-            self._score_components['base'] = 'base_projection'
-        else:
-            self.enhanced_score = 0
-            return
+        # Set data quality based on available components
+        if hasattr(self, '_score_audit'):
+            self.data_quality_score = len(self._score_audit.get('components', {})) / 5.0
 
-        # Collect adjustments with weights
-        adjustments = []
-
-        # 1. Recent Performance (15% weight if available)
-        recent_mult = self._calculate_recent_performance()
-        if recent_mult is not None:
-            adjustments.append(('recent_form', recent_mult, 0.15))
-
-        # 2. Vegas Environment (20% weight if available)
-        vegas_mult = self._calculate_vegas_environment()
-        if vegas_mult is not None:
-            adjustments.append(('vegas', vegas_mult, 0.20))
-
-        # 3. Matchup/Statcast Quality (25% weight if available)
-        matchup_mult = self._calculate_matchup_quality()
-        if matchup_mult is not None:
-            adjustments.append(('matchup', matchup_mult, 0.25))
-
-        # 4. Park Factors (5% weight if available)
-        park_mult = self._calculate_park_adjustment()
-        if park_mult is not None:
-            adjustments.append(('park', park_mult, 0.05))
-
-        # 5. Batting order (5% weight if available)
-        if self.batting_order and self.batting_order > 0:
-            # Small adjustment based on lineup position
-            if self.batting_order <= 2:
-                order_mult = 1.06  # 6% for 1-2 spots
-            elif self.batting_order <= 4:
-                order_mult = 1.04  # 4% for 3-4 spots
-            elif self.batting_order <= 6:
-                order_mult = 1.01  # 1% for 5-6 spots
-            else:
-                order_mult = 0.97  # -3% for 7-9 spots
-
-            adjustments.append(('batting_order', order_mult, 0.05))
-
-        # Calculate weighted score
-        if adjustments:
-            # Get total weight of adjustments
-            total_adj_weight = sum(weight for _, _, weight in adjustments)
-
-            # Base projection gets remaining weight (30-40%)
-            base_weight = max(0.30, 1.0 - total_adj_weight)
-
-            # Start with weighted base
-            final_score = base_score * base_weight
-
-            # Add weighted adjustments
-            for name, mult, weight in adjustments:
-                # Add the adjustment (mult - 1) * weight * base_score
-                adjustment = (mult - 1.0) * weight * base_score
-                final_score += base_score * (mult - 1.0) * weight
-
-                # Store for transparency
-                self._score_components[f'{name}_mult'] = mult
-                self._score_components[f'{name}_weight'] = weight
-
-            self.enhanced_score = final_score
-
-            # Store weights
-            self._score_components['base_weight'] = base_weight
-            self._score_components['total_adjustment'] = (final_score / base_score) - 1.0
-        else:
-            # No adjustments available
-            self.enhanced_score = base_score
-
-        # Apply reasonable bounds (max ±35% from base)
-        max_allowed = base_score * 1.35
-        min_allowed = base_score * 0.65
-        self.enhanced_score = max(min_allowed, min(self.enhanced_score, max_allowed))
-
-        # Store final multiplier for transparency
-        self._score_components['final_multiplier'] = self.enhanced_score / base_score if base_score > 0 else 1.0
-
+        # Mark as calculated
+        self._score_calculated = True
     def _calculate_recent_performance(self) -> Optional[float]:
         """
         Calculate recent form multiplier from REAL data only
