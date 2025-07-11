@@ -1,373 +1,399 @@
 #!/usr/bin/env python3
 """
-RECENT FORM ANALYZER - UPDATED FOR NO FALLBACKS
-Only returns real data - no fake/mock data generation
+Recent Form Analyzer - ENHANCED with batch processing
+===================================================
+Efficient batch processing for faster analysis
 """
 
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Optional, Any
 import logging
-from typing import List, Dict, Optional
 from datetime import datetime, timedelta
-from typing import Tuple, Optional, List, Dict
-
-# Check for pybaseball availability
-try:
-    import pybaseball
-
-    PYBASEBALL_AVAILABLE = True
-except ImportError:
-    PYBASEBALL_AVAILABLE = False
-    print("⚠️ pybaseball not available - recent form will be limited")
+import pandas as pd
+from pybaseball import statcast_batter, playerid_lookup
+import time
 
 logger = logging.getLogger(__name__)
 
 
 class RecentFormAnalyzer:
     """
-    Analyzes recent player performance using REAL data only
-    NO fallback/mock data - returns None if data unavailable
+    ENHANCED: Analyzes recent player form with efficient batch processing
     """
 
-    def __init__(self, cache_manager=None, days_back: int = 7):
+    def __init__(self, cache_manager=None, days_back: int = 7,
+                 batch_size: int = 10, max_workers: int = 3):
         self.cache_manager = cache_manager
         self.days_back = days_back
-        self.days_window = days_back + 3  # Buffer for data availability
+        self.batch_size = batch_size
+        self.max_workers = max_workers
 
-        # Recency weights for weighted average
-        self.recency_weights = [0.35, 0.25, 0.20, 0.12, 0.08]
+        # Time windows
+        self.end_date = datetime.now()
+        self.start_date = self.end_date - timedelta(days=days_back)
 
-    def analyze_player_form(self, player) -> Optional[Dict]:
+        # Caches
+        self._player_id_cache = {}
+        self._game_data_cache = {}
+
+        # Recency weights for scoring
+        self.recency_weights = [1.0, 0.9, 0.8, 0.7, 0.6]  # Most recent games weighted higher
+
+        logger.info(f"Form analyzer initialized: {days_back} days, batch size {batch_size}")
+
+    def analyze_players_batch(self, players: List[Any],
+                              use_cache: bool = True,
+                              progress_callback: Optional[callable] = None) -> Dict[str, Any]:
         """
-        Analyze player's recent form using REAL data only
+        ENHANCED: Analyze multiple players in parallel batches
+
+        Args:
+            players: List of players to analyze
+            use_cache: Whether to use cached results
+            progress_callback: Optional progress callback
 
         Returns:
-            Dict with form analysis or None if no data available
+            Dict mapping player ID to form data
         """
-        # Check cache first
-        cache_key = f"form_{player.name}_{player.team}_{self.days_back}"
-        if self.cache_manager:
-            cached_data = self.cache_manager.get('recent_form', cache_key)
-            if cached_data and not cached_data.get('_cache_expired', True):
-                return cached_data
+        results = {}
+        total_players = len(players)
 
-        # Fetch real recent stats
-        recent_stats = self._fetch_recent_stats(player)
+        print(f"\n📊 Batch analyzing {total_players} players...")
+        print(f"   Batch size: {self.batch_size}")
+        print(f"   Max parallel workers: {self.max_workers}")
 
-        if not recent_stats:
-            # NO FALLBACK - return None if no real data
-            logger.debug(f"No recent stats available for {player.name}")
-            return None
+        # Try to import progress tracker
+        try:
+            from progress_tracker import ProgressTracker
+            tracker = ProgressTracker(total_players, "Analyzing form (batch)", show_eta=True)
+        except:
+            tracker = None
 
-        # Calculate form metrics from real data
-        form_analysis = self._calculate_form_metrics(recent_stats, player.primary_position)
+        # Process in batches
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit batches
+            futures = []
 
-        # Cache the results
-        if self.cache_manager and form_analysis:
-            self.cache_manager.set('recent_form', cache_key, form_analysis)
+            for i in range(0, total_players, self.batch_size):
+                batch = players[i:i + self.batch_size]
+                future = executor.submit(self._process_batch, batch, use_cache)
+                futures.append((future, i))
 
-        return form_analysis
+            # Process results as they complete
+            for future, batch_start in futures:
+                try:
+                    batch_results = future.result(timeout=30)
+                    results.update(batch_results)
 
-    def _fetch_recent_stats(self, player) -> Optional[List[Dict]]:
-        """
-        Fetch recent game stats for player - REAL DATA ONLY
+                    # Update progress
+                    if tracker:
+                        tracker.update(len(batch_results))
+                    elif progress_callback:
+                        progress_callback(len(results), total_players)
 
-        Returns:
-            List of game stats or None if unavailable
-        """
-        if not PYBASEBALL_AVAILABLE:
-            # No pybaseball = no data (NO FALLBACK)
-            return None
+                except Exception as e:
+                    logger.error(f"Batch processing error: {e}")
+
+        if tracker:
+            tracker.finish()
+
+        # Apply results to players
+        success_count = self._apply_batch_results_to_players(players, results)
+
+        print(f"\n✅ Batch analysis complete: {success_count}/{total_players} successful")
+
+        return results
+
+    def _process_batch(self, players: List[Any], use_cache: bool) -> Dict[str, Any]:
+        """Process a single batch of players"""
+        batch_results = {}
+
+        for player in players:
+            try:
+                # Check cache first
+                if use_cache and self._has_cached_form_data(player):
+                    cached_data = self._get_cached_form_data(player)
+                    if cached_data:
+                        batch_results[player.id] = cached_data
+                        continue
+
+                # Get player MLB ID
+                player_id = self._get_player_mlb_id_cached(player.name)
+                if not player_id:
+                    batch_results[player.id] = self._get_default_form_data()
+                    continue
+
+                # Fetch game data
+                game_data = self._fetch_game_data_cached(player_id)
+
+                # Calculate metrics
+                form_data = self._calculate_form_metrics(game_data, player)
+
+                # Cache result
+                if self.cache_manager and form_data:
+                    cache_key = f"form_{player.id}_{self.days_back}d"
+                    self.cache_manager.set(cache_key, form_data, ttl=3600)  # 1 hour cache
+
+                batch_results[player.id] = form_data
+
+            except Exception as e:
+                logger.debug(f"Error processing {player.name}: {e}")
+                batch_results[player.id] = self._get_default_form_data()
+
+        return batch_results
+
+    def _get_player_mlb_id_cached(self, player_name: str) -> Optional[int]:
+        """Get player MLB ID with caching"""
+        if player_name in self._player_id_cache:
+            return self._player_id_cache[player_name]
 
         try:
-            # Get player ID
-            player_id = self._get_player_id(player.name)
-            if not player_id:
+            # Parse name
+            parts = player_name.strip().split()
+            if len(parts) < 2:
                 return None
 
-            # Calculate date range
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=self.days_window)
+            first = parts[0]
+            last = ' '.join(parts[1:])
 
-            # Fetch real game logs
-            if player.primary_position == 'P':
-                game_logs = pybaseball.statcast_pitcher_game_logs(
-                    player_id,
-                    start_date.strftime('%Y-%m-%d'),
-                    end_date.strftime('%Y-%m-%d')
-                )
-            else:
-                game_logs = pybaseball.statcast_batter_game_logs(
-                    player_id,
-                    start_date.strftime('%Y-%m-%d'),
-                    end_date.strftime('%Y-%m-%d')
-                )
-
-            # Convert to list of dicts
-            if game_logs is not None and len(game_logs) > 0:
-                return game_logs.to_dict('records')
+            # Lookup player
+            results = playerid_lookup(last, first)
+            if not results.empty:
+                # Get most recent player
+                results = results.sort_values('mlb_played_last', ascending=False)
+                player_id = int(results.iloc[0]['key_mlbam'])
+                self._player_id_cache[player_name] = player_id
+                return player_id
 
         except Exception as e:
-            logger.debug(f"Error fetching stats for {player.name}: {e}")
+            logger.debug(f"Player lookup failed for {player_name}: {e}")
 
+        self._player_id_cache[player_name] = None
         return None
 
-    def _get_player_id(self, player_name: str) -> Optional[int]:
-        """Get player ID from pybaseball"""
+    def _fetch_game_data_cached(self, player_id: int) -> pd.DataFrame:
+        """Fetch game data with caching"""
+        cache_key = f"games_{player_id}_{self.start_date.strftime('%Y%m%d')}"
+
+        if cache_key in self._game_data_cache:
+            return self._game_data_cache[cache_key]
+
         try:
-            parts = player_name.split()
-            if len(parts) >= 2:
-                first = parts[0]
-                last = ' '.join(parts[1:])
+            # Fetch from Baseball Savant
+            data = statcast_batter(
+                start_dt=self.start_date.strftime('%Y-%m-%d'),
+                end_dt=self.end_date.strftime('%Y-%m-%d'),
+                player_id=player_id
+            )
 
-                # Look up player
-                player_data = pybaseball.playerid_lookup(last, first)
-                if not player_data.empty:
-                    # Get most recent player (active)
-                    return int(player_data.iloc[0]['key_mlbam'])
+            self._game_data_cache[cache_key] = data
+            return data
+
         except Exception as e:
-            logger.debug(f"Could not find player ID for {player_name}: {e}")
+            logger.debug(f"Failed to fetch data for player {player_id}: {e}")
+            return pd.DataFrame()
 
-        return None
+    def _calculate_form_metrics(self, game_data: pd.DataFrame, player: Any) -> Dict[str, Any]:
+        """Calculate form metrics from game data"""
+        if game_data.empty:
+            return self._get_default_form_data()
 
-    def _calculate_form_metrics(self, recent_stats: List[Dict], position: str) -> Dict:
-        """
-        Calculate form metrics from REAL game data
+        try:
+            # Basic counting stats
+            games = len(game_data['game_date'].unique()) if 'game_date' in game_data else 0
 
-        Returns:
-            Dict with form analysis
-        """
-        if not recent_stats:
-            return None
+            if games == 0:
+                return self._get_default_form_data()
 
-        # Extract fantasy points
-        game_scores = []
-        for game in recent_stats:
-            if 'fantasy_points_dk' in game:
-                score = game['fantasy_points_dk']
-            elif 'fantasy_points' in game:
-                score = game['fantasy_points']
+            # Event counts
+            events = game_data['events'].value_counts() if 'events' in game_data else pd.Series()
+
+            # Calculate hits
+            hits = sum([
+                events.get('single', 0),
+                events.get('double', 0),
+                events.get('triple', 0),
+                events.get('home_run', 0)
+            ])
+
+            # At bats
+            ab_events = ['single', 'double', 'triple', 'home_run', 'strikeout',
+                         'field_out', 'grounded_into_double_play', 'force_out',
+                         'fielders_choice', 'field_error']
+            at_bats = sum(events.get(event, 0) for event in ab_events)
+
+            # Calculate averages
+            batting_avg = hits / at_bats if at_bats > 0 else 0.250
+
+            # Advanced metrics
+            walks = events.get('walk', 0)
+
+            # OBP calculation
+            plate_appearances = at_bats + walks + events.get('hit_by_pitch', 0)
+            obp = (hits + walks) / plate_appearances if plate_appearances > 0 else 0.300
+
+            # SLG calculation
+            total_bases = (
+                    events.get('single', 0) +
+                    2 * events.get('double', 0) +
+                    3 * events.get('triple', 0) +
+                    4 * events.get('home_run', 0)
+            )
+            slg = total_bases / at_bats if at_bats > 0 else 0.400
+
+            # Form score calculation
+            form_score = self._calculate_form_score(
+                batting_avg, obp + slg, games, player.base_projection
+            )
+
+            # Trend detection
+            trend = self._detect_trend(game_data)
+
+            # Hot streak detection
+            hot_streak = batting_avg > 0.350 or events.get('home_run', 0) >= 2
+
+            return {
+                'form_score': form_score,
+                'trend': trend,
+                'hot_streak': hot_streak,
+                'games_analyzed': games,
+                'recent_avg': batting_avg,
+                'recent_obp': obp,
+                'recent_slg': slg,
+                'recent_ops': obp + slg,
+                'hits': int(hits),
+                'homers': int(events.get('home_run', 0)),
+                'rbis': int(events.get('rbi', 0)) if 'rbi' in events else 0,
+                'last_updated': datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"Error calculating metrics: {e}")
+            return self._get_default_form_data()
+
+    def _calculate_form_score(self, avg: float, ops: float, games: int,
+                              base_projection: float) -> float:
+        """Calculate form score multiplier"""
+        if games < 3 or base_projection <= 0:
+            return 1.0
+
+        # Base multiplier on performance vs average
+        if avg >= 0.300:
+            base_mult = 1.10 + (avg - 0.300) * 0.5
+        elif avg <= 0.200:
+            base_mult = 0.90 - (0.200 - avg) * 0.5
+        else:
+            base_mult = 1.0
+
+        # OPS adjustment
+        if ops >= 0.900:
+            ops_mult = 1.05
+        elif ops <= 0.600:
+            ops_mult = 0.95
+        else:
+            ops_mult = 1.0
+
+        # Combine multipliers
+        form_score = base_mult * ops_mult
+
+        # Apply bounds
+        return max(0.70, min(1.35, form_score))
+
+    def _detect_trend(self, game_data: pd.DataFrame) -> str:
+        """Detect performance trend"""
+        if len(game_data) < 10:
+            return 'stable'
+
+        try:
+            # Sort by date
+            sorted_data = game_data.sort_values('game_date', ascending=False)
+
+            # Split into halves
+            mid_point = len(sorted_data) // 2
+            recent_half = sorted_data.iloc[:mid_point]
+            older_half = sorted_data.iloc[mid_point:]
+
+            # Calculate batting averages
+            def calc_avg(data):
+                hits = len(data[data['events'].isin(['single', 'double', 'triple', 'home_run'])])
+                abs = len(data[data['events'].notna()])
+                return hits / abs if abs > 0 else 0
+
+            recent_avg = calc_avg(recent_half)
+            older_avg = calc_avg(older_half)
+
+            # Determine trend
+            if recent_avg > older_avg * 1.20:
+                return 'hot'
+            elif recent_avg < older_avg * 0.80:
+                return 'cold'
             else:
-                # Calculate from stats if needed
-                score = self._calculate_dk_points(game, position)
+                return 'stable'
 
-            if score is not None and score >= 0:
-                game_scores.append(score)
+        except Exception:
+            return 'stable'
 
-        if not game_scores:
+    def _apply_batch_results_to_players(self, players: List[Any],
+                                        results: Dict[str, Any]) -> int:
+        """Apply batch results back to player objects"""
+        applied = 0
+
+        for player in players:
+            if player.id in results:
+                form_data = results[player.id]
+
+                # Apply to player
+                player._recent_performance = form_data
+                player.form_score = form_data['form_score']
+                player.hot_streak = form_data.get('hot_streak', False)
+
+                # Description
+                if form_data['hot_streak']:
+                    player.form_description = f"🔥 HOT: .{int(form_data['recent_avg'] * 1000)}"
+                elif form_data['form_score'] < 0.9:
+                    player.form_description = f"❄️ COLD: .{int(form_data['recent_avg'] * 1000)}"
+                else:
+                    player.form_description = f"AVG: .{int(form_data['recent_avg'] * 1000)}"
+
+                applied += 1
+
+        return applied
+
+    def _has_cached_form_data(self, player: Any) -> bool:
+        """Check if player has valid cached form data"""
+        if not self.cache_manager:
+            return False
+
+        cache_key = f"form_{player.id}_{self.days_back}d"
+        return self.cache_manager.exists(cache_key)
+
+    def _get_cached_form_data(self, player: Any) -> Optional[Dict]:
+        """Get cached form data"""
+        if not self.cache_manager:
             return None
 
-        # Calculate weighted recent average
-        weighted_scores = []
-        weights_used = []
+        cache_key = f"form_{player.id}_{self.days_back}d"
+        return self.cache_manager.get(cache_key)
 
-        for i, score in enumerate(game_scores[:5]):  # Last 5 games
-            if i < len(self.recency_weights):
-                weighted_scores.append(score * self.recency_weights[i])
-                weights_used.append(self.recency_weights[i])
-
-        if not weights_used:
-            return None
-
-        recent_avg = sum(weighted_scores) / sum(weights_used)
-
-        # Calculate trend
-        if len(game_scores) >= 3:
-            recent_3 = sum(game_scores[:3]) / 3
-            older_3 = sum(game_scores[3:6]) / min(3, len(game_scores[3:6])) if len(game_scores) > 3 else recent_3
-
-            if recent_3 > older_3 * 1.15:
-                trend = 'hot'
-            elif recent_3 < older_3 * 0.85:
-                trend = 'cold'
-            else:
-                trend = 'stable'
-        else:
-            trend = 'insufficient_data'
-
-        # Calculate streaks
-        streak_type, streak_length = self._calculate_streaks(game_scores)
-
-        # Calculate consistency
-        if len(game_scores) >= 3:
-            import numpy as np
-            consistency = 1.0 - (np.std(game_scores) / (np.mean(game_scores) + 1))
-            consistency = max(0, min(1, consistency))
-        else:
-            consistency = 0.5
-
-        # Calculate form score (multiplier)
-        if hasattr(player, 'base_projection') and player.base_projection > 0:
-            form_score = recent_avg / player.base_projection
-            form_score = max(0.7, min(1.3, form_score))  # Cap between 0.7-1.3
-        else:
-            form_score = 1.0
-
+    def _get_default_form_data(self) -> Dict[str, Any]:
+        """Get default form data when unavailable"""
         return {
-            'form_score': form_score,
-            'trend': trend,
-            'streak_type': streak_type,
-            'streak_length': streak_length,
-            'consistency_score': consistency,
-            'recent_avg': recent_avg,
-            'games_analyzed': len(game_scores),
+            'form_score': 1.0,
+            'trend': 'stable',
+            'hot_streak': False,
+            'games_analyzed': 0,
+            'recent_avg': 0.250,
+            'recent_obp': 0.320,
+            'recent_slg': 0.400,
+            'recent_ops': 0.720,
+            'hits': 0,
+            'homers': 0,
+            'rbis': 0,
             'last_updated': datetime.now().isoformat()
         }
 
-    def _calculate_dk_points(self, game_stats: Dict, position: str) -> Optional[float]:
-        """
-        Calculate DraftKings points from raw stats
-        Only if we have the necessary stats
-        """
-        try:
-            if position == 'P':
-                # Pitcher scoring
-                points = 0
-
-                # Required stats for calculation
-                if 'innings_pitched' not in game_stats:
-                    return None
-
-                ip = game_stats.get('innings_pitched', 0)
-                points += ip * 2.25  # IP
-                points += game_stats.get('strikeouts', 0) * 2  # K
-                points += game_stats.get('wins', 0) * 4  # W
-                points -= game_stats.get('earned_runs', 0) * 2  # ER
-                points -= game_stats.get('hits_allowed', 0) * 0.6  # H
-                points -= game_stats.get('walks', 0) * 0.6  # BB
-                points -= game_stats.get('hit_batters', 0) * 0.6  # HBP
-
-                # Bonuses
-                if ip >= 6 and game_stats.get('earned_runs', 99) == 0:
-                    points += 2.5  # CG SO
-                elif game_stats.get('earned_runs', 99) == 0:
-                    points += 2  # No hitter
-
-                return points
-            else:
-                # Hitter scoring
-                points = 0
-
-                # Singles
-                hits = game_stats.get('hits', 0)
-                doubles = game_stats.get('doubles', 0)
-                triples = game_stats.get('triples', 0)
-                homers = game_stats.get('home_runs', 0)
-                singles = hits - doubles - triples - homers
-
-                points += singles * 3
-                points += doubles * 5
-                points += triples * 8
-                points += homers * 10
-                points += game_stats.get('rbi', 0) * 2
-                points += game_stats.get('runs', 0) * 2
-                points += game_stats.get('walks', 0) * 2
-                points += game_stats.get('stolen_bases', 0) * 5
-
-                return points
-
-        except Exception as e:
-            logger.debug(f"Error calculating DK points: {e}")
-
-        return None
-
-    def calculate_streaks(self, scores: List[float]) -> Tuple[Optional[str], int]:
-        """Calculate current streak type and length"""
-        if len(scores) < 2:
-            return None, 0
-
-        # Define thresholds
-        hot_threshold = 15.0  # DK points
-        cold_threshold = 5.0
-
-        streak_type = None
-        streak_length = 0
-
-        for score in scores:
-            if score >= hot_threshold:
-                if streak_type == 'hot':
-                    streak_length += 1
-                else:
-                    streak_type = 'hot'
-                    streak_length = 1
-            elif score <= cold_threshold:
-                if streak_type == 'cold':
-                    streak_length += 1
-                else:
-                    streak_type = 'cold'
-                    streak_length = 1
-            else:
-                # Streak broken
-                break
-
-        return streak_type, streak_length
-
-
-# Integration function for bulletproof_dfs_core
-def enrich_players_with_recent_form(players: List,
-                                    form_analyzer: RecentFormAnalyzer,
-                                    max_players: Optional[int] = None) -> int:
-    """
-    Enrich players with recent form data
-
-    Args:
-        players: List of players to analyze
-        form_analyzer: RecentFormAnalyzer instance
-        max_players: Maximum players to analyze (None = all)
-
-    Returns:
-        Number of players successfully enriched
-    """
-    enriched_count = 0
-
-    # Determine how many to process
-    if max_players and max_players > 0:
-        players_to_analyze = players[:max_players]
-    else:
-        players_to_analyze = players
-
-    logger.info(f"Analyzing recent form for {len(players_to_analyze)} players")
-
-    for i, player in enumerate(players_to_analyze):
-        if (i + 1) % 10 == 0:
-            logger.info(f"Progress: {i + 1}/{len(players_to_analyze)}")
-
-        try:
-            form_data = form_analyzer.analyze_player_form(player)
-
-            if form_data:
-                # Apply to player
-                player.apply_recent_form(form_data)
-                enriched_count += 1
-
-        except Exception as e:
-            logger.debug(f"Error analyzing form for {player.name}: {e}")
-
-    logger.info(f"Successfully enriched {enriched_count}/{len(players_to_analyze)} players with recent form")
-
-    return enriched_count
-
-
-# Example usage
-if __name__ == "__main__":
-    # Test with a player
-    from unified_player_model import UnifiedPlayer
-
-    player = UnifiedPlayer(
-        id="1",
-        name="Shohei Ohtani",
-        team="LAD",
-        salary=6000,
-        primary_position="DH",
-        positions=["DH"],
-        base_projection=12.0
-    )
-
-    analyzer = RecentFormAnalyzer(days_back=7)
-    form_data = analyzer.analyze_player_form(player)
-
-    if form_data:
-        print(f"Form analysis for {player.name}:")
-        print(f"  Form score: {form_data['form_score']:.2f}x")
-        print(f"  Trend: {form_data['trend']}")
-        print(f"  Games analyzed: {form_data['games_analyzed']}")
-    else:
-        print(f"No recent form data available for {player.name}")
+    # Keep original method for backward compatibility
+    def analyze_player_form(self, player: Any) -> Optional[Dict[str, Any]]:
+        """Analyze single player form (backward compatibility)"""
+        results = self.analyze_players_batch([player], use_cache=True)
+        return results.get(player.id)

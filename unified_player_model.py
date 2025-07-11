@@ -130,6 +130,10 @@ class UnifiedPlayer:
 
         # Mark as calculated
         self._score_calculated = True
+
+
+
+
     def _calculate_recent_performance(self) -> Optional[float]:
         """
         Calculate recent form multiplier from REAL data only
@@ -246,6 +250,57 @@ class UnifiedPlayer:
 
             return mult
 
+    def prepare_players_for_optimization(self, players: List[UnifiedPlayer]) -> List[UnifiedPlayer]:
+        """
+        Pre-calculate stack bonuses to avoid quadratic terms in MILP
+        """
+        # Reset all stack bonuses
+        for player in players:
+            player._stack_bonus = 0.0
+
+        # Group by team
+        team_groups = {}
+        for player in players:
+            if player.team and player.primary_position != 'P':
+                if player.team not in team_groups:
+                    team_groups[player.team] = []
+                team_groups[player.team].append(player)
+
+        # Apply stack bonuses for teams with good correlation
+        for team, team_players in team_groups.items():
+            if len(team_players) >= 3:
+                # Check for consecutive batting orders
+                with_order = [p for p in team_players
+                              if hasattr(p, 'batting_order') and p.batting_order]
+
+                if len(with_order) >= 2:
+                    with_order.sort(key=lambda p: p.batting_order)
+
+                    # Mark players in consecutive order
+                    for i in range(len(with_order) - 1):
+                        if with_order[i + 1].batting_order - with_order[i].batting_order == 1:
+                            # These players get a small stack bonus
+                            with_order[i]._stack_bonus = self.config.correlation_boost / 2
+                            with_order[i + 1]._stack_bonus = self.config.correlation_boost / 2
+
+        return players
+
+    def get_optimization_score(self, player: UnifiedPlayer) -> float:
+        """
+        Get player's score for optimization including pre-calculated bonuses
+        """
+        base_score = player.enhanced_score
+
+        # Apply pre-calculated stack bonuses
+        if hasattr(player, '_stack_bonus'):
+            return base_score * (1 + player._stack_bonus)
+
+        # Apply diversity penalty if exists
+        if hasattr(player, '_diversity_penalty'):
+            return base_score * player._diversity_penalty
+
+        return base_score
+
     def _calculate_matchup_quality(self) -> Optional[float]:
         """
         Calculate matchup quality from REAL data only
@@ -257,6 +312,8 @@ class UnifiedPlayer:
 
         adjustments = 0
         total_factor = 1.0
+
+
 
         if self.primary_position == 'P':
             # Pitcher metrics (small adjustments only)

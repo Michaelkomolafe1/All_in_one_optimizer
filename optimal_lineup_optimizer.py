@@ -100,7 +100,7 @@ class OptimalLineupOptimizer:
 
     def _fixed_classic_milp_optimization(self, players: List, use_confirmations: bool) -> OptimizationResult:
         """
-        FIXED MILP optimization with proper position assignment
+        FIXED MILP optimization with diversity scoring support
         """
         n_players = len(players)
 
@@ -108,15 +108,13 @@ class OptimalLineupOptimizer:
         prob = pulp.LpProblem("DFS_Classic_Fixed", pulp.LpMaximize)
 
         # Decision variables
-        # x[i] = 1 if player i is selected
         player_vars = {}
         for i in range(n_players):
             player_vars[i] = pulp.LpVariable(f"x_{i}", cat='Binary')
 
         # Position assignment variables
-        # y[i,pos] = 1 if player i is assigned to position pos
         position_vars = {}
-        player_positions = {}  # Track which positions each player can fill
+        player_positions = {}
 
         for i, player in enumerate(players):
             player_positions[i] = []
@@ -125,11 +123,19 @@ class OptimalLineupOptimizer:
                     position_vars[(i, pos)] = pulp.LpVariable(f"y_{i}_{pos}", cat='Binary')
                     player_positions[i].append(pos)
 
-        # Objective: maximize total score
-        prob += pulp.lpSum([
-            player_vars[i] * players[i].enhanced_score
-            for i in range(n_players)
-        ])
+        # CRITICAL: Use correct score based on mode
+        if hasattr(self, 'use_diversity_scoring') and self.use_diversity_scoring:
+            # Use diversity-adjusted scores
+            prob += pulp.lpSum([
+                player_vars[i] * players[i].enhanced_score  # This now contains diversity penalty
+                for i in range(n_players)
+            ])
+        else:
+            # Normal scoring
+            prob += pulp.lpSum([
+                player_vars[i] * players[i].enhanced_score
+                for i in range(n_players)
+            ])
 
         # Constraint 1: Exactly 10 players
         prob += pulp.lpSum(player_vars.values()) == 10

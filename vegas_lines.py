@@ -1,490 +1,469 @@
 #!/usr/bin/env python3
-# vegas_lines.py - Enhanced version with better cache validation but no mock data
+"""
+Vegas Lines Module - FIXED to use multipliers instead of fixed boosts
+====================================================================
+Integrates with UnifiedScoringEngine for consistent scoring
+"""
 
 import os
-import requests
 import json
 from datetime import datetime, timedelta
-import time
+from typing import Dict, List, Optional, Any
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry  # Fixed import
+import logging
 
-# Initialize module-level variable for verbosity
-VERBOSE_MODE = False
-
-
-def set_verbose_mode(verbose=False):
-    """Set verbose mode for the module"""
-    global VERBOSE_MODE
-    VERBOSE_MODE = verbose
-
-
-def verbose_print(message):
-    """Print message only in verbose mode"""
-    global VERBOSE_MODE
-    if VERBOSE_MODE:
-        print(message)
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class VegasLines:
-    """Class for fetching and applying Vegas lines to MLB DFS projections"""
+    """
+    FIXED: Vegas lines data fetcher and processor using MULTIPLIERS
+    Now properly integrates with the unified scoring system
+    """
 
-    def __init__(self, cache_dir="data/vegas", verbose=False):
-        """Initialize the Vegas lines module"""
-        self.cache_dir = cache_dir
-        self.today = datetime.now().strftime('%Y-%m-%d')
-        self.cache_expiry = 2  # Hours - lines change frequently
+    def __init__(self, use_cache: bool = True, cache_duration_minutes: int = 30, verbose: bool = False):
+        """Initialize Vegas lines fetcher with caching"""
+        self.api_key = os.environ.get("ODDS_API_KEY", "YOUR_API_KEY_HERE")
+        self.base_url = "https://api.the-odds-api.com/v4"
+        self.sport = "baseball_mlb"
+
+        self.use_cache = use_cache
+        self.cache_duration = timedelta(minutes=cache_duration_minutes)
+        self.cache_file = "vegas_cache.json"
+
+        self.verbose = verbose
         self.lines = {}
-        self.api_key = "14b669db87ed65f1d0f3e70a90386707"  # Your API key
 
-        # Set verbose mode
-        set_verbose_mode(verbose)
+        # Configure session with retries
+        self.session = requests.Session()
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
-        # Print debug info if verbose
-        verbose_print(f"Vegas Lines initialized with cache dir: {cache_dir}")
-        verbose_print(f"Today's date: {self.today}")
+        # Initialize on creation
+        self.get_vegas_lines()
 
-        # Create cache directory if it doesn't exist
-        os.makedirs(self.cache_dir, exist_ok=True)
+    def verbose_print(self, message: str):
+        """Print if verbose mode is enabled"""
+        if self.verbose:
+            print(f"[Vegas] {message}")
 
-    def get_vegas_lines(self, force_refresh=False):
+    def get_vegas_lines(self, force_refresh: bool = False) -> Dict[str, Dict]:
         """
-        Get Vegas lines data for today's MLB games.
-
-        Args:
-            force_refresh: If True, force refresh from API (default: False)
-
-        Returns:
-            Dictionary of Vegas lines data by team
+        Fetch Vegas lines with caching support
+        Returns dict keyed by team code with vegas data
         """
-        # Check if we have cached lines data that's not stale
-        cache_file = os.path.join(self.cache_dir, f"vegas_lines_{self.today}.json")
-
-        if not force_refresh and os.path.exists(cache_file):
-            # Check if file is stale
-            file_time = datetime.fromtimestamp(os.path.getmtime(cache_file))
-            cache_age_hours = (datetime.now() - file_time).total_seconds() / 3600
-
-            if cache_age_hours < self.cache_expiry:
-                try:
-                    verbose_print(f"Loading Vegas lines from cache: {cache_file}")
-                    with open(cache_file, 'r') as f:
-                        cache_data = json.load(f)
-
-                    # Validate the cache data has the expected structure
-                    if cache_data and isinstance(cache_data, dict) and len(cache_data) > 0:
-                        self.lines = cache_data
-                        verbose_print(f"Successfully loaded Vegas lines for {len(self.lines)} teams from cache")
-                        print(f"Vegas data loaded successfully!")
-                        return self.lines
-                    else:
-                        verbose_print("Cache file exists but contains invalid data. Will try API.")
-                except Exception as e:
-                    verbose_print(f"Error reading Vegas lines cache: {str(e)}")
-                    # Continue to fetch fresh data
-            else:
-                verbose_print(f"Cache is {cache_age_hours:.1f} hours old (expiry: {self.cache_expiry}h). Will refresh.")
+        # Check cache first
+        if self.use_cache and not force_refresh:
+            cached_data = self._load_from_cache()
+            if cached_data:
+                self.lines = cached_data
+                return cached_data
 
         # Fetch fresh data
-        verbose_print("Fetching Vegas lines from The Odds API...")
-
-        url = "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds"
-        params = {
-            'apiKey': self.api_key,
-            'regions': 'us',
-            'markets': 'totals',
-            'oddsFormat': 'american',
-            'dateFormat': 'iso'
-        }
-
         try:
-            verbose_print(f"Making API request to: {url}")
-            response = requests.get(url, params=params, timeout=10)  # Add timeout
+            self.verbose_print("Fetching fresh Vegas lines...")
 
-            # Check for HTTP errors
-            response.raise_for_status()
+            # Markets to fetch
+            markets = "totals"  # We primarily care about totals
 
-            data = response.json()
+            url = f"{self.base_url}/sports/{self.sport}/odds"
+            params = {
+                "apiKey": self.api_key,
+                "regions": "us",
+                "markets": markets,
+                "oddsFormat": "american",
+                "dateFormat": "iso"
+            }
 
-            # Verify we got valid data
-            if not data or not isinstance(data, list) or len(data) == 0:
-                verbose_print(f"API returned empty or invalid data: {data}")
-                print("No Vegas lines data available from API. Skipping Vegas adjustments.")
-                return {}
+            response = self.session.get(url, params=params, timeout=10)
 
-            # Process the data to extract the lines by team
-            self.lines = self._process_odds_data(data)
+            if response.status_code == 200:
+                data = response.json()
+                processed = self._process_odds_data(data)
 
-            if not self.lines:
-                verbose_print("Failed to process odds data")
-                print("Failed to process Vegas odds data. Skipping Vegas adjustments.")
-                return {}
+                # Save to cache
+                if self.use_cache and processed:
+                    self._save_to_cache(processed)
 
-            # Save to cache
-            with open(cache_file, 'w') as f:
-                json.dump(self.lines, f)
-
-            verbose_print(f"Saved Vegas lines to cache: {cache_file}")
-            print(f"Vegas data loaded successfully!")
-            return self.lines
+                self.lines = processed
+                return processed
+            else:
+                self.verbose_print(f"API request failed: {response.status_code}")
+                return self._get_fallback_lines()
 
         except Exception as e:
-            verbose_print(f"Error fetching Vegas lines: {str(e)}")
-            print("Failed to fetch Vegas odds data. Skipping Vegas adjustments.")
-            return {}
+            self.verbose_print(f"Error fetching Vegas lines: {e}")
+            return self._get_fallback_lines()
 
-    def _process_odds_data(self, data):
-        """
-        Process odds data from The Odds API into a more usable format.
-
-        Args:
-            data: JSON data from The Odds API
-
-        Returns:
-            Dictionary of Vegas lines data by team
-        """
+    def _process_odds_data(self, data: List[Dict]) -> Dict[str, Dict]:
+        """Process raw odds API data into team-keyed format"""
         processed = {}
-        total_games = len(data)
-        verbose_print(f"Processing odds data for {total_games} games")
 
-        for game_idx, game in enumerate(data):
+        for game in data:
             try:
-                # Get game info
                 home_team = game.get('home_team', '')
                 away_team = game.get('away_team', '')
 
-                verbose_print(f"Processing game {game_idx + 1}/{total_games}: {away_team} @ {home_team}")
-
-                # Skip if missing teams
-                if not home_team or not away_team:
-                    verbose_print(f"  Skipping game with missing team info: {game}")
-                    continue
-
-                # Find totals in bookmakers data
+                # Find totals from bookmakers
                 total = None
-                bookmakers = game.get('bookmakers', [])
-
-                if not bookmakers:
-                    verbose_print(f"  No bookmakers data for {away_team} @ {home_team}")
-                    continue
-
-                # Try to find totals from multiple bookmakers - prefer DraftKings
-                for bookmaker in bookmakers:
-                    bookmaker_key = bookmaker.get('key', '')
-                    markets = bookmaker.get('markets', [])
-
-                    for market in markets:
+                for bookmaker in game.get('bookmakers', []):
+                    for market in bookmaker.get('markets', []):
                         if market.get('key') == 'totals':
                             outcomes = market.get('outcomes', [])
-
-                            # Get total from first outcome (over/under are same number)
                             if outcomes and len(outcomes) > 0:
                                 points = outcomes[0].get('point')
                                 if points is not None:
                                     total = float(points)
-                                    verbose_print(f"  Found total {total} from {bookmaker_key}")
                                     break
-
-                    # If we found a total, no need to check more bookmakers
                     if total is not None:
                         break
 
-                # Skip if we couldn't find a total
                 if total is None:
-                    verbose_print(f"  No total found for {away_team} @ {home_team}")
                     continue
 
-                # Map team names to MLB team codes
+                # Map team names to codes
                 home_code = self._map_team_to_code(home_team)
                 away_code = self._map_team_to_code(away_team)
 
-                verbose_print(f"  Mapped teams: {home_team} -> {home_code}, {away_team} -> {away_code}")
-
                 if not home_code or not away_code:
-                    verbose_print(f"  Couldn't map one or both teams to codes")
                     continue
 
-                # Calculate implied team totals (simple 50/50 split for now)
-                # In a real implementation, this would use the money line to calculate
-                # more accurate implied totals
+                # Calculate implied totals (simple 50/50 split for now)
+                # In production, use moneyline to weight this properly
                 home_implied = total / 2
                 away_implied = total / 2
 
-                # Add home team data
+                # Store data for both teams
                 processed[home_code] = {
                     'team': home_code,
                     'opponent': away_code,
-                    'total': total,
+                    'game_total': total,
                     'team_total': home_implied,
                     'opponent_total': away_implied,
-                    'is_favorite': True,  # Default assumption
+                    'implied_total': home_implied,  # For compatibility
                     'is_home': True
                 }
 
-                # Add away team data
                 processed[away_code] = {
                     'team': away_code,
                     'opponent': home_code,
-                    'total': total,
+                    'game_total': total,
                     'team_total': away_implied,
                     'opponent_total': home_implied,
-                    'is_favorite': False,  # Default assumption
+                    'implied_total': away_implied,  # For compatibility
                     'is_home': False
                 }
 
-                verbose_print(f"  Successfully processed game data")
-
             except Exception as e:
-                verbose_print(f"Error processing game data: {str(e)}")
+                self.verbose_print(f"Error processing game: {e}")
                 continue
 
-        verbose_print(f"Processed Vegas lines for {len(processed)} teams")
+        self.verbose_print(f"Processed {len(processed)} team Vegas lines")
         return processed
 
-    def _map_team_to_code(self, team_name):
+    def enrich_players(self, players: List[Any]) -> int:
         """
-        Map team name from API to standard MLB team code.
+        NEW METHOD: Enrich players with Vegas data for unified scoring engine
+        This replaces the old apply_to_players method
 
-        Args:
-            team_name: Team name from API
-
-        Returns:
-            MLB team code (3-letter abbreviation)
+        Returns: Number of players enriched
         """
-        # This mapping handles various team name formats
+        if not self.lines:
+            self.get_vegas_lines()
+
+        if not self.lines:
+            self.verbose_print("No Vegas lines available for enrichment")
+            return 0
+
+        enriched_count = 0
+
+        for player in players:
+            try:
+                # Skip if no team
+                if not hasattr(player, 'team') or not player.team:
+                    continue
+
+                # Get Vegas data for player's team
+                team_vegas = self.lines.get(player.team)
+                if not team_vegas:
+                    continue
+
+                # Create Vegas data structure for player
+                vegas_data = {
+                    'implied_total': team_vegas['team_total'],
+                    'opponent_total': team_vegas['opponent_total'],
+                    'game_total': team_vegas['game_total'],
+                    'is_home': team_vegas['is_home']
+                }
+
+                # Apply to player object
+                if hasattr(player, 'apply_vegas_data'):
+                    player.apply_vegas_data(vegas_data)
+                else:
+                    # Fallback - just set the attribute
+                    player._vegas_data = vegas_data
+
+                enriched_count += 1
+
+                # Verbose logging for high/low totals
+                if self.verbose:
+                    if vegas_data['implied_total'] >= 5.5:
+                        logger.info(f"HIGH total for {player.name}: {vegas_data['implied_total']:.1f}")
+                    elif vegas_data['implied_total'] <= 3.5:
+                        logger.info(f"LOW total for {player.name}: {vegas_data['implied_total']:.1f}")
+
+            except Exception as e:
+                logger.debug(f"Error enriching {getattr(player, 'name', 'unknown')}: {e}")
+
+        self.verbose_print(f"Enriched {enriched_count} players with Vegas data")
+        return enriched_count
+
+    def get_player_vegas_data(self, player: Any) -> Optional[Dict]:
+        """
+        NEW METHOD: Get Vegas data for a single player
+        Used by the performance optimizer for cached enrichment
+        """
+        if not hasattr(player, 'team') or not player.team:
+            return None
+
+        return self.lines.get(player.team)
+
+    def get_team_implied_total(self, team_code: str) -> Optional[float]:
+        """Get implied total for a specific team"""
+        if team_code in self.lines:
+            return self.lines[team_code].get('implied_total', 0)
+        return None
+
+    def get_game_total(self, team_code: str) -> Optional[float]:
+        """Get game total for a team's game"""
+        if team_code in self.lines:
+            return self.lines[team_code].get('game_total', 0)
+        return None
+
+    def get_high_total_teams(self, threshold: float = 5.0) -> List[str]:
+        """Get list of teams with high implied totals"""
+        high_teams = []
+        for team, data in self.lines.items():
+            if data.get('implied_total', 0) >= threshold:
+                high_teams.append(team)
+        return sorted(high_teams)
+
+    def get_low_total_teams(self, threshold: float = 4.0) -> List[str]:
+        """Get list of teams with low implied totals"""
+        low_teams = []
+        for team, data in self.lines.items():
+            if data.get('implied_total', 0) <= threshold:
+                low_teams.append(team)
+        return sorted(low_teams)
+
+    def print_summary(self):
+        """Print summary of current Vegas lines"""
+        if not self.lines:
+            print("No Vegas lines loaded")
+            return
+
+        print("\n📊 VEGAS LINES SUMMARY")
+        print("=" * 60)
+
+        # Sort by implied total
+        sorted_teams = sorted(
+            self.lines.items(),
+            key=lambda x: x[1].get('implied_total', 0),
+            reverse=True
+        )
+
+        print(f"{'Team':4} {'Total':>6} {'Opp':>6} {'Game':>6} {'Home':>5}")
+        print("-" * 35)
+
+        for team, data in sorted_teams[:20]:  # Top 20
+            print(f"{team:4} {data['implied_total']:6.1f} "
+                  f"{data['opponent_total']:6.1f} "
+                  f"{data['game_total']:6.1f} "
+                  f"{'Y' if data['is_home'] else 'N':>5}")
+
+    def _load_from_cache(self) -> Optional[Dict]:
+        """Load Vegas lines from cache if valid"""
+        if not os.path.exists(self.cache_file):
+            return None
+
+        try:
+            with open(self.cache_file, 'r') as f:
+                cache_data = json.load(f)
+
+            # Check if cache is still valid
+            cached_time = datetime.fromisoformat(cache_data['timestamp'])
+            if datetime.now() - cached_time < self.cache_duration:
+                self.verbose_print("Using cached Vegas lines")
+                return cache_data['lines']
+
+        except Exception as e:
+            self.verbose_print(f"Cache read error: {e}")
+
+        return None
+
+    def _save_to_cache(self, lines: Dict):
+        """Save Vegas lines to cache"""
+        try:
+            cache_data = {
+                'timestamp': datetime.now().isoformat(),
+                'lines': lines
+            }
+            with open(self.cache_file, 'w') as f:
+                json.dump(cache_data, f)
+
+        except Exception as e:
+            self.verbose_print(f"Cache write error: {e}")
+
+    def _get_fallback_lines(self) -> Dict[str, Dict]:
+        """Get fallback Vegas lines when API fails"""
+        # Try to load from cache even if expired
+        try:
+            with open(self.cache_file, 'r') as f:
+                cache_data = json.load(f)
+                self.verbose_print("Using expired cache as fallback")
+                return cache_data['lines']
+        except:
+            pass
+
+        # Return empty dict as last resort
+        self.verbose_print("No Vegas data available")
+        return {}
+
+    def _map_team_to_code(self, team_name: str) -> Optional[str]:
+        """Map team name from API to standard MLB team code"""
+        # Complete mapping of all variations
         mapping = {
+            # National League
             "Arizona Diamondbacks": "ARI",
-            "Arizona": "ARI",
-            "Diamondbacks": "ARI",
-
             "Atlanta Braves": "ATL",
-            "Atlanta": "ATL",
-            "Braves": "ATL",
-
-            "Baltimore Orioles": "BAL",
-            "Baltimore": "BAL",
-            "Orioles": "BAL",
-
-            "Boston Red Sox": "BOS",
-            "Boston": "BOS",
-            "Red Sox": "BOS",
-
             "Chicago Cubs": "CHC",
-            "Cubs": "CHC",
-
-            "Chicago White Sox": "CWS",
-            "White Sox": "CWS",
-
             "Cincinnati Reds": "CIN",
-            "Cincinnati": "CIN",
-            "Reds": "CIN",
-
-            "Cleveland Guardians": "CLE",
-            "Cleveland": "CLE",
-            "Guardians": "CLE",
-
             "Colorado Rockies": "COL",
-            "Colorado": "COL",
-            "Rockies": "COL",
-
-            "Detroit Tigers": "DET",
-            "Detroit": "DET",
-            "Tigers": "DET",
-
-            "Houston Astros": "HOU",
-            "Houston": "HOU",
-            "Astros": "HOU",
-
-            "Kansas City Royals": "KC",
-            "Kansas City": "KC",
-            "Royals": "KC",
-
-            "Los Angeles Angels": "LAA",
-            "LA Angels": "LAA",
-            "Angels": "LAA",
-
             "Los Angeles Dodgers": "LAD",
-            "LA Dodgers": "LAD",
-            "Dodgers": "LAD",
-
             "Miami Marlins": "MIA",
-            "Miami": "MIA",
-            "Marlins": "MIA",
-
             "Milwaukee Brewers": "MIL",
-            "Milwaukee": "MIL",
-            "Brewers": "MIL",
-
-            "Minnesota Twins": "MIN",
-            "Minnesota": "MIN",
-            "Twins": "MIN",
-
             "New York Mets": "NYM",
-            "NY Mets": "NYM",
-            "Mets": "NYM",
-
-            "New York Yankees": "NYY",
-            "NY Yankees": "NYY",
-            "Yankees": "NYY",
-
-            "Oakland Athletics": "OAK",
-            "Oakland": "OAK",
-            "Athletics": "OAK",
-            "A's": "OAK",
-
             "Philadelphia Phillies": "PHI",
-            "Philadelphia": "PHI",
-            "Phillies": "PHI",
-
             "Pittsburgh Pirates": "PIT",
-            "Pittsburgh": "PIT",
-            "Pirates": "PIT",
-
             "San Diego Padres": "SD",
-            "San Diego": "SD",
-            "Padres": "SD",
-
             "San Francisco Giants": "SF",
-            "San Francisco": "SF",
-            "Giants": "SF",
-
-            "Seattle Mariners": "SEA",
-            "Seattle": "SEA",
-            "Mariners": "SEA",
-
             "St. Louis Cardinals": "STL",
-            "Saint Louis Cardinals": "STL",
-            "St Louis Cardinals": "STL",
-            "St. Louis": "STL",
-            "St Louis": "STL",
-            "Cardinals": "STL",
-
-            "Tampa Bay Rays": "TB",
-            "Tampa Bay": "TB",
-            "Rays": "TB",
-
-            "Texas Rangers": "TEX",
-            "Texas": "TEX",
-            "Rangers": "TEX",
-
-            "Toronto Blue Jays": "TOR",
-            "Toronto": "TOR",
-            "Blue Jays": "TOR",
-
             "Washington Nationals": "WSH",
-            "Washington": "WSH",
-            "Nationals": "WSH"
+
+            # American League
+            "Baltimore Orioles": "BAL",
+            "Boston Red Sox": "BOS",
+            "Chicago White Sox": "CHW",
+            "Cleveland Guardians": "CLE",
+            "Detroit Tigers": "DET",
+            "Houston Astros": "HOU",
+            "Kansas City Royals": "KC",
+            "Los Angeles Angels": "LAA",
+            "Minnesota Twins": "MIN",
+            "New York Yankees": "NYY",
+            "Oakland Athletics": "OAK",
+            "Seattle Mariners": "SEA",
+            "Tampa Bay Rays": "TB",
+            "Texas Rangers": "TEX",
+            "Toronto Blue Jays": "TOR"
         }
 
         # Direct match
         if team_name in mapping:
             return mapping[team_name]
 
-        # Case-insensitive exact match
+        # Partial match fallback
         for full_name, code in mapping.items():
-            if full_name.lower() == team_name.lower():
+            if team_name.lower() in full_name.lower() or full_name.lower() in team_name.lower():
                 return code
 
-        # Partial match
-        for full_name, code in mapping.items():
-            if full_name.lower() in team_name.lower() or team_name.lower() in full_name.lower():
-                return code
-
-        verbose_print(f"Couldn't map team name: {team_name}")
+        self.verbose_print(f"Could not map team: {team_name}")
         return None
 
-    def apply_to_players(self, players):
+    # DEPRECATED METHODS - Kept for backward compatibility
+    def apply_to_players(self, players: List[Any]) -> List[Any]:
         """
-        Apply Vegas line adjustments to player projections.
-
-        Args:
-            players: List of player objects (AdvancedPlayer instances)
-
-        Returns:
-            Updated player list with Vegas adjustments
+        DEPRECATED: Use enrich_players() instead
+        This method uses incorrect fixed boosts
         """
-        if not self.lines:
-            # Try to get lines if we don't have them yet
-            self.get_vegas_lines()
-
-        if not self.lines:
-            print("No Vegas lines data available. Skipping Vegas adjustments.")
-            return players
-
-        adjusted_count = 0
-
-        for player in players:
-            try:
-                # Handle AdvancedPlayer objects
-                if hasattr(player, 'team'):  # It's an object
-                    team = player.team
-                    player_name = player.name
-                    position = player.primary_position
-                else:  # Legacy list/tuple format
-                    team = player[3]
-                    player_name = player[1]
-                    position = player[2]
-
-                if not team or team not in self.lines:
-                    continue
-
-                team_data = self.lines[team]
-                team_implied = team_data.get('team_total', 0)
-                opp_implied = team_data.get('opponent_total', 0)
-
-                # Apply Vegas boosts/penalties
-                boost = 0.0
-                if position != 'P':  # Batter
-                    if team_implied >= 5.0:
-                        boost = 2.0
-                    elif team_implied >= 4.5:
-                        boost = 1.0
-                    elif team_implied <= 3.5:
-                        boost = -1.0
-                else:  # Pitcher
-                    if opp_implied <= 3.5:
-                        boost = 2.0
-                    elif opp_implied <= 4.0:
-                        boost = 1.0
-                    elif opp_implied >= 5.0:
-                        boost = -1.0
-
-                # Apply boost
-                if boost != 0.0 and hasattr(player, 'enhanced_score'):
-                    old_score = player.enhanced_score
-                    player.enhanced_score += boost
-                    adjusted_count += 1
-                    verbose_print(f"Vegas adjustment for {player_name}: {boost:+.1f}")
-
-                # Add Vegas data to player
-                if hasattr(player, 'apply_vegas_data'):
-                    vegas_info = {
-                        "team_total": team_implied,
-                        "opponent_total": opp_implied,
-                        "total": team_data.get('total', 0),
-                        "is_home": team_data.get('is_home', False)
-                    }
-                    player.apply_vegas_data(vegas_info)
-
-            except Exception as e:
-                verbose_print(
-                    f"Error applying Vegas data to {player_name if 'player_name' in locals() else 'unknown'}: {str(e)}")
-                continue
-
-        if adjusted_count > 0:
-            print(f"Applied Vegas lines adjustments to {adjusted_count} players")
-
+        logger.warning("DEPRECATED: apply_to_players() called - use enrich_players() instead")
+        self.enrich_players(players)
         return players
 
-# Direct usage example
+
+# Integration function for bulletproof_dfs_core
+def enrich_players_with_vegas(core_instance, players: List[Any]) -> int:
+    """
+    Helper function to enrich players with Vegas data
+    Used by BulletproofDFSCore
+    """
+    if not hasattr(core_instance, 'vegas_lines') or not core_instance.vegas_lines:
+        logger.warning("Vegas lines module not available")
+        return 0
+
+    return core_instance.vegas_lines.enrich_players(players)
+
+
+# Example usage and testing
 if __name__ == "__main__":
-    # Test the class
+    # Test the module
+    print("🎰 Testing Vegas Lines Module")
+    print("=" * 60)
+
     vegas = VegasLines(verbose=True)
+
+    # Get fresh lines
     lines = vegas.get_vegas_lines(force_refresh=True)
 
-    # Print the lines
     if lines:
-        print("\nVegas Lines:")
-        for team, data in sorted(lines.items()):
-            print(
-                f"{team}: Total {data['total']}, Team Total: {data['team_total']:.1f}, Opp Total: {data['opponent_total']:.1f}")
+        # Show summary
+        vegas.print_summary()
+
+        # Show high/low total teams
+        print(f"\n🔥 High total teams (5.0+): {vegas.get_high_total_teams()}")
+        print(f"❄️  Low total teams (4.0-): {vegas.get_low_total_teams()}")
+
+        # Test player enrichment
+        from unified_player_model import UnifiedPlayer
+
+        test_players = [
+            UnifiedPlayer(
+                id="1",
+                name="Test Hitter",
+                team="LAD",
+                salary=5000,
+                primary_position="OF",
+                positions=["OF"],
+                base_projection=10.0
+            ),
+            UnifiedPlayer(
+                id="2",
+                name="Test Pitcher",
+                team="COL",
+                salary=7000,
+                primary_position="P",
+                positions=["P"],
+                base_projection=15.0
+            )
+        ]
+
+        enriched = vegas.enrich_players(test_players)
+        print(f"\n✅ Enriched {enriched} test players")
+
+        for player in test_players:
+            if hasattr(player, '_vegas_data'):
+                print(f"\n{player.name} Vegas data:")
+                print(f"  Team total: {player._vegas_data['implied_total']:.1f}")
+                print(f"  Opp total: {player._vegas_data['opponent_total']:.1f}")
+                print(f"  Game total: {player._vegas_data['game_total']:.1f}")
     else:
-        print("\nNo Vegas lines available")
+        print("❌ No Vegas lines available")

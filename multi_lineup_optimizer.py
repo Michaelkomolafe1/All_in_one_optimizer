@@ -10,8 +10,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 from datetime import datetime
 
+
 class MultiLineupOptimizer:
-    """Generate multiple unique lineups for GPPs"""
+    """Generate multiple unique lineups for GPPs with WORKING diversity"""
 
     def __init__(self, core_optimizer):
         self.core = core_optimizer
@@ -19,23 +20,13 @@ class MultiLineupOptimizer:
         self.lineup_hashes = set()
         self.player_exposure = {}
 
-    def generate_gpp_lineups(self, 
-                           num_lineups: int = 20,
-                           max_exposure: float = 0.5,
-                           min_salary: int = 49000) -> List[Tuple]:
-        """
-        Generate multiple unique lineups for GPPs
-
-        Args:
-            num_lineups: Number of lineups to generate
-            max_exposure: Max percentage any player can appear
-            min_salary: Minimum salary to use
-
-        Returns:
-            List of (lineup, score, metadata) tuples
-        """
+    def generate_gpp_lineups(self,
+                             num_lineups: int = 20,
+                             max_exposure: float = 0.5,
+                             min_salary: int = 49000) -> List[Tuple]:
+        """Generate unique lineups with proper diversity control"""
         print(f"\n🚀 Generating {num_lineups} unique GPP lineups...")
-        print(f"   Max exposure: {max_exposure*100:.0f}%")
+        print(f"   Max exposure: {max_exposure * 100:.0f}%")
         print(f"   Min salary: ${min_salary:,}")
 
         # Reset tracking
@@ -43,32 +34,30 @@ class MultiLineupOptimizer:
         self.lineup_hashes = set()
         self.player_exposure = {}
 
-        # Strategy distribution for GPPs
-        strategies = self._get_strategy_distribution(num_lineups)
-
         successful = 0
         attempts = 0
-        max_attempts = num_lineups * 3  # Allow retries
+        max_attempts = num_lineups * 3
 
         while successful < num_lineups and attempts < max_attempts:
             attempts += 1
 
-            # Select strategy
-            strategy_idx = min(successful, len(strategies) - 1)
-            strategy = strategies[strategy_idx]
-
-            # Generate lineup with strategy
-            lineup_data = self._generate_single_lineup(
-                strategy, 
-                successful,
-                num_lineups,
-                max_exposure,
-                min_salary
+            # Get lineup using core's diversity method
+            lineups = self.core.generate_contest_lineups(
+                count=1,  # One at a time for better diversity
+                contest_type='gpp',
+                max_exposure=max_exposure,
+                diversity_factor=0.7 + (successful / num_lineups) * 0.3  # Increase diversity over time
             )
 
-            if lineup_data and self._is_unique_lineup(lineup_data[0]):
+            if lineups and self._is_unique_lineup(lineups[0]['lineup']):
+                lineup_data = (
+                    lineups[0]['lineup'],
+                    lineups[0]['total_score'],
+                    lineups[0]
+                )
+
                 self.generated_lineups.append(lineup_data)
-                self._update_exposure(lineup_data[0])
+                self._update_exposure(lineups[0]['lineup'])
                 successful += 1
 
                 if successful % 5 == 0:
@@ -79,7 +68,46 @@ class MultiLineupOptimizer:
 
         print(f"\n✅ Successfully generated {len(self.generated_lineups)} unique lineups")
 
+        # Show exposure report
+        self._print_exposure_summary(max_exposure)
+
         return self.generated_lineups
+
+    def _print_exposure_summary(self, max_exposure: float):
+        """Print summary of player exposure"""
+        if not self.generated_lineups:
+            return
+
+        total_lineups = len(self.generated_lineups)
+        overexposed = []
+
+        print("\n📊 Top Player Exposure:")
+        sorted_exposure = sorted(
+            self.player_exposure.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        for player_id, count in sorted_exposure[:10]:
+            exposure = count / total_lineups
+            # Find player name
+            player_name = "Unknown"
+            for lineup, _, _ in self.generated_lineups:
+                for p in lineup:
+                    if p.id == player_id:
+                        player_name = p.name
+                        break
+                if player_name != "Unknown":
+                    break
+
+            status = "⚠️" if exposure > max_exposure else "✅"
+            print(f"   {status} {player_name}: {exposure * 100:.1f}% ({count}/{total_lineups})")
+
+            if exposure > max_exposure:
+                overexposed.append(player_name)
+
+        if overexposed:
+            print(f"\n⚠️ Warning: {len(overexposed)} players exceed max exposure")
 
     def _get_strategy_distribution(self, num_lineups: int) -> List[str]:
         """Get strategy distribution for lineups"""

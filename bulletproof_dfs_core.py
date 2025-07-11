@@ -251,35 +251,347 @@ REAL_DATA_SOURCES = {
 class AdvancedPlayer:
     """Player model with all advanced features including enhanced pitcher detection"""
 
-    def __init__(self, player_data: Dict):
+    def __init__(self):
+        """Initialize BulletproofDFSCore with all modules and configuration"""
         # Basic attributes
-        self.id = int(player_data.get('id', 0))
-        self.name = str(player_data.get('name', '')).strip()
-        self.positions = self._parse_positions_enhanced(player_data.get('position', ''))
-        self.primary_position = self.positions[0] if self.positions else 'UTIL'
-        self.team = str(player_data.get('team', '')).strip().upper()
-        self.salary = self._parse_salary(player_data.get('salary', 3000))
-        self.projection = self._parse_float(player_data.get('projection', 0))
+        self.players = []
+        self.contest_type = 'classic'
+        self.salary_cap = 50000
+        self.optimization_mode = 'bulletproof'
+        self.dff_classic_file = None
+        self.dff_showdown_file = None
+        self.current_dff_file = None
 
-        # Enhanced confirmation tracking
-        self.is_confirmed = False
-        self.is_manual_selected = False
-        self.confirmation_sources = []
+        # Set game date
+        self.game_date = datetime.now().strftime('%Y-%m-%d')
 
-        # Advanced data storage
-        self.dff_data = {}
-        self.vegas_data = {}
-        self.statcast_data = {}
-        self.park_factors = {}
-        self.recent_performance = {}
-        self.platoon_data = {}
+        # Load configuration
+        try:
+            from dfs_config import dfs_config
+            self.config = dfs_config
+            self.salary_cap = self.config.get('optimization.salary_cap', 50000)
+            self.batch_size = self.config.get('optimization.batch_size', 25)
+            self.max_form_analysis_players = self.config.get('optimization.max_form_analysis_players', None)
+        except:
+            self.config = None
+            self.batch_size = 25
+            self.max_form_analysis_players = None
 
-        # Scoring
-        self.base_score = self.projection if self.projection > 0 else (self.salary / 1000.0)
-        self.enhanced_score = self.base_score
+        # Initialize tracking for duplicate prevention
+        self._enrichment_applied = {}
 
-        # Contest specific
-        self.contest_type = player_data.get('contest_type', 'classic')
+        # Initialize external modules (Vegas, Statcast, etc.)
+        self._initialize_modules()
+
+        # ====== NEW OPTIMIZATION MODULES INITIALIZATION ======
+        # This is the critical fix - initialize the unified optimization system
+        self._initialize_optimization_modules()
+
+        print("🚀 Bulletproof DFS Core initialized successfully")
+
+    def _initialize_optimization_modules(self):
+        """
+        Initialize the NEW optimization modules (scoring engine, validator, performance optimizer)
+        This is a separate method to keep initialization clean and testable
+        """
+        print("🔧 Initializing optimization modules...")
+
+        # 1. Initialize Unified Scoring Engine
+        try:
+            from unified_scoring_engine import get_scoring_engine, load_config_from_file
+
+            # Try to load config from file first
+            scoring_config = None
+            if os.path.exists('optimization_config.json'):
+                try:
+                    scoring_config = load_config_from_file('optimization_config.json')
+                    print("  ✅ Loaded scoring config from optimization_config.json")
+                except Exception as e:
+                    print(f"  ⚠️ Could not load config file: {e}")
+
+            # Initialize scoring engine with config (or defaults)
+            self.scoring_engine = get_scoring_engine(scoring_config)
+            print("  ✅ Unified Scoring Engine initialized")
+
+        except Exception as e:
+            print(f"  ❌ Failed to initialize Scoring Engine: {e}")
+            self.scoring_engine = None
+
+        # 2. Initialize Data Validator
+        try:
+            from data_validator import get_validator
+
+            self.validator = get_validator()
+            print("  ✅ Data Validator initialized")
+
+            # If we have loaded players, update validator with salary ranges
+            if hasattr(self, 'players') and self.players:
+                self._update_validator_salary_ranges()
+
+        except Exception as e:
+            print(f"  ❌ Failed to initialize Data Validator: {e}")
+            self.validator = None
+
+        # 3. Initialize Performance Optimizer
+        try:
+            from performance_optimizer import get_performance_optimizer, CacheConfig
+
+            # Create performance config from DFS config if available
+            perf_config = None
+            if self.config and 'performance' in self.config:
+                perf_settings = self.config['performance']
+                perf_config = CacheConfig(
+                    ttl_seconds=perf_settings.get('cache_ttl', {}),
+                    enable_disk_cache=perf_settings.get('enable_disk_cache', True),
+                    cache_dir=perf_settings.get('cache_dir', '.dfs_cache'),
+                    max_memory_mb=perf_settings.get('max_memory_mb', 100)
+                )
+
+            self.performance_optimizer = get_performance_optimizer(perf_config)
+            print("  ✅ Performance Optimizer initialized")
+
+        except Exception as e:
+            print(f"  ❌ Failed to initialize Performance Optimizer: {e}")
+            self.performance_optimizer = None
+
+        # 4. Verify module integration
+        self._verify_module_integration()
+
+    def _update_validator_salary_ranges(self):
+        """Update validator with actual salary ranges from loaded players"""
+        if not self.validator or not self.players:
+            return
+
+        try:
+            # Get actual salary range from players
+            salaries = [p.salary for p in self.players if hasattr(p, 'salary') and p.salary > 0]
+            if salaries:
+                min_salary = min(salaries)
+                max_salary = max(salaries)
+
+                # Update validator rules
+                self.validator.rules.player_rules['salary']['min'] = min_salary
+                self.validator.rules.player_rules['salary']['max'] = max_salary
+
+                print(f"  📊 Updated validator salary range: ${min_salary:,} - ${max_salary:,}")
+        except Exception as e:
+            print(f"  ⚠️ Could not update validator salary ranges: {e}")
+
+    def _verify_module_integration(self):
+        """Verify that all optimization modules are properly integrated"""
+        modules_status = {
+            'Scoring Engine': self.scoring_engine is not None,
+            'Data Validator': self.validator is not None,
+            'Performance Optimizer': self.performance_optimizer is not None
+        }
+
+        all_ready = all(modules_status.values())
+
+        if all_ready:
+            print("  ✅ All optimization modules ready!")
+
+            # Set flag indicating new system is available
+            self.use_unified_scoring = True
+
+            # Test scoring engine with dummy player
+            try:
+                from unified_player_model import UnifiedPlayer
+                test_player = UnifiedPlayer(
+                    id="test",
+                    name="Test Player",
+                    team="TEST",
+                    salary=5000,
+                    primary_position="OF",
+                    positions=["OF"],
+                    base_projection=10.0
+                )
+
+                test_score = self.scoring_engine.calculate_score(test_player)
+                print(f"  🧪 Scoring engine test: {test_score:.2f} points")
+
+            except Exception as e:
+                print(f"  ⚠️ Scoring engine test failed: {e}")
+        else:
+            print("  ⚠️ Some optimization modules unavailable:")
+            for module, status in modules_status.items():
+                if not status:
+                    print(f"     ❌ {module}")
+
+            # Fallback to legacy scoring
+            self.use_unified_scoring = False
+
+    def calculate_player_score(self, player):
+        """
+        Calculate player score using unified engine or fallback
+        This method ensures backward compatibility
+        """
+        if self.use_unified_scoring and self.scoring_engine:
+            try:
+                # Use unified scoring engine
+                score = self.scoring_engine.calculate_score(player)
+
+                # Ensure the player object is updated
+                player.enhanced_score = score
+
+                # Copy audit trail if available
+                if hasattr(player, '_score_audit'):
+                    player._score_components = player._score_audit
+
+                return score
+
+            except Exception as e:
+                print(f"⚠️ Unified scoring failed for {player.name}: {e}")
+                # Fall through to legacy scoring
+
+        # Fallback to legacy scoring
+        if hasattr(player, 'calculate_enhanced_score'):
+            return player.calculate_enhanced_score()
+        else:
+            # Last resort - use base projection
+            return getattr(player, 'base_projection',
+                           getattr(player, 'projection', 0))
+
+    def validate_player_data(self, player):
+        """
+        Validate player data using unified validator or basic checks
+        Returns: (is_valid, cleaned_player, warnings)
+        """
+        if self.validator:
+            try:
+                # Use unified validator
+                result = self.validator.validate_player(player)
+
+                if not result.is_valid:
+                    print(f"❌ Validation failed for {player.name}: {result.errors}")
+                    return False, player, result.warnings
+
+                # Apply any cleaned data
+                if result.cleaned_data:
+                    for key, value in result.cleaned_data.items():
+                        if hasattr(player, key):
+                            setattr(player, key, value)
+
+                return True, player, result.warnings
+
+            except Exception as e:
+                print(f"⚠️ Validator error for {player.name}: {e}")
+                # Fall through to basic validation
+
+        # Fallback to basic validation
+        warnings = []
+
+        # Basic salary check
+        if not hasattr(player, 'salary') or player.salary <= 0:
+            return False, player, ["Invalid salary"]
+
+        # Basic projection check
+        proj = getattr(player, 'base_projection',
+                       getattr(player, 'projection', 0))
+        if proj < 0:
+            warnings.append("Negative projection")
+            player.base_projection = 0
+
+        # Basic position check
+        if not hasattr(player, 'primary_position'):
+            return False, player, ["No position"]
+
+        return True, player, warnings
+
+    def enrich_all_players(self):
+        """
+        Enrich all confirmed players with data, using performance optimizer
+        This replaces the old _apply_enrichments_to_confirmed_players
+        """
+        # Get truly confirmed players
+        truly_confirmed = [p for p in self.players if p.is_confirmed]
+
+        if not truly_confirmed:
+            print("⚠️ No confirmed players to enrich")
+            return
+
+        print(f"\n📊 ENRICHING {len(truly_confirmed)} CONFIRMED PLAYERS...")
+
+        # Use performance optimizer for caching if available
+        if self.performance_optimizer:
+            # Define enrichment function
+            @self.performance_optimizer.cached(category='player_enrichment')
+            def enrich_player_cached(player_id):
+                # Find player
+                player = next((p for p in truly_confirmed if p.id == player_id), None)
+                if not player:
+                    return None
+
+                # Apply all enrichments
+                enrichment_data = {}
+
+                # Vegas
+                if self.vegas_lines:
+                    vegas_data = self.vegas_lines.get_player_vegas_data(player)
+                    if vegas_data:
+                        enrichment_data['vegas'] = vegas_data
+
+                # Statcast
+                if self.statcast_fetcher:
+                    if player.primary_position == 'P':
+                        stats = self.statcast_fetcher.get_pitcher_stats(player.name)
+                    else:
+                        stats = self.statcast_fetcher.get_hitter_stats(player.name)
+                    if stats:
+                        enrichment_data['statcast'] = stats
+
+                # Recent form
+                if self.form_analyzer and not self._enrichment_applied['recent_form']:
+                    print("📈 Analyzing recent form (batch mode)...")
+                    try:
+                        # Use new batch method
+                        form_results = self.form_analyzer.analyze_players_batch(
+                            truly_confirmed,
+                            use_cache=True
+                        )
+                        print(f"   ✅ {len(form_results)} players analyzed")
+
+                        # Report hot/cold
+                        hot = sum(1 for p in truly_confirmed if getattr(p, 'hot_streak', False))
+                        cold = sum(1 for p in truly_confirmed if getattr(p, 'form_score', 1.0) < 0.9)
+                        if hot:
+                            print(f"   🔥 {hot} hot players")
+                        if cold:
+                            print(f"   ❄️ {cold} cold players")
+
+                    except Exception as e:
+                        print(f"   ❌ Form analysis failed: {e}")
+                    self._enrichment_applied['recent_form'] = True
+
+                return enrichment_data
+
+            # Process all players with caching
+            for player in truly_confirmed:
+                try:
+                    enrichment_data = enrich_player_cached(player.id)
+
+                    if enrichment_data:
+                        # Apply enrichments
+                        if 'vegas' in enrichment_data:
+                            player.apply_vegas_data(enrichment_data['vegas'])
+                        if 'statcast' in enrichment_data:
+                            player.apply_statcast_data(enrichment_data['statcast'])
+                        if 'form' in enrichment_data:
+                            player.apply_recent_form(enrichment_data['form'])
+
+                except Exception as e:
+                    print(f"⚠️ Error enriching {player.name}: {e}")
+
+        else:
+            # Fallback to original enrichment method
+            self._apply_enrichments_to_confirmed_players()
+
+        # Recalculate all scores after enrichment
+        print("\n🔄 Recalculating all scores with enriched data...")
+
+        for player in truly_confirmed:
+            self.calculate_player_score(player)
+
+        print("✅ Enrichment complete!")
 
     def _parse_positions_enhanced(self, position_str: str) -> List[str]:
         """Enhanced position parsing that properly handles DraftKings format"""
@@ -552,6 +864,16 @@ class BulletproofDFSCore:
 
         # Initialize external modules
         self._initialize_modules()
+        try:
+            self.scoring_engine = get_scoring_engine()
+            self.validator = get_validator()
+            self.performance_optimizer = get_performance_optimizer()
+            print("✅ New optimization modules initialized")
+        except Exception as e:
+            print(f"⚠️ Failed to initialize new optimization modules: {e}")
+            self.scoring_engine = None
+            self.validator = None
+            self.performance_optimizer = None
 
         print("🚀 Bulletproof DFS Core initialized successfully")
 
@@ -1075,6 +1397,15 @@ class BulletproofDFSCore:
             except Exception as e:
                 print(f"❌ Failed to integrate batting order/correlation: {e}")
 
+        # Park Factors - NEW ADDITION
+        try:
+            from park_factors import get_park_factors
+            self.park_factors = get_park_factors()
+            print("✅ Park factors module initialized")
+        except Exception as e:
+            print(f"❌ Failed to initialize park factors: {e}")
+            self.park_factors = None
+
         # Unified Data System
         try:
             self.data_system = UnifiedDataSystem()
@@ -1088,7 +1419,7 @@ class BulletproofDFSCore:
     # ========================================================================
 
     def load_draftkings_csv(self, file_path: str) -> bool:
-        """Load DraftKings CSV with better multi-position parsing"""
+        """Load DraftKings CSV with validation and optimization module integration"""
         try:
             print(f"📁 Loading DraftKings CSV: {Path(file_path).name}")
 
@@ -1106,23 +1437,115 @@ class BulletproofDFSCore:
             # Parse columns
             column_map = self._detect_columns(df)
 
-            # Parse players
-            self.players = self._parse_players(df, column_map)
+            # Parse players into temporary list for validation
+            raw_players = self._parse_players(df, column_map)
+
+            # ===== NEW VALIDATION SECTION =====
+            if self.validator and raw_players:
+                print(f"\n🔍 Validating {len(raw_players)} players...")
+
+                # First, update validator with actual salary ranges from raw data
+                salaries = [p.salary for p in raw_players if hasattr(p, 'salary') and p.salary > 0]
+                if salaries:
+                    min_salary = min(salaries)
+                    max_salary = max(salaries)
+
+                    # Update validator rules dynamically
+                    self.validator.rules.player_rules['salary']['min'] = min_salary
+                    self.validator.rules.player_rules['salary']['max'] = max_salary
+                    print(f"  📊 Dynamic salary range: ${min_salary:,} - ${max_salary:,}")
+
+                # Validate each player
+                valid_players = []
+                invalid_count = 0
+                warning_count = 0
+                validation_issues = []
+
+                for player in raw_players:
+                    is_valid, cleaned_player, warnings = self.validate_player_data(player)
+
+                    if is_valid:
+                        valid_players.append(cleaned_player)
+                        if warnings:
+                            warning_count += len(warnings)
+                            # Log first few warnings as examples
+                            if len(validation_issues) < 5:
+                                validation_issues.append(f"  ⚠️ {player.name}: {', '.join(warnings)}")
+                    else:
+                        invalid_count += 1
+                        if invalid_count <= 5:  # Show first 5 invalid players
+                            print(f"  ❌ Skipping invalid player: {player.name}")
+
+                # Show validation summary
+                print(f"\n✅ Validation complete:")
+                print(f"  - Valid players: {len(valid_players)}")
+                print(f"  - Invalid players: {invalid_count}")
+                print(f"  - Total warnings: {warning_count}")
+
+                if validation_issues:
+                    print("\n  Sample warnings:")
+                    for issue in validation_issues[:3]:
+                        print(issue)
+
+                # Use validated players
+                self.players = valid_players
+
+                # Update validator with final ranges
+                if valid_players:
+                    self._update_validator_salary_ranges()
+
+            else:
+                # No validator available, use raw players
+                self.players = raw_players
+                print("  ⚠️ Data validator not available, skipping validation")
+
+            # ===== SCORING ENGINE INITIALIZATION CHECK =====
+            if self.scoring_engine and self.players:
+                print("\n🎯 Initializing scoring engine with player data...")
+
+                # Pre-calculate base projections for all players
+                for player in self.players:
+                    if not hasattr(player, 'base_projection') or player.base_projection <= 0:
+                        # Determine base projection from available data
+                        base_proj = getattr(player, 'projection', 0)
+                        if base_proj > 0:
+                            player.base_projection = base_proj
+                        elif hasattr(player, 'points'):
+                            player.base_projection = player.points
+                        else:
+                            player.base_projection = 0
+
+                print("  ✅ Scoring engine ready for optimization")
 
             # Update confirmation system if available
             if self.confirmation_system and hasattr(self.confirmation_system, 'csv_players'):
                 self.confirmation_system.csv_players = self.players
                 self.confirmation_system.csv_teams = set(p.team for p in self.players if p.team)
+                print(f"\n✅ Updated confirmation system with {len(self.players)} players")
 
-            print(f"✅ Loaded {len(self.players)} valid {self.contest_type.upper()} players")
-
-            # Update validator with actual salary range
-            if self.validator and self.players:
-                self.validator.update_salary_range_from_players(self.players)
-
+            # Final summary
+            print(f"\n✅ Successfully loaded {len(self.players)} valid {self.contest_type.upper()} players")
 
             # Show position statistics
             self._show_position_stats()
+
+            # ===== PERFORMANCE TRACKING =====
+            if self.performance_optimizer:
+                # Log CSV load event for performance tracking
+                load_stats = {
+                    'file': Path(file_path).name,
+                    'total_rows': len(df),
+                    'valid_players': len(self.players),
+                    'contest_type': self.contest_type,
+                    'timestamp': datetime.now().isoformat()
+                }
+
+                # Cache for future reference
+                self.performance_optimizer._store_in_cache(
+                    f"csv_load_{Path(file_path).stem}",
+                    load_stats,
+                    'csv_loads'
+                )
 
             return True
 
@@ -1130,7 +1553,114 @@ class BulletproofDFSCore:
             print(f"❌ Error loading CSV: {e}")
             import traceback
             traceback.print_exc()
+
+            # Clear any partial data
+            self.players = []
+
             return False
+
+    def _update_validator_salary_ranges(self):
+        """Update validator with actual salary ranges from loaded players"""
+        if not self.validator or not self.players:
+            return
+
+        try:
+            # Get actual salary range from players
+            salaries = [p.salary for p in self.players if hasattr(p, 'salary') and p.salary > 0]
+            if salaries:
+                min_salary = min(salaries)
+                max_salary = max(salaries)
+
+                # Calculate percentiles for better validation
+                salaries_sorted = sorted(salaries)
+                p10 = salaries_sorted[int(len(salaries_sorted) * 0.1)]
+                p90 = salaries_sorted[int(len(salaries_sorted) * 0.9)]
+
+                # Update validator rules
+                self.validator.rules.player_rules['salary']['min'] = min_salary
+                self.validator.rules.player_rules['salary']['max'] = max_salary
+                self.validator.rules.player_rules['salary']['p10'] = p10
+                self.validator.rules.player_rules['salary']['p90'] = p90
+
+                print(f"  📊 Updated validator salary stats:")
+                print(f"     Range: ${min_salary:,} - ${max_salary:,}")
+                print(f"     P10-P90: ${p10:,} - ${p90:,}")
+
+                # Also check projection ranges
+                projections = [
+                    getattr(p, 'base_projection', getattr(p, 'projection', 0))
+                    for p in self.players
+                    if getattr(p, 'base_projection', getattr(p, 'projection', 0)) > 0
+                ]
+
+                if projections:
+                    min_proj = min(projections)
+                    max_proj = max(projections)
+                    self.validator.rules.player_rules['projection']['min'] = 0
+                    self.validator.rules.player_rules['projection']['max'] = max_proj * 1.2  # 20% buffer
+
+                    print(f"     Projections: {min_proj:.1f} - {max_proj:.1f}")
+
+        except Exception as e:
+            print(f"  ⚠️ Could not update validator ranges: {e}")
+
+    def validate_player_data(self, player):
+        """
+        Validate player data using unified validator or basic checks
+        Returns: (is_valid, cleaned_player, warnings)
+        """
+        if self.validator:
+            try:
+                # Use unified validator
+                result = self.validator.validate_player(player)
+
+                if not result.is_valid:
+                    # Don't print for every player, just return
+                    return False, player, result.errors
+
+                # Apply any cleaned data
+                if result.cleaned_data:
+                    for key, value in result.cleaned_data.items():
+                        if hasattr(player, key):
+                            setattr(player, key, value)
+
+                return True, player, result.warnings
+
+            except Exception as e:
+                # Fallback to basic validation on error
+                pass
+
+        # Fallback to basic validation
+        warnings = []
+
+        # Basic required fields check
+        if not hasattr(player, 'name') or not player.name:
+            return False, player, ["No player name"]
+
+        if not hasattr(player, 'salary') or player.salary <= 0:
+            return False, player, ["Invalid salary"]
+
+        if not hasattr(player, 'primary_position') or not player.primary_position:
+            return False, player, ["No position"]
+
+        # Fix common issues
+        # Negative projections
+        for proj_field in ['projection', 'base_projection', 'points']:
+            if hasattr(player, proj_field):
+                value = getattr(player, proj_field)
+                if value < 0:
+                    warnings.append(f"Fixed negative {proj_field}")
+                    setattr(player, proj_field, 0)
+
+        # Ensure base_projection exists
+        if not hasattr(player, 'base_projection'):
+            player.base_projection = getattr(player, 'projection', 0)
+
+        # Ensure positions list exists
+        if not hasattr(player, 'positions'):
+            player.positions = [player.primary_position]
+
+        return True, player, warnings
 
     def _detect_contest_type(self, df: pd.DataFrame, file_path: str):
         """Detect contest type from filename and data"""
@@ -1659,6 +2189,54 @@ class BulletproofDFSCore:
 
         return False
 
+    def _apply_diversity_penalties(self, players: List, player_usage: Dict,
+                                   lineups_generated: int, max_exposure: float,
+                                   diversity_factor: float) -> List:
+        """
+        FIXED: Create players with diversity-adjusted scores for optimization
+        """
+        import copy
+
+        adjusted_players = []
+
+        for player in players:
+            # Create a deep copy to avoid modifying original
+            adj_player = copy.deepcopy(player)
+
+            # Calculate current exposure
+            usage_count = player_usage.get(player.id, 0)
+            current_exposure = usage_count / max(1, lineups_generated)
+
+            # Calculate diversity penalty
+            if current_exposure >= max_exposure:
+                # Heavy penalty for overexposed players
+                penalty = 0.3  # 70% reduction
+            elif current_exposure > max_exposure * 0.8:
+                # Moderate penalty as approaching limit
+                penalty = 0.5  # 50% reduction
+            else:
+                # Gradual penalty based on usage
+                # diversity_factor controls how aggressive the penalty is
+                penalty = 1.0 - (current_exposure * diversity_factor)
+                penalty = max(0.5, penalty)  # Never reduce more than 50%
+
+            # CRITICAL FIX: Override the scoring method to use diversity score
+            original_score = adj_player.enhanced_score
+            diversity_score = original_score * penalty
+
+            # Store both scores
+            adj_player._original_score = original_score
+            adj_player._diversity_penalty = penalty
+            adj_player._diversity_score = diversity_score
+
+            # Override the enhanced_score property
+            adj_player.enhanced_score = diversity_score
+
+            # Add to adjusted pool
+            adjusted_players.append(adj_player)
+
+        return adjusted_players
+
     def apply_dff_rankings(self, dff_file_path: str) -> bool:
         """Apply DFF rankings with enhanced matching"""
         if not dff_file_path or not os.path.exists(dff_file_path):
@@ -1909,6 +2487,15 @@ class BulletproofDFSCore:
             # COMMENTED OUT to prevent double processing:
             # self._apply_comprehensive_statistical_analysis(truly_confirmed)
             self._enrichment_applied['statistical_analysis'] = True
+
+        if self.park_factors and not self._enrichment_applied.get('park_factors', False):
+            print("🏟️ Applying park factors...")
+            try:
+                enriched_count = self.park_factors.enrich_players_with_park_factors(truly_confirmed)
+                print(f"   ✅ {enriched_count} players enriched with park factors")
+            except Exception as e:
+                print(f"   ❌ Park factors enrichment failed: {e}")
+            self._enrichment_applied['park_factors'] = True
 
         # Show summary of enrichments
         enrichment_summary = {
@@ -2862,7 +3449,7 @@ class BulletproofDFSCore:
                                  min_salary_pct: float = 0.95,
                                  diversity_factor: float = 0.7,
                                  max_exposure: float = 0.6) -> List[Dict]:
-        """Generate multiple lineups for specific contest type"""
+        """Generate multiple lineups for specific contest type with PROPER diversity"""
         print(f"\n🎰 GENERATING {count} {contest_type.upper()} LINEUPS")
         print("=" * 60)
 
@@ -2891,78 +3478,60 @@ class BulletproofDFSCore:
         while successful < count and attempts < max_attempts:
             attempts += 1
 
-            # Create adjusted player pool
-            adjusted_players = []
+            # Create diversity-adjusted player pool
+            adjusted_players = self._apply_diversity_penalties(
+                eligible,
+                player_usage,
+                successful,
+                max_exposure,
+                diversity_factor
+            )
 
-            for player in eligible:
-                # Make a copy
-                adj_player = self._copy_player(player)
-
-                # Apply diversity penalties based on usage
-                if player.id in player_usage:
-                    usage = player_usage[player.id]
-                    exposure = usage / max(1, successful)
-
-                    # Calculate penalty
-                    if exposure > max_exposure:
-                        penalty = 0.3  # 70% reduction
-                    else:
-                        # Gradual penalty based on diversity factor
-                        penalty = 1.0 - (usage * diversity_factor * 0.1)
-                        penalty = max(0.5, penalty)  # Never reduce more than 50%
-
-                    # Store the diversity penalty as a temporary attribute
-                    # This is a lineup-specific adjustment, not a player attribute
-                    temp_score = adj_player.enhanced_score * penalty
-
-                    # Create a new temporary score for optimization
-                    # WITHOUT modifying the player's actual enhanced_score
-                    adj_player._temp_optimization_score = temp_score
-                    adj_player._diversity_penalty = penalty
-
-                    # For optimizer, use the temporary score
-                    # You'll need to modify your optimizer to check for _temp_optimization_score first
-
-                adjusted_players.append(adj_player)
-
-            # Optimize based on contest type
+            # Optimize with adjusted players
             if self.contest_type == 'showdown':
                 result = self.optimize_showdown_lineup_fixed(adjusted_players)
             else:
+                # Create temporary optimizer that uses diversity scores
                 optimizer = OptimalLineupOptimizer(salary_cap=self.salary_cap)
+
+                # CRITICAL: Tell optimizer to use diversity scores
+                optimizer.use_diversity_scoring = True
+
                 result = optimizer.optimize_classic_lineup(adjusted_players, use_confirmations=False)
 
             # Validate lineup
-            if result and result.optimization_status == "Optimal":
-                total_salary = result.total_salary
-                salary_pct = total_salary / self.salary_cap
+            if result and result.lineup and len(result.lineup) > 0:
+                # Get original players (without diversity penalty) for storage
+                original_lineup = []
+                for adj_player in result.lineup:
+                    # Find original player
+                    orig_player = next((p for p in eligible if p.id == adj_player.id), adj_player)
+                    original_lineup.append(orig_player)
 
-                if salary_pct >= min_salary_pct:
-                    # Calculate lineup metrics
-                    lineup_data = {
-                        'lineup_id': successful + 1,
-                        'lineup': result.lineup,
-                        'total_score': result.total_score,
-                        'total_salary': total_salary,
-                        'salary_pct': salary_pct,
-                        'contest_type': contest_type,
-                        'ceiling': self._calculate_lineup_ceiling(result.lineup),
-                        'floor': self._calculate_lineup_floor(result.lineup),
-                        'stacks': self._identify_stacks(result.lineup)
-                    }
+                lineup_data = {
+                    'lineup_id': successful + 1,
+                    'lineup': original_lineup,  # Store original players
+                    'total_score': result.total_score,
+                    'total_salary': result.total_salary,
+                    'contest_type': contest_type,
+                    'diversity_penalty': getattr(result, 'avg_diversity_penalty', 1.0),
+                    'unique_players': len(set(p.id for p in original_lineup))
+                }
 
-                    generated_lineups.append(lineup_data)
+                generated_lineups.append(lineup_data)
 
-                    # Update usage
-                    for player in result.lineup:
-                        player_usage[player.id] = player_usage.get(player.id, 0) + 1
+                # Update usage tracking
+                for player in original_lineup:
+                    player_usage[player.id] = player_usage.get(player.id, 0) + 1
 
-                    successful += 1
+                successful += 1
 
-                    if successful % 10 == 0:
-                        print(f"   Generated {successful}/{count} lineups...")
+                if successful % 5 == 0:
+                    print(f"   Generated {successful}/{count} lineups...")
 
-        print(f"\n✅ Generated {len(generated_lineups)} valid lineups")
+        # Sort by score
+        generated_lineups.sort(key=lambda x: x['total_score'], reverse=True)
+
         self._print_generation_summary(generated_lineups, player_usage)
 
         return generated_lineups

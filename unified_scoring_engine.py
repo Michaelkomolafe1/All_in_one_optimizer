@@ -233,8 +233,73 @@ class UnifiedScoringEngine:
 
         return components
 
+    def calculate_score(self, player: Any) -> float:
+        """
+        ENHANCED: Main entry point with better error handling and validation
+        """
+        # Generate cache key
+        cache_key = self._generate_cache_key(player)
+
+        # Check cache first
+        if cache_key in self._cache:
+            cached_score, timestamp = self._cache[cache_key]
+            if (datetime.now() - timestamp).seconds < 300:  # 5 min cache
+                logger.debug(f"Cache hit for {player.name}")
+                # Ensure player object has the cached score
+                player.enhanced_score = cached_score
+                return cached_score
+
+        # Calculate fresh score
+        self._calculation_count += 1
+        logger.debug(f"Calculating score for {player.name} (calculation #{self._calculation_count})")
+
+        # Get base score with validation
+        base_score = self._get_base_score(player)
+        if base_score <= 0:
+            logger.warning(f"No valid base score for {player.name}")
+            player.enhanced_score = 0.0
+            self._store_audit_trail(player, 0.0, [], 0.0)
+            return 0.0
+
+        # Collect score components
+        components = self._collect_components(player, base_score)
+
+        # Calculate final score with FIXED weight calculation
+        final_score = self._calculate_weighted_score(base_score, components)
+
+        # Validate final score
+        if final_score < 0:
+            logger.error(f"Negative final score {final_score} for {player.name}, setting to 0")
+            final_score = 0.0
+        elif final_score > self.config.validation['max_projection']:
+            logger.warning(f"Score {final_score} exceeds max for {player.name}, capping")
+            final_score = self.config.validation['max_projection']
+
+        # Store audit trail
+        self._store_audit_trail(player, base_score, components, final_score)
+
+        # Cache result
+        self._cache[cache_key] = (final_score, datetime.now())
+
+        # Update player object
+        player.enhanced_score = final_score
+
+        # Set calculation flag
+        if hasattr(player, '_score_calculated'):
+            player._score_calculated = True
+
+        # Log high-level players for debugging
+        if final_score > base_score * 1.3:
+            logger.info(f"High score for {player.name}: {base_score:.1f} → {final_score:.1f}")
+
+        return final_score
+
     def _calculate_weighted_score(self, base_score: float, components: List[ScoreComponent]) -> float:
-        """Calculate final weighted score with proper normalization"""
+        """
+        FIXED: Calculate final weighted score with proper weight application
+
+        The key fix: We calculate each component's FULL contribution, not just the delta
+        """
         if not components:
             # No adjustments available, return base score
             return base_score
@@ -246,23 +311,46 @@ class UnifiedScoringEngine:
         # Normalize weights to sum to 1.0
         normalized_weights = self._normalize_weights(available_weights)
 
-        # Calculate weighted score
-        final_score = base_score * normalized_weights['base']
+        # Start with zero and build up the score
+        final_score = 0.0
 
-        # Add component contributions
+        # Add base component contribution
+        base_contribution = base_score * normalized_weights['base']
+        final_score += base_contribution
+
+        logger.debug(f"  Base: {base_score:.2f} × {normalized_weights['base']:.3f} = {base_contribution:.2f}")
+
+        # Add each component's FULL contribution
         for component in components:
             normalized_weight = normalized_weights[component.name]
-            contribution = base_score * (component.multiplier - 1.0) * normalized_weight
-            final_score += contribution
 
-            logger.debug(f"  {component.name}: {component.multiplier:.3f}x @ {normalized_weight:.1%} = {contribution:+.2f}")
+            # Calculate the component's adjusted score
+            component_score = base_score * component.multiplier
+
+            # Calculate its weighted contribution
+            component_contribution = component_score * normalized_weight
+
+            # Add to final score
+            final_score += component_contribution
+
+            logger.debug(
+                f"  {component.name}: {base_score:.2f} × {component.multiplier:.3f} × {normalized_weight:.3f} = {component_contribution:.2f}")
 
         # Apply final bounds
         min_allowed = base_score * self.config.bounds['final'][0]
         max_allowed = base_score * self.config.bounds['final'][1]
+
+        # Store pre-bounded score for debugging
+        unbounded_score = final_score
+
+        # Apply bounds
         final_score = max(min_allowed, min(final_score, max_allowed))
 
-        logger.debug(f"  Final: {final_score:.2f} (bounded to [{min_allowed:.2f}, {max_allowed:.2f}])")
+        if unbounded_score != final_score:
+            logger.debug(
+                f"  Final: {unbounded_score:.2f} bounded to [{min_allowed:.2f}, {max_allowed:.2f}] = {final_score:.2f}")
+        else:
+            logger.debug(f"  Final: {final_score:.2f} (within bounds)")
 
         return final_score
 
@@ -294,6 +382,95 @@ class UnifiedScoringEngine:
                 return self._apply_bounds(ratio, 'recent_form')
 
         return None
+
+    def validate_scoring_logic(self):
+        """
+        NEW: Self-test to validate scoring calculations are correct
+        """
+        print("\n🧪 Validating scoring logic...")
+
+        # Create test player
+        from unified_player_model import UnifiedPlayer
+        test_player = UnifiedPlayer(
+            id="test",
+            name="Test Player",
+            team="TEST",
+            salary=5000,
+            primary_position="OF",
+            positions=["OF"],
+            base_projection=10.0
+        )
+
+        # Test 1: Base score only
+        score1 = self.calculate_score(test_player)
+        expected1 = 10.0  # Just base score
+        print(
+            f"Test 1 - Base only: {score1:.2f} (expected: {expected1:.2f}) {'✅' if abs(score1 - expected1) < 0.01 else '❌'}")
+
+        # Test 2: With Vegas boost
+        test_player._vegas_data = {'implied_total': 6.0}  # Should give 1.20x
+        self.clear_cache()  # Force recalculation
+        score2 = self.calculate_score(test_player)
+        # With weights: base(0.30) + vegas(0.20) normalized
+        # base: 10 * (0.30/0.50) = 6.0
+        # vegas: 10 * 1.20 * (0.20/0.50) = 4.8
+        # total: 10.8
+        expected2 = 10.8
+        print(
+            f"Test 2 - With Vegas: {score2:.2f} (expected: ~{expected2:.2f}) {'✅' if abs(score2 - expected2) < 0.5 else '❌'}")
+
+        # Test 3: Show audit trail
+        if hasattr(test_player, '_score_audit'):
+            audit = test_player._score_audit
+            print("\nAudit trail for Test 2:")
+            for comp_name, comp_data in audit['components'].items():
+                print(f"  {comp_name}: {comp_data['contribution']:.2f} "
+                      f"({comp_data['multiplier']:.2f}x @ {comp_data['weight']:.1%})")
+
+        print("\n✅ Scoring validation complete")
+
+    def recalculate_all_scores(self, players: List[Any], force: bool = False) -> int:
+        """
+        NEW: Batch recalculation with progress tracking
+        """
+        if force:
+            self.clear_cache()
+
+        recalculated = 0
+
+        for i, player in enumerate(players):
+            if i % 50 == 0 and i > 0:
+                logger.info(f"Recalculating scores: {i}/{len(players)}")
+
+            old_score = getattr(player, 'enhanced_score', 0)
+            new_score = self.calculate_score(player)
+
+            if abs(old_score - new_score) > 0.01:
+                recalculated += 1
+
+        logger.info(f"Recalculated {recalculated} player scores")
+        return recalculated
+
+    def get_component_breakdown(self, player: Any) -> Dict[str, float]:
+        """
+        NEW: Get detailed breakdown of score components for display
+        """
+        if not hasattr(player, '_score_audit'):
+            return {}
+
+        audit = player._score_audit
+        breakdown = {}
+
+        for comp_name, comp_data in audit['components'].items():
+            breakdown[comp_name] = {
+                'multiplier': comp_data['multiplier'],
+                'weight': comp_data['weight'],
+                'contribution': comp_data['contribution'],
+                'percentage': (comp_data['contribution'] / audit['final_score'] * 100) if audit[
+                                                                                              'final_score'] > 0 else 0
+            }
+
+        return breakdown
 
     def _calculate_vegas_multiplier(self, player: Any) -> Optional[float]:
         """Calculate Vegas multiplier with validation"""
@@ -448,24 +625,62 @@ class UnifiedScoringEngine:
             return max(min_val, min(value, max_val))
         return value
 
-    def _store_audit_trail(self, player: Any, base_score: float, 
-                          components: List[ScoreComponent], final_score: float):
-        """Store detailed audit trail for transparency"""
+    def _store_audit_trail(self, player: Any, base_score: float,
+                           components: List[ScoreComponent], final_score: float):
+        """
+        FIXED: Store detailed audit trail with correct contribution calculations
+        """
+        # Get normalized weights
+        available_weights = {comp.name: comp.weight for comp in components}
+        available_weights['base'] = self.config.weights['base']
+        normalized_weights = self._normalize_weights(available_weights)
+
         audit = {
-            'timestamp': datetime.now().isoformat(),
             'base_score': base_score,
             'final_score': final_score,
-            'multiplier': final_score / base_score if base_score > 0 else 1.0,
-            'components': {}
+            'timestamp': datetime.now().isoformat(),
+            'components': {},
+            'weights_used': normalized_weights,
+            'calculation_method': 'weighted_sum_v2'  # Version identifier
         }
 
+        # Calculate base contribution
+        base_contribution = base_score * normalized_weights['base']
+        audit['components']['base'] = {
+            'score': base_score,
+            'multiplier': 1.0,
+            'weight': normalized_weights['base'],
+            'contribution': base_contribution
+        }
+
+        # Store each component with CORRECT contribution calculation
         for comp in components:
+            normalized_weight = normalized_weights[comp.name]
+
+            # Component's adjusted score
+            component_score = base_score * comp.multiplier
+
+            # Component's weighted contribution
+            component_contribution = component_score * normalized_weight
+
             audit['components'][comp.name] = {
+                'score': component_score,
                 'multiplier': comp.multiplier,
-                'weight': comp.weight,
-                'contribution': base_score * (comp.multiplier - 1.0) * comp.weight
+                'weight': normalized_weight,
+                'contribution': component_contribution,
+                'data_source': comp.data_source
             }
 
+        # Add summary
+        total_contribution = sum(c['contribution'] for c in audit['components'].values())
+        audit['summary'] = {
+            'total_contributions': total_contribution,
+            'bounds_applied': total_contribution != final_score,
+            'min_bound': base_score * self.config.bounds['final'][0],
+            'max_bound': base_score * self.config.bounds['final'][1]
+        }
+
+        # Store in player
         player._score_audit = audit
         player._score_components = audit  # Backwards compatibility
 
