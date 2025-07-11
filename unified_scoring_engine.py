@@ -684,17 +684,23 @@ class UnifiedScoringEngine:
         player._score_audit = audit
         player._score_components = audit  # Backwards compatibility
 
-    def _generate_cache_key(self, player: Any) -> str:
-        """Generate cache key for player"""
-        # Include key data points that affect scoring
-        key_parts = [
-            str(getattr(player, 'id', player.name)),
-            str(getattr(player, 'base_projection', 0)),
-            str(getattr(player, 'dff_projection', 0)),
-            str(getattr(player, 'batting_order', 0)),
-            str(len(getattr(player, 'recent_scores', [])))
-        ]
-        return '|'.join(key_parts)
+    def _generate_cache_key(self, player: Any) -> tuple:
+        """
+        FIXED: Generate cache key for player using tuple (faster than string concatenation)
+
+        Returns:
+            Tuple that can be used as dict key (hashable and fast)
+        """
+        # Use tuple instead of string concatenation - MUCH faster!
+        return (
+            getattr(player, 'id', player.name),
+            getattr(player, 'base_projection', 0),
+            getattr(player, 'dff_projection', 0),
+            getattr(player, 'batting_order', 0),
+            len(getattr(player, 'recent_scores', [])),
+            # Add a hash of any complex data
+            hash(str(getattr(player, '_vegas_data', {})))
+        )
 
     def clear_cache(self):
         """Clear the score cache"""

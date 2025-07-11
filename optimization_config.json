@@ -1,38 +1,19 @@
 {
   "scoring": {
     "weights": {
-      "base": 0.3,
+      "base": 0.30,
       "recent_form": 0.25,
-      "vegas": 0.2,
-      "matchup": 0.2,
-      "park": 0.05,
-      "batting_order": 0.05
+      "vegas": 0.20,
+      "matchup": 0.20,
+      "park": 0.05
     },
     "bounds": {
-      "recent_form": [
-        0.7,
-        1.35
-      ],
-      "vegas": [
-        0.75,
-        1.25
-      ],
-      "matchup": [
-        0.8,
-        1.25
-      ],
-      "park": [
-        0.85,
-        1.15
-      ],
-      "batting_order": [
-        0.92,
-        1.1
-      ],
-      "final": [
-        0.65,
-        1.4
-      ]
+      "recent_form": [0.70, 1.35],
+      "vegas": [0.75, 1.25],
+      "matchup": [0.80, 1.25],
+      "park": [0.85, 1.15],
+      "batting_order": [0.92, 1.10],
+      "final": [0.65, 1.40]
     },
     "validation": {
       "max_implied_total": 15.0,
@@ -40,7 +21,9 @@
       "max_projection": 60.0,
       "min_projection": 0.0,
       "max_barrel_rate": 100.0,
-      "max_k_rate": 100.0
+      "max_k_rate": 100.0,
+      "max_salary": 15000,
+      "min_salary": 2000
     }
   },
   "performance": {

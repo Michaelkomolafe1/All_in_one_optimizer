@@ -77,9 +77,56 @@ class UnifiedMILPOptimizer:
         # Load real data sources
         self._initialize_data_sources()
 
-    def get_optimization_score(self, player):
-        """Get the score to use for optimization (temporary or enhanced)"""
-        return getattr(player, '_temp_optimization_score', player.enhanced_score)
+    def get_optimization_score(self, player: UnifiedPlayer) -> float:
+        """
+        Get the player's score for optimization (includes pre-calculated bonuses)
+        This is the score that MILP will use.
+        """
+        # Check if player has optimization-specific score
+        if hasattr(player, 'optimization_score'):
+            return player.optimization_score
+
+        # Otherwise use enhanced score
+        return player.enhanced_score
+
+    def prepare_players_for_optimization(self, players: List[UnifiedPlayer]) -> List[UnifiedPlayer]:
+        """
+        Pre-calculate all bonuses and penalties before optimization.
+        This avoids quadratic terms in MILP.
+        """
+        # Calculate correlation bonuses if enabled
+        if self.config.use_correlation:
+            # Group players by team for stacking bonuses
+            team_groups = {}
+            for player in players:
+                if player.team not in team_groups:
+                    team_groups[player.team] = []
+                team_groups[player.team].append(player)
+
+            # Apply stacking bonuses
+            for team, team_players in team_groups.items():
+                if len(team_players) >= 3:  # Potential stack
+                    # Find best stack candidates (e.g., 1-3-5 batting order)
+                    stack_candidates = sorted(team_players,
+                                              key=lambda p: getattr(p, 'batting_order', 999))[:5]
+
+                    # Apply small bonus to encourage stacking
+                    for player in stack_candidates:
+                        if hasattr(player, 'batting_order') and player.batting_order in [1, 3, 5]:
+                            # Add 5% bonus for stack candidates
+                            player.optimization_score = player.enhanced_score * 1.05
+                        else:
+                            player.optimization_score = player.enhanced_score
+                else:
+                    # No stacking bonus for teams with few players
+                    for player in team_players:
+                        player.optimization_score = player.enhanced_score
+        else:
+            # No correlation - just use enhanced score
+            for player in players:
+                player.optimization_score = player.enhanced_score
+
+        return players
 
     def _load_dfs_config(self):
         """Load configuration from dfs_config.json or optimization_config.json"""
@@ -235,9 +282,9 @@ class UnifiedMILPOptimizer:
         Main optimization method
         1. Apply strategy filter to create player pool
         2. Calculate scores using real data
-        3. Run MILP optimization
+        3. Pre-calculate correlation bonuses (NEW)
+        4. Run MILP optimization
         """
-
         # Step 1: Create player pool based on strategy
         strategy_filter = StrategyFilter()
         player_pool = strategy_filter.apply_strategy_filter(players, strategy, manual_selections)
@@ -247,12 +294,14 @@ class UnifiedMILPOptimizer:
         # Step 2: Calculate enhanced scores using real data
         player_pool = self.calculate_player_scores(player_pool)
 
-        # Step 3: Run MILP optimization
+        # Step 3: Pre-calculate correlation bonuses (NEW)
+        player_pool = self.prepare_players_for_optimization(player_pool)
+
+        # Step 4: Run MILP optimization
         try:
             return self._optimize_milp(player_pool)
         except Exception as e:
             self.logger.error(f"MILP optimization failed: {e}")
-            # NO FALLBACK - return empty if optimization fails
             return [], 0
 
     def _optimize_milp(self, players: List[UnifiedPlayer]) -> Tuple[List[UnifiedPlayer], float]:
@@ -284,15 +333,11 @@ class UnifiedMILPOptimizer:
             for i in range(len(players))
         ])
 
-        # Add small correlation bonus if enabled
-        if self.config.use_correlation:
-            correlation_bonus = self._calculate_correlation_bonus(
-                players, player_vars, position_vars
-            )
-            if correlation_bonus:
-                objective += correlation_bonus
-
         prob += objective
+
+
+
+
 
         # CONSTRAINTS
 
@@ -354,9 +399,7 @@ class UnifiedMILPOptimizer:
         else:
             raise Exception(f"Optimization failed: {pulp.LpStatus[prob.status]}")
 
-    def _calculate_correlation_bonus(self, players: List[UnifiedPlayer],
-                                     player_vars: Dict,
-                                     position_vars: Dict) -> Optional[pulp.LpAffineExpression]:
+
         """
         Calculate small correlation bonuses for stacks
         Based on REAL batting order data only

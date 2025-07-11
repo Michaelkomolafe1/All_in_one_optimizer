@@ -1,122 +1,120 @@
 #!/usr/bin/env python3
 """
-Park Factors Module - Stadium effects on scoring
-===============================================
+Park Factors Module for DFS Optimizer
+=====================================
 Provides park factor data for all MLB stadiums
 """
 
-import logging
+import json
+import os
 from typing import Dict, Optional, Any
+import logging
 
 logger = logging.getLogger(__name__)
 
 
 class ParkFactors:
     """
-    Park factors for MLB stadiums based on historical run scoring
+    Park factors for MLB stadiums
+    Higher values = hitter-friendly, lower = pitcher-friendly
     """
 
-    def __init__(self):
-        # 2024 Park factors (1.0 = neutral, >1.0 = hitter friendly, <1.0 = pitcher friendly)
-        self.park_factors = {
-            # Extreme Hitter Parks
-            'Coors Field': 1.15,  # COL - Altitude effects
-            'Great American Ball Park': 1.10,  # CIN - Small dimensions
-            'Globe Life Field': 1.08,  # TEX - Hitter friendly
+    # 2024 MLB Park Factors (based on 3-year averages)
+    PARK_FACTORS = {
+        # Extreme hitter-friendly
+        "COL": {"factor": 1.20, "name": "Coors Field", "runs": 1.39, "hr": 1.37},
 
-            # Moderate Hitter Parks
-            'Fenway Park': 1.06,  # BOS - Green Monster
-            'Yankee Stadium': 1.05,  # NYY - Short porch
-            'Citizens Bank Park': 1.05,  # PHI - Bandbox
-            'Camden Yards': 1.04,  # BAL - HR friendly
-            'American Family Field': 1.04,  # MIL - Good for power
+        # Hitter-friendly
+        "CIN": {"factor": 1.12, "name": "Great American Ball Park", "runs": 1.18, "hr": 1.34},
+        "TEX": {"factor": 1.10, "name": "Globe Life Field", "runs": 1.08, "hr": 1.15},
+        "PHI": {"factor": 1.08, "name": "Citizens Bank Park", "runs": 1.06, "hr": 1.18},
+        "MIL": {"factor": 1.06, "name": "American Family Field", "runs": 1.05, "hr": 1.13},
+        "BAL": {"factor": 1.05, "name": "Camden Yards", "runs": 1.03, "hr": 1.25},
+        "HOU": {"factor": 1.04, "name": "Minute Maid Park", "runs": 1.01, "hr": 1.10},
+        "TOR": {"factor": 1.03, "name": "Rogers Centre", "runs": 1.02, "hr": 1.08},
+        "BOS": {"factor": 1.03, "name": "Fenway Park", "runs": 1.04, "hr": 0.88},
 
-            # Neutral Parks
-            'Chase Field': 1.02,  # ARI - Controlled environment
-            'Rogers Centre': 1.01,  # TOR - Dome
-            'Truist Park': 1.00,  # ATL - Neutral
-            'Busch Stadium': 1.00,  # STL - Balanced
-            'Target Field': 0.99,  # MIN - Slightly pitcher friendly
-            'Guaranteed Rate Field': 0.99,  # CHW - Balanced
+        # Slight hitter-friendly
+        "NYY": {"factor": 1.02, "name": "Yankee Stadium", "runs": 1.01, "hr": 1.15},
+        "CHC": {"factor": 1.01, "name": "Wrigley Field", "runs": 1.00, "hr": 1.02},
 
-            # Pitcher Parks
-            'T-Mobile Park': 0.96,  # SEA - Marine layer
-            'Citi Field': 0.95,  # NYM - Big dimensions
-            'loanDepot park': 0.94,  # MIA - Spacious
-            'Comerica Park': 0.94,  # DET - Deep fences
-            'Petco Park': 0.93,  # SD - Marine layer + size
-            'Oracle Park': 0.92,  # SF - Wind + marine layer
-            'Kauffman Stadium': 0.92,  # KC - Huge outfield
+        # Neutral
+        "ARI": {"factor": 1.00, "name": "Chase Field", "runs": 1.00, "hr": 1.01},
+        "ATL": {"factor": 1.00, "name": "Truist Park", "runs": 0.98, "hr": 1.02},
+        "MIN": {"factor": 0.99, "name": "Target Field", "runs": 0.98, "hr": 0.95},
 
-            # Parks with unique factors
-            'Tropicana Field': 0.98,  # TB - Dome, turf
-            'Angel Stadium': 0.98,  # LAA - Neutral-ish
-            'Dodger Stadium': 0.97,  # LAD - Pitcher friendly
-            'Wrigley Field': 1.03,  # CHC - Wind dependent
-            'Progressive Field': 0.98,  # CLE - Neutral
-            'PNC Park': 0.97,  # PIT - Slightly pitcher friendly
-            'Oakland Coliseum': 0.95,  # OAK - Foul territory
-            'Nationals Park': 0.99,  # WSH - Neutral
-            'Minute Maid Park': 1.03,  # HOU - Crawford boxes
-        }
+        # Slight pitcher-friendly
+        "WSH": {"factor": 0.98, "name": "Nationals Park", "runs": 0.96, "hr": 0.92},
+        "NYM": {"factor": 0.97, "name": "Citi Field", "runs": 0.95, "hr": 0.88},
+        "LAA": {"factor": 0.96, "name": "Angel Stadium", "runs": 0.94, "hr": 0.91},
+        "STL": {"factor": 0.95, "name": "Busch Stadium", "runs": 0.93, "hr": 0.85},
+        "LAD": {"factor": 0.98, "name": "Dodger Stadium", "runs": 0.95, "hr": 0.92},
+        "CHW": {"factor": 0.96, "name": "Guaranteed Rate Field", "runs": 0.94, "hr": 0.98},
+        "CWS": {"factor": 0.96, "name": "Guaranteed Rate Field", "runs": 0.94, "hr": 0.98},  # Alias
 
-        # Team to stadium mapping
-        self.team_stadiums = {
-            'COL': 'Coors Field',
-            'CIN': 'Great American Ball Park',
-            'TEX': 'Globe Life Field',
-            'BOS': 'Fenway Park',
-            'NYY': 'Yankee Stadium',
-            'PHI': 'Citizens Bank Park',
-            'BAL': 'Camden Yards',
-            'MIL': 'American Family Field',
-            'ARI': 'Chase Field',
-            'TOR': 'Rogers Centre',
-            'ATL': 'Truist Park',
-            'STL': 'Busch Stadium',
-            'MIN': 'Target Field',
-            'CHW': 'Guaranteed Rate Field',
-            'SEA': 'T-Mobile Park',
-            'NYM': 'Citi Field',
-            'MIA': 'loanDepot park',
-            'DET': 'Comerica Park',
-            'SD': 'Petco Park',
-            'SF': 'Oracle Park',
-            'KC': 'Kauffman Stadium',
-            'TB': 'Tropicana Field',
-            'LAA': 'Angel Stadium',
-            'LAD': 'Dodger Stadium',
-            'CHC': 'Wrigley Field',
-            'CLE': 'Progressive Field',
-            'PIT': 'PNC Park',
-            'OAK': 'Oakland Coliseum',
-            'WSH': 'Nationals Park',
-            'HOU': 'Minute Maid Park'
-        }
+        # Pitcher-friendly
+        "CLE": {"factor": 0.94, "name": "Progressive Field", "runs": 0.92, "hr": 0.88},
+        "TB": {"factor": 0.93, "name": "Tropicana Field", "runs": 0.91, "hr": 0.85},
+        "KC": {"factor": 0.92, "name": "Kauffman Stadium", "runs": 0.91, "hr": 0.82},
+        "DET": {"factor": 0.91, "name": "Comerica Park", "runs": 0.90, "hr": 0.78},
+        "SEA": {"factor": 0.90, "name": "T-Mobile Park", "runs": 0.89, "hr": 0.80},
 
-    def get_park_factor(self, team: str, is_home: bool = True) -> float:
+        # Extreme pitcher-friendly
+        "OAK": {"factor": 0.89, "name": "Oakland Coliseum", "runs": 0.87, "hr": 0.75},
+        "SF": {"factor": 0.88, "name": "Oracle Park", "runs": 0.87, "hr": 0.72},
+        "SD": {"factor": 0.87, "name": "Petco Park", "runs": 0.86, "hr": 0.70},
+        "MIA": {"factor": 0.86, "name": "loanDepot park", "runs": 0.85, "hr": 0.68},
+        "PIT": {"factor": 0.85, "name": "PNC Park", "runs": 0.88, "hr": 0.73}
+    }
+
+    def __init__(self, custom_factors_file: Optional[str] = None):
+        """
+        Initialize park factors
+
+        Args:
+            custom_factors_file: Optional path to custom park factors JSON
+        """
+        self.factors = self.PARK_FACTORS.copy()
+
+        # Load custom factors if provided
+        if custom_factors_file and os.path.exists(custom_factors_file):
+            try:
+                with open(custom_factors_file, 'r') as f:
+                    custom_factors = json.load(f)
+                self.factors.update(custom_factors)
+                logger.info(f"Loaded custom park factors from {custom_factors_file}")
+            except Exception as e:
+                logger.error(f"Error loading custom park factors: {e}")
+
+    def get_factor(self, team_code: str) -> float:
         """
         Get park factor for a team
 
         Args:
-            team: Team code (e.g., 'COL', 'NYY')
-            is_home: Whether the team is playing at home
+            team_code: Team abbreviation (e.g., 'NYY', 'BOS')
 
         Returns:
             Park factor (1.0 = neutral)
         """
-        if not is_home:
-            # For away games, return neutral (park factor applies to home venue)
-            return 1.0
+        if team_code in self.factors:
+            return self.factors[team_code]['factor']
 
-        stadium = self.team_stadiums.get(team)
-        if not stadium:
-            logger.warning(f"No stadium found for team {team}")
-            return 1.0
+        logger.warning(f"No park factor found for {team_code}, using neutral (1.0)")
+        return 1.0
 
-        return self.park_factors.get(stadium, 1.0)
+    def get_detailed_factors(self, team_code: str) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed park factors including runs and home runs
 
-    def enrich_players_with_park_factors(self, players: list) -> int:
+        Args:
+            team_code: Team abbreviation
+
+        Returns:
+            Dict with factor, runs, hr, and park name
+        """
+        return self.factors.get(team_code)
+
+    def enrich_players(self, players: list) -> int:
         """
         Enrich players with park factor data
 
@@ -129,115 +127,129 @@ class ParkFactors:
         enriched = 0
 
         for player in players:
-            try:
-                # Skip if no team
-                if not hasattr(player, 'team') or not player.team:
-                    continue
+            if hasattr(player, 'team') and player.team:
+                park_data = self.get_detailed_factors(player.team)
 
-                # Determine if home game (you'd need game schedule data for this)
-                # For now, assume home if player has is_home attribute
-                is_home = getattr(player, 'is_home', True)
+                if park_data:
+                    # Set park factors on player
+                    player._park_factors = park_data
 
-                # Get park factor
-                factor = self.get_park_factor(player.team, is_home)
+                    # Also set the simple factor for backward compatibility
+                    player.park_factor = park_data['factor']
 
-                # Apply to player
-                player._park_factors = {
-                    'factor': factor,
-                    'stadium': self.team_stadiums.get(player.team, 'Unknown'),
-                    'is_home': is_home
-                }
+                    enriched += 1
 
-                enriched += 1
-
-                # Log extreme parks
-                if factor >= 1.10:
-                    logger.info(f"{player.name} playing at {player._park_factors['stadium']} (factor: {factor:.2f})")
-                elif factor <= 0.93:
-                    logger.info(f"{player.name} playing at {player._park_factors['stadium']} (factor: {factor:.2f})")
-
-            except Exception as e:
-                logger.debug(f"Error applying park factor to {getattr(player, 'name', 'unknown')}: {e}")
+                    # Log extreme parks
+                    if park_data['factor'] >= 1.10:
+                        logger.info(f"{player.name} plays in hitter-friendly {park_data['name']} "
+                                    f"(factor: {park_data['factor']})")
+                    elif park_data['factor'] <= 0.90:
+                        logger.info(f"{player.name} plays in pitcher-friendly {park_data['name']} "
+                                    f"(factor: {park_data['factor']})")
 
         return enriched
 
-    def get_extreme_parks(self, threshold: float = 0.05) -> Dict[str, list]:
+    def get_venue_factor(self, venue_name: str) -> float:
         """
-        Get lists of extreme hitter/pitcher parks
+        Get park factor by venue name (for games played at specific stadiums)
 
         Args:
-            threshold: Deviation from 1.0 to be considered extreme
+            venue_name: Name of the stadium
 
         Returns:
-            Dict with 'hitter' and 'pitcher' park lists
+            Park factor
         """
-        extreme_parks = {
-            'hitter': [],
-            'pitcher': []
-        }
+        # Search by stadium name
+        for team_code, data in self.factors.items():
+            if 'name' in data and data['name'].lower() in venue_name.lower():
+                return data['factor']
 
-        for stadium, factor in self.park_factors.items():
-            if factor >= 1.0 + threshold:
-                extreme_parks['hitter'].append((stadium, factor))
-            elif factor <= 1.0 - threshold:
-                extreme_parks['pitcher'].append((stadium, factor))
+        # Try to extract team from venue name
+        venue_lower = venue_name.lower()
+        for team_code, data in self.factors.items():
+            if team_code.lower() in venue_lower:
+                return data['factor']
 
-        # Sort by factor
-        extreme_parks['hitter'].sort(key=lambda x: x[1], reverse=True)
-        extreme_parks['pitcher'].sort(key=lambda x: x[1])
-
-        return extreme_parks
+        return 1.0  # Default neutral
 
     def print_summary(self):
         """Print park factors summary"""
-        print("\n🏟️ PARK FACTORS SUMMARY")
-        print("=" * 50)
+        print("\n🏟️ MLB PARK FACTORS")
+        print("=" * 60)
 
-        extreme = self.get_extreme_parks()
+        # Sort by factor
+        sorted_parks = sorted(
+            self.factors.items(),
+            key=lambda x: x[1]['factor'],
+            reverse=True
+        )
 
         print("\n🔥 Hitter-Friendly Parks:")
-        for stadium, factor in extreme['hitter'][:5]:
-            team = [t for t, s in self.team_stadiums.items() if s == stadium][0]
-            print(f"   {stadium} ({team}): {factor:.2f}")
+        print("-" * 40)
+        for team, data in sorted_parks:
+            if data['factor'] >= 1.05:
+                print(f"{team:4} {data['name']:25} {data['factor']:.2f}")
 
         print("\n❄️ Pitcher-Friendly Parks:")
-        for stadium, factor in extreme['pitcher'][:5]:
-            team = [t for t, s in self.team_stadiums.items() if s == stadium][0]
-            print(f"   {stadium} ({team}): {factor:.2f}")
+        print("-" * 40)
+        for team, data in sorted_parks:
+            if data['factor'] <= 0.95:
+                print(f"{team:4} {data['name']:25} {data['factor']:.2f}")
 
 
 # Global instance
 _park_factors_instance = None
 
 
-def get_park_factors() -> ParkFactors:
-    """Get or create global park factors instance"""
+def get_park_factors(custom_file: Optional[str] = None) -> ParkFactors:
+    """Get or create park factors instance"""
     global _park_factors_instance
 
     if _park_factors_instance is None:
-        _park_factors_instance = ParkFactors()
+        _park_factors_instance = ParkFactors(custom_file)
 
     return _park_factors_instance
 
 
 # Integration with BulletproofDFSCore
-def enrich_players_with_park_factors(core_instance, players: list) -> int:
+def integrate_park_factors(core_instance):
     """
-    Helper function to enrich players with park factors
-    Used by BulletproofDFSCore
+    Integrate park factors into BulletproofDFSCore
+
+    Args:
+        core_instance: Instance of BulletproofDFSCore
     """
     park_factors = get_park_factors()
-    return park_factors.enrich_players_with_park_factors(players)
+
+    # Add to core
+    core_instance.park_factors = park_factors
+
+    # Add enrichment method
+    def enrich_with_park_factors(self):
+        """Enrich players with park factor data"""
+        if hasattr(self, 'park_factors'):
+            enriched = self.park_factors.enrich_players(self.players)
+            print(f"🏟️ Park factors applied to {enriched} players")
+            return enriched
+        return 0
+
+    # Bind method
+    import types
+    core_instance.enrich_with_park_factors = types.MethodType(
+        enrich_with_park_factors,
+        core_instance
+    )
+
+    print("✅ Park Factors integrated")
 
 
 if __name__ == "__main__":
     # Test the module
-    pf = ParkFactors()
-    pf.print_summary()
+    park_factors = get_park_factors()
+    park_factors.print_summary()
 
-    # Test specific parks
-    print("\n\nTest specific teams:")
-    for team in ['COL', 'SF', 'NYY', 'SD']:
-        factor = pf.get_park_factor(team)
-        stadium = pf.team_stadiums[team]
-        print(f"{team} at {stadium}: {factor:.2f}")
+    # Test specific lookups
+    print("\n🧪 Test Lookups:")
+    for team in ["COL", "SF", "NYY", "XYZ"]:
+        factor = park_factors.get_factor(team)
+        print(f"{team}: {factor}")

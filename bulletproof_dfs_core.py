@@ -48,6 +48,7 @@ try:
     from smart_cache import smart_cache
     from multi_lineup_optimizer import MultiLineupOptimizer
     from performance_tracker import tracker
+    from park_factors import integrate_park_factors, get_park_factors
 
     UPGRADES_AVAILABLE = True
     print("✅ DFS upgrades loaded")
@@ -184,6 +185,7 @@ try:
         CorrelationOptimizer,
         integrate_batting_order_correlation
     )
+
 
     BATTING_CORRELATION_AVAILABLE = True
     print("✅ Batting Order & Correlation System imported")
@@ -830,40 +832,27 @@ class AdvancedPlayer:
 # ============================================================================
 
 class BulletproofDFSCore:
-    """Complete bulletproof DFS core with enhanced pitcher detection"""
+    """Main DFS optimization system"""
 
     def __init__(self):
-        """Initialize BulletproofDFSCore with all modules and configuration"""
+        """Initialize the Bulletproof DFS Core System"""
         # Basic attributes
-        self.players = []
-        self.contest_type = 'classic'
         self.salary_cap = 50000
+        self.contest_type = 'classic'
+        self.players = []
+        self.confirmed_players = []
+        self.game_date = None
+        self.csv_file_path = None
+
+        # Optimization settings
         self.optimization_mode = 'bulletproof'
-        self.dff_classic_file = None
-        self.dff_showdown_file = None
-        self.current_dff_file = None
+        self.manual_selections_text = ""
+        self.use_ceiling_mode = False
 
-
-        # Set game date
-        self.game_date = datetime.now().strftime('%Y-%m-%d')
-
-        # Load configuration
-        try:
-            from dfs_config import dfs_config
-            self.config = dfs_config
-            self.salary_cap = self.config.get('optimization.salary_cap', 50000)
-            self.batch_size = self.config.get('optimization.batch_size', 25)
-            self.max_form_analysis_players = self.config.get('optimization.max_form_analysis_players', None)
-        except:
-            self.config = None
-            self.batch_size = 25
-            self.max_form_analysis_players = None
-
-        # Initialize tracking for duplicate prevention
-        self._enrichment_applied = {}
-
-        # Initialize external modules
+        # Initialize core modules
         self._initialize_modules()
+
+        # Initialize NEW optimization modules (Fix #1)
         try:
             self.scoring_engine = get_scoring_engine()
             self.validator = get_validator()
@@ -875,7 +864,76 @@ class BulletproofDFSCore:
             self.validator = None
             self.performance_optimizer = None
 
-        print("🚀 Bulletproof DFS Core initialized successfully")
+        # Initialize park factors (Fix #7)
+        try:
+            integrate_park_factors(self)
+            print("✅ Park factors module initialized")
+        except Exception as e:
+            print(f"⚠️ Failed to initialize park factors: {e}")
+
+        # Initialize other modules as needed...
+
+    def _initialize_modules(self):
+        """Initialize all system modules with proper error handling"""
+        # Vegas lines
+        if VEGAS_AVAILABLE:
+            try:
+                self.vegas_lines = VegasLines(verbose=False)
+                print("✅ Vegas lines module initialized")
+            except Exception as e:
+                print(f"⚠️ Vegas lines initialization failed: {e}")
+                self.vegas_lines = None
+        else:
+            self.vegas_lines = None
+
+        # Smart confirmation system
+        if CONFIRMED_AVAILABLE:
+            try:
+                self.confirmation_system = SmartConfirmationSystem()
+                print("✅ Confirmation system initialized")
+            except Exception as e:
+                print(f"⚠️ Confirmation system initialization failed: {e}")
+                self.confirmation_system = None
+        else:
+            self.confirmation_system = None
+
+        # Statcast fetcher
+        if STATCAST_AVAILABLE:
+            try:
+                # Try fast fetcher first
+                self.statcast_fetcher = FastStatcastFetcher()
+                print("✅ Fast Statcast fetcher initialized")
+            except:
+                # Fallback to simple fetcher
+                try:
+                    self.statcast_fetcher = SimpleStatcastFetcher()
+                    print("✅ Simple Statcast fetcher initialized")
+                except Exception as e:
+                    print(f"⚠️ Statcast fetcher initialization failed: {e}")
+                    self.statcast_fetcher = None
+        else:
+            self.statcast_fetcher = None
+
+        # Recent form analyzer
+        if RECENT_FORM_AVAILABLE:
+            try:
+                self.form_analyzer = RecentFormAnalyzer(days_back=7)
+                print("✅ Recent form analyzer initialized")
+            except Exception as e:
+                print(f"⚠️ Recent form analyzer initialization failed: {e}")
+                self.form_analyzer = None
+        else:
+            self.form_analyzer = None
+
+        # Batting order & correlation
+        if BATTING_CORRELATION_AVAILABLE:
+            try:
+                integrate_batting_order_correlation(self)
+                print("✅ Batting order & correlation systems integrated")
+            except Exception as e:
+                print(f"⚠️ Batting order integration failed: {e}")
+
+    # Rest of your methods...
 
     def optimize_lineup_clean(self) -> Tuple[List[UnifiedPlayer], float]:
         """New clean optimization method - NO BONUSES"""
@@ -2060,6 +2118,15 @@ class BulletproofDFSCore:
 
         return confirmed_count
 
+    def safe_sort_key(player, attribute='projection', default=0):
+        """
+        Safe sorting key that handles None values
+        """
+        value = getattr(player, attribute, default)
+        if value is None:
+            return default
+        return value
+
 
 
     def _validate_pitcher_eligibility(self, eligible: List[AdvancedPlayer]) -> List[AdvancedPlayer]:
@@ -2434,7 +2501,8 @@ class BulletproofDFSCore:
                 'statcast': False,
                 'recent_form': False,
                 'batting_order': False,
-                'statistical_analysis': False
+                'statistical_analysis': False,
+                'park_factors': False
             }
 
         # 1. DFF Rankings
@@ -2488,10 +2556,12 @@ class BulletproofDFSCore:
             # self._apply_comprehensive_statistical_analysis(truly_confirmed)
             self._enrichment_applied['statistical_analysis'] = True
 
-        if self.park_factors and not self._enrichment_applied.get('park_factors', False):
+        if hasattr(self, 'park_factors') and self.park_factors and not self._enrichment_applied.get('park_factors',
+                                                                                                    False):
             print("🏟️ Applying park factors...")
             try:
-                enriched_count = self.park_factors.enrich_players_with_park_factors(truly_confirmed)
+                # Use the correct method name: enrich_players
+                enriched_count = self.park_factors.enrich_players(truly_confirmed)
                 print(f"   ✅ {enriched_count} players enriched with park factors")
             except Exception as e:
                 print(f"   ❌ Park factors enrichment failed: {e}")
@@ -2552,7 +2622,10 @@ class BulletproofDFSCore:
             traceback.print_exc()
 
     def enrich_with_statcast_priority(self):
-        """Priority Statcast enrichment with debug logging"""
+        """
+        FIXED: Priority Statcast enrichment with PARALLEL fetching
+        This replaces the sequential fetching that was very slow
+        """
         if not self.statcast_fetcher:
             print("⚠️ Statcast fetcher not available")
             return
@@ -2562,68 +2635,74 @@ class BulletproofDFSCore:
         # Get all confirmed/manual players
         priority_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
 
-        print(f"🎯 Enriching ALL {len(priority_players)} confirmed players with Statcast...")
+        print(f"🎯 Enriching ALL {len(priority_players)} confirmed players with Statcast")
 
-        # DEFINE failed_players list here
-        failed_players = []
+        # Check if we have the fast parallel fetcher
+        if hasattr(self.statcast_fetcher, 'fetch_multiple_players_parallel'):
+            print("   Using FAST parallel fetching...")
 
-        # Use parallel method for better performance
-        try:
-            statcast_results = self.statcast_fetcher.fetch_multiple_players_parallel(priority_players)
+            try:
+                # Prepare player data for batch fetch
+                player_info = []
+                for player in priority_players:
+                    player_info.append({
+                        'name': player.name,
+                        'position': player.primary_position,
+                        'player_obj': player  # Keep reference
+                    })
 
-            enriched_count = 0
+                # Fetch all data in parallel (MUCH faster!)
+                results = self.statcast_fetcher.fetch_multiple_players_parallel(
+                    player_info,
+                    max_workers=5,  # Use 5 parallel threads
+                    delay=0.05  # Small delay between requests
+                )
 
-            # Apply results to each player
-            for player in priority_players:
-                if player.name in statcast_results:
-                    statcast_data = statcast_results[player.name]
-                    if statcast_data is not None:
-                        player.apply_statcast_data(statcast_data)
+                # Apply results
+                enriched_count = 0
+                for player_data, stats in results.items():
+                    if stats:
+                        player = player_data['player_obj']
+                        if hasattr(player, 'apply_statcast_data'):
+                            player.apply_statcast_data(stats)
+                        else:
+                            player.statcast_data = stats
                         enriched_count += 1
-                    else:
-                        failed_players.append((player.name, player.team, "No data returned"))
+
+                print(f"   ✅ Parallel fetch complete: {enriched_count}/{len(priority_players)} enriched")
+
+            except Exception as e:
+                print(f"   ❌ Parallel fetch failed: {e}, falling back to sequential")
+                # Fallback to sequential
+                self._sequential_statcast_fetch(priority_players)
+        else:
+            # Use sequential fetching
+            self._sequential_statcast_fetch(priority_players)
+
+    def _sequential_statcast_fetch(self, players):
+        """Fallback sequential Statcast fetching"""
+        enriched_count = 0
+
+        for i, player in enumerate(players):
+            if i % 10 == 0 and i > 0:
+                print(f"   Progress: {i}/{len(players)} players...")
+
+            try:
+                if player.primary_position == 'P':
+                    stats = self.statcast_fetcher.get_pitcher_stats(player.name)
                 else:
-                    failed_players.append((player.name, player.team, "Not in results"))
+                    stats = self.statcast_fetcher.get_hitter_stats(player.name)
 
-            print(f"✅ Statcast enriched: {enriched_count}/{len(priority_players)} players")
-
-            if failed_players:
-                print(f"\n⚠️ Failed to enrich {len(failed_players)} players:")
-                for name, team, reason in failed_players[:10]:  # Show first 10
-                    print(f"   - {name} ({team}): {reason}")
-                if len(failed_players) > 10:
-                    print(f"   ... and {len(failed_players) - 10} more")
-
-        except Exception as e:
-            print(f"❌ Statcast parallel fetch failed: {e}")
-            # Fallback to individual fetching
-            enriched_count = 0
-            failed_count = 0
-
-            for i, player in enumerate(priority_players):
-                if (i + 1) % 10 == 0:
-                    print(f"   Progress: {i + 1}/{len(priority_players)} players...")
-
-                try:
-                    statcast_data = self.statcast_fetcher.fetch_player_data(
-                        player.name,
-                        player.primary_position
-                    )
-
-                    if statcast_data is not None:
-                        player.apply_statcast_data(statcast_data)
-                        enriched_count += 1
+                if stats:
+                    if hasattr(player, 'apply_statcast_data'):
+                        player.apply_statcast_data(stats)
                     else:
-                        failed_count += 1
+                        player.statcast_data = stats
+                    enriched_count += 1
+            except Exception as e:
+                print(f"   ⚠️ Error fetching stats for {player.name}: {e}")
 
-                except Exception as e:
-                    failed_count += 1
-                    if failed_count <= 3:
-                        print(f"   ⚠️ Failed for {player.name}: {e}")
-
-            print(f"✅ Statcast enriched: {enriched_count}/{len(priority_players)} players")
-            if failed_count > 0:
-                print(f"⚠️ Failed to enrich: {failed_count} players")
+        print(f"   ✅ Sequential fetch complete: {enriched_count}/{len(players)} enriched")
 
     def apply_park_factors(self):
         """Apply park factors using built-in constants"""
@@ -2669,59 +2748,65 @@ class BulletproofDFSCore:
         print(f"✅ Park factors: {adjusted_count}/{len(eligible_players)} confirmed players adjusted")
 
     def _apply_recent_form_all_players(self):
-        """Apply recent form analysis to ALL confirmed players without limits"""
-        if not REAL_DATA_SOURCES.get('recent_form', False):
-            print("⚠️ Recent form disabled in REAL_DATA_SOURCES")
-            return
-
+        """
+        FIXED: Apply recent form analysis with BATCH processing
+        This replaces the old method that had 0.1s delay per player
+        """
         try:
-            # First check if the module exists
+            # Try the enhanced batch analyzer first
+            from recent_form_analyzer import RecentFormAnalyzer
+            form_analyzer = RecentFormAnalyzer(days_back=7, batch_size=10, max_workers=3)
+            use_batch = True
+        except:
+            # Fallback to regular analyzer
             try:
                 from real_recent_form import RealRecentFormAnalyzer
-                print("✅ RealRecentFormAnalyzer module found")
-            except ImportError:
-                print("❌ real_recent_form.py module not found!")
-                print("   Trying fallback to recent_form_analyzer...")
-                from recent_form_analyzer import RecentFormAnalyzer
-                form_analyzer = RecentFormAnalyzer(days_back=7)
-            else:
                 form_analyzer = RealRecentFormAnalyzer(days_back=7)
-
-            # Get ALL confirmed players
-            players_to_analyze = [p for p in self.players if p.is_confirmed]
-            total_players = len(players_to_analyze)
-
-            if not players_to_analyze:
-                print("   ⚠️ No confirmed players to analyze")
+                use_batch = False
+            except:
+                print("⚠️ No recent form analyzer available")
                 return
 
-            print(f"   Analyzing {total_players} players (ALL confirmed)")
+        # Get ALL confirmed players
+        players_to_analyze = [p for p in self.players if p.is_confirmed]
 
-            # Add debug for first player
-            if players_to_analyze:
-                print(f"   Sample player: {players_to_analyze[0].name} ({players_to_analyze[0].team})")
+        if not players_to_analyze:
+            print("   ⚠️ No confirmed players to analyze")
+            return
 
-            # Call the form analyzer
+        print(f"   Analyzing {len(players_to_analyze)} players (ALL confirmed)")
+
+        if use_batch:
+            # NEW: Use batch processing - MUCH faster!
             try:
-                form_analyzer.enrich_players_with_form(players_to_analyze)
+                # Analyze in parallel batches
+                form_results = form_analyzer.analyze_players_batch(
+                    players_to_analyze,
+                    use_cache=True,
+                    progress_callback=lambda x: print(f"   Progress: {x}%")
+                )
+
+                # Apply results
+                applied_count = form_analyzer._apply_batch_results_to_players(
+                    players_to_analyze,
+                    form_results
+                )
+
+                print(f"   ✅ Form analysis complete: {applied_count}/{len(players_to_analyze)} players updated")
+
             except Exception as e:
-                print(f"   ❌ Form analysis failed: {e}")
-                import traceback
-                traceback.print_exc()
-                return
+                print(f"   ❌ Batch form analysis failed: {e}")
+                # Fallback to sequential
+                form_analyzer.enrich_players_with_form(players_to_analyze)
+        else:
+            # Use sequential processing
+            form_analyzer.enrich_players_with_form(players_to_analyze)
 
-            # Count results
-            adjusted_count = 0
-            for player in players_to_analyze:
-                if hasattr(player, 'form_rating') and player.form_rating != 1.0:
-                    adjusted_count += 1
+        # Count results
+        adjusted_count = sum(1 for p in players_to_analyze
+                             if hasattr(p, 'form_rating') and p.form_rating != 1.0)
 
-            print(f"   ✅ Form analysis complete: {adjusted_count}/{total_players} players have form data")
-
-        except Exception as e:
-            print(f"⚠️ Recent form failed: {e}")
-            import traceback
-            traceback.print_exc()
+        print(f"   ✅ Form analysis complete: {adjusted_count}/{len(players_to_analyze)} players have form data")
 
     def debug_dff_eligibility(self):
         """Debug why DFF players aren't being used"""
