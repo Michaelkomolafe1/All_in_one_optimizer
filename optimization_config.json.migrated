@@ -1,0 +1,78 @@
+{
+  "scoring": {
+    "weights": {
+      "base": 0.3,
+      "recent_form": 0.25,
+      "vegas": 0.2,
+      "matchup": 0.2,
+      "park": 0.05
+    },
+    "bounds": {
+      "recent_form": [
+        0.7,
+        1.35
+      ],
+      "vegas": [
+        0.75,
+        1.25
+      ],
+      "matchup": [
+        0.8,
+        1.25
+      ],
+      "park": [
+        0.85,
+        1.15
+      ],
+      "batting_order": [
+        0.92,
+        1.1
+      ],
+      "final": [
+        0.65,
+        1.4
+      ]
+    },
+    "validation": {
+      "max_implied_total": 15.0,
+      "min_implied_total": 2.0,
+      "max_projection": 60.0,
+      "min_projection": 0.0,
+      "max_barrel_rate": 100.0,
+      "max_k_rate": 100.0,
+      "max_salary": 15000,
+      "min_salary": 2000
+    }
+  },
+  "performance": {
+    "cache_ttl": {
+      "player_scores": 300,
+      "vegas": 600,
+      "statcast": 7200,
+      "recent_form": 900,
+      "api_calls": 3600,
+      "lineup_correlation": 1800
+    },
+    "batch_size": 50,
+    "max_workers": 4,
+    "enable_disk_cache": true,
+    "cache_dir": ".dfs_cache"
+  },
+  "optimization": {
+    "use_confirmed_only": true,
+    "min_salary_usage": 0.95,
+    "max_players_per_team": 4,
+    "correlation_boost": 0.05,
+    "diversity_penalty": 0.85,
+    "max_form_analysis_players": 100
+  },
+  "scoring_weights": {
+    "base_projection": 0.2,
+    "dff_projection": 0.25,
+    "recent_form": 0.15,
+    "vegas": 0.1,
+    "statcast": 0.15,
+    "park_factors": 0.05,
+    "confirmed_status": 0.1
+  }
+}
