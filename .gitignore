@@ -26,3 +26,8 @@ exports/
 # Large files
 *.csv
 !sample_data/*.csv
+.venv/
+__pycache__/
+*.pyc
+.format_backup/
+backup_*/

@@ -1,0 +1,231 @@
+[1m./bankroll_management.py[m[36m:[m13[36m:[m1[36m:[m [1m[31mF403[m 'from PyQt5.QtCore import *' used; unable to detect undefined names
+[1m./bankroll_management.py[m[36m:[m14[36m:[m1[36m:[m [1m[31mF403[m 'from PyQt5.QtGui import *' used; unable to detect undefined names
+[1m./bankroll_management.py[m[36m:[m15[36m:[m1[36m:[m [1m[31mF403[m 'from PyQt5.QtWidgets import *' used; unable to detect undefined names
+[1m./bankroll_management.py[m[36m:[m285[36m:[m34[36m:[m [1m[31mF405[m 'QWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m295[36m:[m22[36m:[m [1m[31mF405[m 'QTimer' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m302[36m:[m18[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m305[36m:[m26[36m:[m [1m[31mF405[m 'QGroupBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m317[36m:[m28[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m346[36m:[m9[36m:[m [1m[31mF405[m 'QTimer' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m372[36m:[m24[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m385[36m:[m22[36m:[m [1m[31mF405[m 'QPushButton' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m555[36m:[m59[36m:[m [1m[31mF405[m 'QWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m557[36m:[m18[36m:[m [1m[31mF405[m 'QFrame' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m558[36m:[m30[36m:[m [1m[31mF405[m 'QFrame' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m571[36m:[m18[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m574[36m:[m25[36m:[m [1m[31mF405[m 'QHBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m576[36m:[m22[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m579[36m:[m23[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m582[36m:[m24[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m593[36m:[m19[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m604[36m:[m23[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m615[36m:[m9[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m625[36m:[m32[36m:[m [1m[31mF405[m 'QWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m637[36m:[m18[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m640[36m:[m21[36m:[m [1m[31mF405[m 'QTabWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m652[36m:[m18[36m:[m [1m[31mF405[m 'QWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m653[36m:[m18[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m657[36m:[m27[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m659[36m:[m31[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m667[36m:[m42[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m670[36m:[m22[36m:[m [1m[31mF405[m 'QGridLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m685[36m:[m28[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m687[36m:[m28[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m700[36m:[m25[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m706[36m:[m29[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m708[36m:[m40[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m710[36m:[m23[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m712[36m:[m34[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m729[36m:[m28[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m739[36m:[m30[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m742[36m:[m33[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m754[36m:[m18[36m:[m [1m[31mF405[m 'QWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m755[36m:[m18[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m762[36m:[m23[36m:[m [1m[31mF405[m 'QPushButton' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m771[36m:[m18[36m:[m [1m[31mF405[m 'QWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m772[36m:[m18[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m776[36m:[m24[36m:[m [1m[31mF405[m 'QFormLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m778[36m:[m31[36m:[m [1m[31mF405[m 'QDoubleSpinBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m783[36m:[m31[36m:[m [1m[31mF405[m 'QDoubleSpinBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m791[36m:[m31[36m:[m [1m[31mF405[m 'QPushButton' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m795[36m:[m29[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m811[36m:[m22[36m:[m [1m[31mF405[m 'QFormLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m813[36m:[m34[36m:[m [1m[31mF405[m 'QDoubleSpinBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m818[36m:[m35[36m:[m [1m[31mF405[m 'QDoubleSpinBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m826[36m:[m29[36m:[m [1m[31mF405[m 'QPushButton' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m830[36m:[m27[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m849[36m:[m18[36m:[m [1m[31mF405[m 'QWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m850[36m:[m18[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m854[36m:[m22[36m:[m [1m[31mF405[m 'QFormLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m856[36m:[m29[36m:[m [1m[31mF405[m 'QDoubleSpinBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m860[36m:[m33[36m:[m [1m[31mF405[m 'QComboBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m863[36m:[m28[36m:[m [1m[31mF405[m 'QLineEdit' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m870[36m:[m19[36m:[m [1m[31mF405[m 'QPushButton' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m878[36m:[m26[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m880[36m:[m30[36m:[m [1m[31mF405[m 'QTableWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m893[36m:[m18[36m:[m [1m[31mF405[m 'QWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m894[36m:[m18[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m898[36m:[m23[36m:[m [1m[31mF405[m 'QFormLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m900[36m:[m27[36m:[m [1m[31mF405[m 'QComboBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m904[36m:[m31[36m:[m [1m[31mF405[m 'QDoubleSpinBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m909[36m:[m27[36m:[m [1m[31mF405[m 'QDoubleSpinBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m918[36m:[m20[36m:[m [1m[31mF405[m 'QPushButton' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m926[36m:[m27[36m:[m [1m[31mF405[m 'QFormLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m929[36m:[m28[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m936[36m:[m38[36m:[m [1m[31mF405[m 'QDoubleSpinBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m945[36m:[m31[36m:[m [1m[31mF405[m 'QCheckBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m949[36m:[m31[36m:[m [1m[31mF405[m 'QPushButton' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m957[36m:[m24[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m959[36m:[m22[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m964[36m:[m21[36m:[m [1m[31mF405[m 'QPushButton' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m986[36m:[m16[36m:[m [1m[31mF405[m 'QGroupBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1024[36m:[m17[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1025[36m:[m55[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1025[36m:[m73[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1028[36m:[m21[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1053[36m:[m13[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1058[36m:[m46[36m:[m [1m[31mF405[m 'QLabel' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1067[36m:[m13[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1149[36m:[m9[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1158[36m:[m46[36m:[m [1m[31mF405[m 'QTableWidgetItem' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1159[36m:[m46[36m:[m [1m[31mF405[m 'QTableWidgetItem' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1161[36m:[m27[36m:[m [1m[31mF405[m 'QTableWidgetItem' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1163[36m:[m43[36m:[m [1m[31mF405[m 'QColor' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1165[36m:[m43[36m:[m [1m[31mF405[m 'QColor' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1168[36m:[m46[36m:[m [1m[31mF405[m 'QTableWidgetItem' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1179[36m:[m9[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1183[36m:[m17[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1187[36m:[m13[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1187[36m:[m31[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1190[36m:[m21[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1200[36m:[m13[36m:[m [1m[31mF405[m 'QMessageBox' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1222[36m:[m18[36m:[m [1m[31mF405[m 'QWidget' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bankroll_management.py[m[36m:[m1223[36m:[m18[36m:[m [1m[31mF405[m 'QVBoxLayout' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui, PyQt5.QtWidgets
+[1m./bulletproof_dfs_core.py[m[36m:[m823[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused 'is_eligible_for_selection' from line 419
+[1m./bulletproof_dfs_core.py[m[36m:[m877[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused 'apply_vegas_data' from line 413
+[1m./bulletproof_dfs_core.py[m[36m:[m881[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused 'apply_statcast_data' from line 407
+[1m./bulletproof_dfs_core.py[m[36m:[m979[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused '__repr__' from line 430
+[1m./bulletproof_dfs_core.py[m[36m:[m1186[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m1217[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m1460[36m:[m27[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m1557[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m1569[36m:[m23[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m1601[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused '_initialize_modules' from line 1034
+[1m./bulletproof_dfs_core.py[m[36m:[m1744[36m:[m23[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m1850[36m:[m23[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2009[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2167[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused 'set_player_enrichment_status' from line 1207
+[1m./bulletproof_dfs_core.py[m[36m:[m2224[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused 'detect_confirmed_players' from line 1405
+[1m./bulletproof_dfs_core.py[m[36m:[m2356[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2468[36m:[m27[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2479[36m:[m27[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2558[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2588[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2694[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2703[36m:[m23[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2713[36m:[m21[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2715[36m:[m23[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m2853[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m3134[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m3144[36m:[m27[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m3146[36m:[m27[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m3368[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m3530[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m3716[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m3745[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4084[36m:[m40[36m:[m [1m[31mE741[m ambiguous variable name 'l'
+[1m./bulletproof_dfs_core.py[m[36m:[m4090[36m:[m43[36m:[m [1m[31mE741[m ambiguous variable name 'l'
+[1m./bulletproof_dfs_core.py[m[36m:[m4097[36m:[m42[36m:[m [1m[31mE741[m ambiguous variable name 'l'
+[1m./bulletproof_dfs_core.py[m[36m:[m4098[36m:[m38[36m:[m [1m[31mE741[m ambiguous variable name 'l'
+[1m./bulletproof_dfs_core.py[m[36m:[m4103[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4129[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4581[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4602[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4608[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4626[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4635[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4712[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4729[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4747[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4751[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4757[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4758[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4760[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4761[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./bulletproof_dfs_core.py[m[36m:[m4793[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused 'debug_showdown_scoring' from line 4688
+[1m./bulletproof_dfs_core.py[m[36m:[m4817[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./data_validator.py[m[36m:[m355[36m:[m79[36m:[m [1m[31mE226[m missing whitespace around arithmetic operator
+[1m./dfs_diagnostic.py[m[36m:[m25[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./dfs_diagnostic.py[m[36m:[m30[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./dfs_diagnostic.py[m[36m:[m43[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./enhanced_dfs_gui.py[m[36m:[m15[36m:[m5[36m:[m [1m[31mF403[m 'from PyQt5.QtCore import *' used; unable to detect undefined names
+[1m./enhanced_dfs_gui.py[m[36m:[m16[36m:[m5[36m:[m [1m[31mF403[m 'from PyQt5.QtGui import *' used; unable to detect undefined names
+[1m./enhanced_dfs_gui.py[m[36m:[m227[36m:[m21[36m:[m [1m[31mF405[m 'pyqtSignal' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m232[36m:[m22[36m:[m [1m[31mF405[m 'QFont' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m249[36m:[m6[36m:[m [1m[31mF405[m 'pyqtSlot' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m259[36m:[m26[36m:[m [1m[31mF405[m 'QThread' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m262[36m:[m15[36m:[m [1m[31mF405[m 'pyqtSignal' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m263[36m:[m16[36m:[m [1m[31mF405[m 'pyqtSignal' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m264[36m:[m16[36m:[m [1m[31mF405[m 'pyqtSignal' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m265[36m:[m13[36m:[m [1m[31mF405[m 'pyqtSignal' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m510[36m:[m9[36m:[m [1m[31mF405[m 'QTimer' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m526[36m:[m29[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m637[36m:[m37[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m670[36m:[m37[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m865[36m:[m41[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1013[36m:[m35[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1017[36m:[m35[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1106[36m:[m20[36m:[m [1m[31mF405[m 'QSettings' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1116[36m:[m20[36m:[m [1m[31mF405[m 'QSettings' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1441[36m:[m46[36m:[m [1m[31mE741[m ambiguous variable name 'l'
+[1m./enhanced_dfs_gui.py[m[36m:[m1526[36m:[m39[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1532[36m:[m40[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1536[36m:[m42[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1536[36m:[m58[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1541[36m:[m40[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1541[36m:[m56[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1546[36m:[m41[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1546[36m:[m57[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1550[36m:[m25[36m:[m [1m[31mF405[m 'QColor' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1552[36m:[m25[36m:[m [1m[31mF405[m 'QColor' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1554[36m:[m25[36m:[m [1m[31mF405[m 'QColor' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1571[36m:[m40[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1577[36m:[m40[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1583[36m:[m42[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1583[36m:[m58[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1587[36m:[m40[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1593[36m:[m40[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1593[36m:[m56[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1598[36m:[m41[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1598[36m:[m57[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1602[36m:[m25[36m:[m [1m[31mF405[m 'QColor' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1604[36m:[m25[36m:[m [1m[31mF405[m 'QColor' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1619[36m:[m40[36m:[m [1m[31mE741[m ambiguous variable name 'l'
+[1m./enhanced_dfs_gui.py[m[36m:[m1620[36m:[m43[36m:[m [1m[31mE741[m ambiguous variable name 'l'
+[1m./enhanced_dfs_gui.py[m[36m:[m1685[36m:[m41[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1690[36m:[m39[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1693[36m:[m40[36m:[m [1m[31mF405[m 'QColor' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1695[36m:[m40[36m:[m [1m[31mF405[m 'QColor' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1697[36m:[m40[36m:[m [1m[31mF405[m 'QColor' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_dfs_gui.py[m[36m:[m1703[36m:[m39[36m:[m [1m[31mF405[m 'Qt' may be undefined, or defined from star imports: PyQt5.QtCore, PyQt5.QtGui
+[1m./enhanced_stats_engine.py[m[36m:[m475[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./enhanced_stats_engine.py[m[36m:[m512[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./enhanced_stats_engine.py[m[36m:[m513[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./hello.py[m[36m:[m128[36m:[m9[36m:[m [1m[31mF811[m redefinition of unused 'UnifiedMILPOptimizer' from line 87
+[1m./multi_lineup_optimizer.py[m[36m:[m314[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./multi_lineup_optimizer.py[m[36m:[m321[36m:[m44[36m:[m [1m[31mE226[m missing whitespace around arithmetic operator
+[1m./multi_lineup_optimizer.py[m[36m:[m329[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./multi_lineup_optimizer.py[m[36m:[m335[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./optimal_lineup_optimizer.py[m[36m:[m263[36m:[m9[36m:[m [1m[31mF841[m local variable 'position_counts' is assigned to but never used
+[1m./optimal_lineup_optimizer.py[m[36m:[m718[36m:[m23[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./performance_optimizer.py[m[36m:[m195[36m:[m13[36m:[m [1m[31mF841[m local variable 'enriched' is assigned to but never used
+[1m./performance_tracker.py[m[36m:[m298[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./simple_statcast_fetcher.py[m[36m:[m255[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused 'fetch_player_data' from line 101
+[1m./simple_statcast_fetcher.py[m[36m:[m352[36m:[m13[36m:[m [1m[31mF841[m local variable 'position_type' is assigned to but never used
+[1m./simple_statcast_fetcher.py[m[36m:[m439[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused 'get_player_id' from line 379
+[1m./simple_statcast_fetcher.py[m[36m:[m495[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused '_safe_get_value' from line 416
+[1m./simple_statcast_fetcher.py[m[36m:[m505[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused '_safe_get_percentage' from line 427
+[1m./smart_confirmation_system.py[m[36m:[m100[36m:[m19[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./smart_confirmation_system.py[m[36m:[m355[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+[1m./smart_confirmation_system.py[m[36m:[m433[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused 'is_player_confirmed' from line 386
+[1m./unified_scoring_engine.py[m[36m:[m258[36m:[m5[36m:[m [1m[31mF811[m redefinition of unused 'calculate_score' from line 112
