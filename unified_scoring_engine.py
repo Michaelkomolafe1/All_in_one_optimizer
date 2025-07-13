@@ -7,6 +7,7 @@ consistent, validated, and efficient implementation.
 """
 
 import json
+from unified_config_manager import get_config_manager
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -757,18 +758,21 @@ class UnifiedScoringEngine:
 
 # Convenience functions
 def load_config_from_file(filepath: str) -> ScoringConfig:
-    """Load configuration from JSON file"""
+    """Load configuration from unified config system"""
     try:
-        with open(filepath, "r") as f:
-            config_data = json.load(f)
+        # Use unified config manager
+        config_manager = get_config_manager()
+
+        # Get scoring configuration
+        scoring_config = config_manager.export_for_module('scoring_engine')
 
         return ScoringConfig(
-            weights=config_data.get("scoring", {}).get("weights", {}),
-            bounds=config_data.get("scoring", {}).get("bounds", {}),
-            validation=config_data.get("scoring", {}).get("validation", {}),
+            weights=scoring_config.get('weights', {}),
+            bounds=scoring_config.get('bounds', {}),
+            validation=scoring_config.get('validation', {})
         )
-    except:
-        logger.warning("Could not load config file, using defaults")
+    except Exception as e:
+        logger.warning(f"Could not load config: {e}")
         return ScoringConfig()
 
 

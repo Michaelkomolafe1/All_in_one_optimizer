@@ -6,6 +6,7 @@ Clean implementation with all optimizations included
 """
 
 import copy
+from unified_config_manager import get_config_value
 import json
 import logging
 from dataclasses import dataclass
@@ -85,29 +86,18 @@ class UnifiedMILPOptimizer:
         self._initialize_data_sources()
 
     def _load_dfs_config(self):
-        """Load configuration from dfs_config.json or optimization_config.json"""
-        config_loaded = False
-
-        # Try optimization_config.json first
+        """Load configuration from unified config system"""
         try:
-            with open("optimization_config.json", "r") as f:
-                config_data = json.load(f)
+            # Use unified config
+            self.config.salary_cap = get_config_value("optimization.salary_cap", 50000)
+            self.config.min_salary_usage = get_config_value("optimization.min_salary_usage", 0.95)
+            self.config.max_players_per_team = get_config_value("optimization.max_players_per_team", 4)
+            self.max_form_analysis_players = get_config_value("optimization.max_form_analysis_players", 100)
 
-            self.config.salary_cap = config_data.get("optimization", {}).get("salary_cap", 50000)
-            self.config.min_salary_usage = config_data.get("optimization", {}).get(
-                "min_salary_usage", 0.95
-            )
-            self.config.max_players_per_team = config_data.get("optimization", {}).get(
-                "max_players_per_team", 4
-            )
-            self.max_form_analysis_players = config_data.get("optimization", {}).get(
-                "max_form_analysis_players", 100
-            )
-
-            self.logger.info("✅ Loaded configuration from optimization_config.json")
-            config_loaded = True
-        except:
-            pass
+            self.logger.info("✅ Loaded configuration from unified config system")
+        except Exception as e:
+            self.logger.warning(f"Could not load unified config: {e}")
+            # Keep defaults
 
         # Fallback to dfs_config.json
         if not config_loaded:

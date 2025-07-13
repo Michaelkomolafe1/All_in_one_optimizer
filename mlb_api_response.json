@@ -3,14 +3,14 @@
   "totalItems": 15,
   "totalEvents": 0,
   "totalGames": 15,
-  "totalGamesInProgress": 4,
+  "totalGamesInProgress": 10,
   "dates": [
     {
       "date": "2025-07-13",
       "totalItems": 15,
       "totalEvents": 0,
       "totalGames": 15,
-      "totalGamesInProgress": 4,
+      "totalGamesInProgress": 10,
       "games": [
         {
           "gamePk": 777130,
@@ -35,7 +35,7 @@
                 "losses": 46,
                 "pct": ".521"
               },
-              "score": 0,
+              "score": 1,
               "team": {
                 "springLeague": {
                   "id": 115,
@@ -103,7 +103,7 @@
                 "losses": 45,
                 "pct": ".536"
               },
-              "score": 0,
+              "score": 1,
               "team": {
                 "springLeague": {
                   "id": 115,
@@ -459,13 +459,12 @@
           "gameDate": "2025-07-13T17:35:00Z",
           "officialDate": "2025-07-13",
           "status": {
-            "abstractGameState": "Preview",
+            "abstractGameState": "Live",
             "codedGameState": "P",
-            "detailedState": "Delayed Start",
-            "statusCode": "PI",
+            "detailedState": "Warmup",
+            "statusCode": "PW",
             "startTimeTBD": false,
-            "reason": "Inclement Weather",
-            "abstractGameCode": "P"
+            "abstractGameCode": "L"
           },
           "teams": {
             "away": {
@@ -980,7 +979,7 @@
                 "losses": 42,
                 "pct": ".558"
               },
-              "score": 0,
+              "score": 1,
               "team": {
                 "springLeague": {
                   "id": 115,
@@ -1350,7 +1349,7 @@
                 "losses": 73,
                 "pct": ".232"
               },
-              "score": 0,
+              "score": 2,
               "team": {
                 "springLeague": {
                   "id": 114,
@@ -1418,7 +1417,7 @@
                 "losses": 47,
                 "pct": ".510"
               },
-              "score": 1,
+              "score": 2,
               "team": {
                 "springLeague": {
                   "id": 114,
@@ -1788,7 +1787,7 @@
                 "losses": 45,
                 "pct": ".526"
               },
-              "score": 0,
+              "score": 2,
               "team": {
                 "springLeague": {
                   "id": 114,
@@ -1856,7 +1855,7 @@
                 "losses": 37,
                 "pct": ".615"
               },
-              "score": 0,
+              "score": 2,
               "team": {
                 "springLeague": {
                   "id": 115,
@@ -2212,13 +2211,12 @@
           "gameDate": "2025-07-13T18:10:00Z",
           "officialDate": "2025-07-13",
           "status": {
-            "abstractGameState": "Preview",
-            "codedGameState": "P",
-            "detailedState": "Delayed Start",
-            "statusCode": "PI",
+            "abstractGameState": "Live",
+            "codedGameState": "I",
+            "detailedState": "In Progress",
+            "statusCode": "I",
             "startTimeTBD": false,
-            "reason": "Inclement Weather",
-            "abstractGameCode": "P"
+            "abstractGameCode": "L"
           },
           "teams": {
             "away": {
@@ -2652,9 +2650,9 @@
           "officialDate": "2025-07-13",
           "status": {
             "abstractGameState": "Live",
-            "codedGameState": "P",
-            "detailedState": "Warmup",
-            "statusCode": "PW",
+            "codedGameState": "I",
+            "detailedState": "In Progress",
+            "statusCode": "I",
             "startTimeTBD": false,
             "abstractGameCode": "L"
           },
@@ -2665,7 +2663,7 @@
                 "losses": 49,
                 "pct": ".490"
               },
-              "score": 0,
+              "score": 3,
               "team": {
                 "springLeague": {
                   "id": 114,
@@ -3090,9 +3088,9 @@
           "officialDate": "2025-07-13",
           "status": {
             "abstractGameState": "Live",
-            "codedGameState": "P",
-            "detailedState": "Warmup",
-            "statusCode": "PW",
+            "codedGameState": "I",
+            "detailedState": "In Progress",
+            "statusCode": "I",
             "startTimeTBD": false,
             "abstractGameCode": "L"
           },
@@ -3103,7 +3101,7 @@
                 "losses": 58,
                 "pct": ".396"
               },
-              "score": 0,
+              "score": 1,
               "team": {
                 "springLeague": {
                   "id": 115,
@@ -3528,9 +3526,9 @@
           "officialDate": "2025-07-13",
           "status": {
             "abstractGameState": "Live",
-            "codedGameState": "P",
-            "detailedState": "Warmup",
-            "statusCode": "PW",
+            "codedGameState": "I",
+            "detailedState": "In Progress",
+            "statusCode": "I",
             "startTimeTBD": false,
             "abstractGameCode": "L"
           },
@@ -3966,9 +3964,9 @@
           "officialDate": "2025-07-13",
           "status": {
             "abstractGameState": "Live",
-            "codedGameState": "P",
-            "detailedState": "Warmup",
-            "statusCode": "PW",
+            "codedGameState": "I",
+            "detailedState": "In Progress",
+            "statusCode": "I",
             "startTimeTBD": false,
             "abstractGameCode": "L"
           },
@@ -4047,7 +4045,7 @@
                 "losses": 40,
                 "pct": ".579"
               },
-              "score": 0,
+              "score": 3,
               "team": {
                 "springLeague": {
                   "id": 114,
@@ -4404,9 +4402,9 @@
           "officialDate": "2025-07-13",
           "status": {
             "abstractGameState": "Live",
-            "codedGameState": "P",
-            "detailedState": "Warmup",
-            "statusCode": "PW",
+            "codedGameState": "I",
+            "detailedState": "In Progress",
+            "statusCode": "I",
             "startTimeTBD": false,
             "abstractGameCode": "L"
           },
@@ -4417,7 +4415,7 @@
                 "losses": 52,
                 "pct": ".447"
               },
-              "score": 0,
+              "score": 1,
               "team": {
                 "springLeague": {
                   "id": 115,
@@ -4485,7 +4483,7 @@
                 "losses": 46,
                 "pct": ".521"
               },
-              "score": 0,
+              "score": 1,
               "team": {
                 "springLeague": {
                   "id": 115,
@@ -5731,6 +5729,7 @@
                 "losses": 50,
                 "pct": ".479"
               },
+              "score": 0,
               "team": {
                 "springLeague": {
                   "id": 114,
@@ -5798,6 +5797,7 @@
                 "losses": 48,
                 "pct": ".495"
               },
+              "score": 0,
               "team": {
                 "springLeague": {
                   "id": 114,
@@ -6012,6 +6012,134 @@
                   "abbreviation": "2B"
                 },
                 "useName": "Luis"
+              }
+            ],
+            "awayPlayers": [
+              {
+                "id": 682998,
+                "fullName": "Corbin Carroll",
+                "link": "/api/v1/people/682998",
+                "firstName": "Corbin",
+                "lastName": "Carroll",
+                "primaryPosition": {
+                  "code": "9",
+                  "name": "Outfielder",
+                  "type": "Outfielder",
+                  "abbreviation": "RF"
+                },
+                "useName": "Corbin"
+              },
+              {
+                "id": 664983,
+                "fullName": "Jake McCarthy",
+                "link": "/api/v1/people/664983",
+                "firstName": "Jacob",
+                "lastName": "McCarthy",
+                "primaryPosition": {
+                  "code": "7",
+                  "name": "Outfielder",
+                  "type": "Outfielder",
+                  "abbreviation": "LF"
+                },
+                "useName": "Jake"
+              },
+              {
+                "id": 672695,
+                "fullName": "Geraldo Perdomo",
+                "link": "/api/v1/people/672695",
+                "firstName": "Geraldo",
+                "lastName": "Perdomo",
+                "primaryPosition": {
+                  "code": "6",
+                  "name": "Shortstop",
+                  "type": "Infielder",
+                  "abbreviation": "SS"
+                },
+                "useName": "Geraldo"
+              },
+              {
+                "id": 647304,
+                "fullName": "Josh Naylor",
+                "link": "/api/v1/people/647304",
+                "firstName": "Joshua-Douglas",
+                "lastName": "Naylor",
+                "primaryPosition": {
+                  "code": "3",
+                  "name": "First Base",
+                  "type": "Infielder",
+                  "abbreviation": "1B"
+                },
+                "useName": "Josh"
+              },
+              {
+                "id": 553993,
+                "fullName": "Eugenio Su\u00e1rez",
+                "link": "/api/v1/people/553993",
+                "firstName": "Eugenio",
+                "lastName": "Su\u00e1rez",
+                "primaryPosition": {
+                  "code": "5",
+                  "name": "Third Base",
+                  "type": "Infielder",
+                  "abbreviation": "3B"
+                },
+                "useName": "Eugenio"
+              },
+              {
+                "id": 666971,
+                "fullName": "Lourdes Gurriel Jr.",
+                "link": "/api/v1/people/666971",
+                "firstName": "Lourdes",
+                "lastName": "Gurriel",
+                "primaryPosition": {
+                  "code": "10",
+                  "name": "Designated Hitter",
+                  "type": "Hitter",
+                  "abbreviation": "DH"
+                },
+                "useName": "Lourdes"
+              },
+              {
+                "id": 677950,
+                "fullName": "Alek Thomas",
+                "link": "/api/v1/people/677950",
+                "firstName": "Alek",
+                "lastName": "Thomas",
+                "primaryPosition": {
+                  "code": "8",
+                  "name": "Outfielder",
+                  "type": "Outfielder",
+                  "abbreviation": "CF"
+                },
+                "useName": "Alek"
+              },
+              {
+                "id": 677942,
+                "fullName": "Blaze Alexander",
+                "link": "/api/v1/people/677942",
+                "firstName": "Blaze",
+                "lastName": "Alexander",
+                "primaryPosition": {
+                  "code": "4",
+                  "name": "Second Base",
+                  "type": "Infielder",
+                  "abbreviation": "2B"
+                },
+                "useName": "Blaze"
+              },
+              {
+                "id": 645444,
+                "fullName": "Jose Herrera",
+                "link": "/api/v1/people/645444",
+                "firstName": "Jose",
+                "lastName": "Herrera",
+                "primaryPosition": {
+                  "code": "2",
+                  "name": "Catcher",
+                  "type": "Catcher",
+                  "abbreviation": "C"
+                },
+                "useName": "Jose"
               }
             ]
           }

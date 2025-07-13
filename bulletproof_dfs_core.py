@@ -19,6 +19,7 @@ import pandas as pd
 
 from data_validator import get_validator
 from performance_optimizer import get_performance_optimizer
+from unified_config_manager import get_config_value
 
 # Import new optimization modules
 from unified_scoring_engine import get_scoring_engine
@@ -431,29 +432,7 @@ class AdvancedPlayer:
         opp_str = f" vs {self.opponent}" if self.opponent else ""
         return f"AdvancedPlayer({self.name}, {self.team}{opp_str}, ${self.salary})"
 
-    def _initialize_optimization_modules(self):
-        """
-        Initialize the NEW optimization modules (scoring engine, validator, performance optimizer)
-        This is a separate method to keep initialization clean and testable
-        """
-        print("🔧 Initializing optimization modules...")
 
-        # 1. Initialize Unified Scoring Engine
-        try:
-            from unified_scoring_engine import get_scoring_engine, load_config_from_file
-
-            # Try to load config from file first
-            scoring_config = None
-            if os.path.exists("optimization_config.json"):
-                try:
-                    scoring_config = load_config_from_file("optimization_config.json")
-                    print("  ✅ Loaded scoring config from optimization_config.json")
-                except Exception as e:
-                    print(f"  ⚠️ Could not load config file: {e}")
-
-            # Initialize scoring engine with config (or defaults)
-            self.scoring_engine = get_scoring_engine(scoring_config)
-            print("  ✅ Unified Scoring Engine initialized")
 
         except Exception as e:
             print(f"  ❌ Failed to initialize Scoring Engine: {e}")
@@ -478,16 +457,30 @@ class AdvancedPlayer:
         try:
             from performance_optimizer import CacheConfig, get_performance_optimizer
 
-            # Create performance config from DFS config if available
+            # Create performance config
             perf_config = None
-            if self.config and "performance" in self.config:
-                perf_settings = self.config["performance"]
+            try:
+                # Try unified config first
                 perf_config = CacheConfig(
-                    ttl_seconds=perf_settings.get("cache_ttl", {}),
-                    enable_disk_cache=perf_settings.get("enable_disk_cache", True),
-                    cache_dir=perf_settings.get("cache_dir", ".dfs_cache"),
-                    max_memory_mb=perf_settings.get("max_memory_mb", 100),
+                    ttl_seconds=get_config_value("performance.cache_ttl", {}),
+                    enable_disk_cache=get_config_value("performance.enable_disk_cache", True),
+                    cache_dir=get_config_value("performance.cache_dir", ".dfs_cache"),
+                    max_memory_mb=get_config_value("performance.max_memory_mb", 100),
+                    max_size=get_config_value("performance.max_cache_size", 10000)
                 )
+            except:
+                # Fallback to config from self.config
+                if self.config and "performance" in self.config:
+                    perf_settings = self.config["performance"]
+                    perf_config = CacheConfig(
+                        ttl_seconds=perf_settings.get("cache_ttl", {}),
+                        enable_disk_cache=perf_settings.get("enable_disk_cache", True),
+                        cache_dir=perf_settings.get("cache_dir", ".dfs_cache"),
+                        max_memory_mb=perf_settings.get("max_memory_mb", 100)
+                    )
+                else:
+                    # Use defaults
+                    perf_config = CacheConfig()
 
             self.performance_optimizer = get_performance_optimizer(perf_config)
             print("  ✅ Performance Optimizer initialized")
@@ -496,28 +489,34 @@ class AdvancedPlayer:
             print(f"  ❌ Failed to initialize Performance Optimizer: {e}")
             self.performance_optimizer = None
 
-        # 4. Verify module integration
-        self._verify_module_integration()
+        # 4. Set flag for unified scoring
+        self.use_unified_scoring = (
+                self.scoring_engine is not None
+                and self.validator is not None
+                and self.performance_optimizer is not None
+        )
 
-    def _update_validator_salary_ranges(self):
-        """Update validator with actual salary ranges from loaded players"""
-        if not self.validator or not self.players:
-            return
+        if self.use_unified_scoring:
+            print("  ✅ All optimization modules ready - using unified scoring")
+        else:
+            print("  ⚠️ Some modules unavailable - using legacy scoring")
 
+        # 5. Initialize park factors
         try:
-            # Get actual salary range from players
-            salaries = [p.salary for p in self.players if hasattr(p, "salary") and p.salary > 0]
-            if salaries:
-                min_salary = min(salaries)
-                max_salary = max(salaries)
-
-                # Update validator rules
-                self.validator.rules.player_rules["salary"]["min"] = min_salary
-                self.validator.rules.player_rules["salary"]["max"] = max_salary
-
-                print(f"  📊 Updated validator salary range: ${min_salary:,} - ${max_salary:,}")
+            from park_factors import integrate_park_factors
+            integrate_park_factors(self)
+            print("  ✅ Park Factors integrated")
         except Exception as e:
-            print(f"  ⚠️ Could not update validator salary ranges: {e}")
+            print(f"  ⚠️ Failed to initialize park factors: {e}")
+
+
+
+
+
+        # Initialize NEW optimization modules
+        self._initialize_optimization_modules()
+
+
 
     def _verify_module_integration(self):
         """Verify that all optimization modules are properly integrated"""
@@ -530,15 +529,11 @@ class AdvancedPlayer:
         all_ready = all(modules_status.values())
 
         if all_ready:
-            print("  ✅ All optimization modules ready!")
-
-            # Set flag indicating new system is available
-            self.use_unified_scoring = True
+            print("  ✅ All optimization modules verified and ready!")
 
             # Test scoring engine with dummy player
             try:
                 from unified_player_model import UnifiedPlayer
-
                 test_player = UnifiedPlayer(
                     id="test",
                     name="Test Player",
@@ -548,10 +543,8 @@ class AdvancedPlayer:
                     positions=["OF"],
                     base_projection=10.0,
                 )
-
                 test_score = self.scoring_engine.calculate_score(test_player)
                 print(f"  🧪 Scoring engine test: {test_score:.2f} points")
-
             except Exception as e:
                 print(f"  ⚠️ Scoring engine test failed: {e}")
         else:
@@ -560,8 +553,6 @@ class AdvancedPlayer:
                 if not status:
                     print(f"     ❌ {module}")
 
-            # Fallback to legacy scoring
-            self.use_unified_scoring = False
 
     def calculate_player_score(self, player):
         """
@@ -1010,26 +1001,10 @@ class BulletproofDFSCore:
         # Initialize core modules
         self._initialize_modules()
 
-        # Initialize NEW optimization modules (Fix #1)
-        try:
-            self.scoring_engine = get_scoring_engine()
-            self.validator = get_validator()
-            self.performance_optimizer = get_performance_optimizer()
-            print("✅ New optimization modules initialized")
-        except Exception as e:
-            print(f"⚠️ Failed to initialize new optimization modules: {e}")
-            self.scoring_engine = None
-            self.validator = None
-            self.performance_optimizer = None
+        # Initialize NEW optimization modules
+        self._initialize_optimization_modules()
 
-        # Initialize park factors (Fix #7)
-        try:
-            integrate_park_factors(self)
-            print("✅ Park factors module initialized")
-        except Exception as e:
-            print(f"⚠️ Failed to initialize park factors: {e}")
 
-        # Initialize other modules as needed...
 
     def _initialize_modules(self):
         """Initialize all system modules with proper error handling"""

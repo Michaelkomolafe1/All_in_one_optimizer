@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
 """
-PERFORMANCE OPTIMIZER - Efficient Data Processing for DFS Optimizer
-==================================================================
-Handles caching, batch processing, and lazy evaluation to improve performance.
+ENHANCED PERFORMANCE OPTIMIZER - With proper cache management
+===========================================================
+Fixes memory leak and adds LRU cache eviction
 """
 
 import hashlib
+import heapq
 import logging
 import os
 import pickle
 import time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class CacheConfig:
-    """Cache configuration"""
+    """Enhanced cache configuration"""
 
     max_size: int = 10000
     ttl_seconds: Dict[str, int] = field(
@@ -36,27 +38,96 @@ class CacheConfig:
     )
     enable_disk_cache: bool = True
     cache_dir: str = ".dfs_cache"
+    eviction_policy: str = "lru"  # lru or lfu
+
+    # Performance monitoring
+    enable_monitoring: bool = True
+    slow_operation_threshold: float = 0.1  # seconds
+
+    # Memory management
+    max_memory_mb: int = 100
+    check_memory_interval: int = 100  # Check every N operations
 
 
-class PerformanceOptimizer:
-    """Handles performance optimization for DFS calculations"""
+class LRUCache:
+    """Thread-safe LRU cache implementation"""
+
+    def __init__(self, max_size: int):
+        self.max_size = max_size
+        self.cache = OrderedDict()
+        self.access_count = {}
+        self.lock = threading.RLock()
+
+    def get(self, key: str) -> Optional[Tuple[Any, datetime]]:
+        with self.lock:
+            if key in self.cache:
+                # Move to end (most recently used)
+                self.cache.move_to_end(key)
+                self.access_count[key] = self.access_count.get(key, 0) + 1
+                return self.cache[key]
+            return None
+
+    def put(self, key: str, value: Any, timestamp: datetime):
+        with self.lock:
+            if key in self.cache:
+                # Update existing
+                self.cache.move_to_end(key)
+            else:
+                # Add new
+                if len(self.cache) >= self.max_size:
+                    # Evict least recently used
+                    evicted_key = next(iter(self.cache))
+                    del self.cache[evicted_key]
+                    if evicted_key in self.access_count:
+                        del self.access_count[evicted_key]
+
+            self.cache[key] = (value, timestamp)
+            self.access_count[key] = self.access_count.get(key, 0) + 1
+
+    def clear(self):
+        with self.lock:
+            self.cache.clear()
+            self.access_count.clear()
+
+    def get_stats(self) -> Dict[str, Any]:
+        with self.lock:
+            return {
+                "size": len(self.cache),
+                "max_size": self.max_size,
+                "total_accesses": sum(self.access_count.values()),
+                "most_accessed": max(self.access_count.items(), key=lambda x: x[1])[0] if self.access_count else None
+            }
+
+
+import threading
+
+
+class EnhancedPerformanceOptimizer:
+    """Enhanced performance optimization with monitoring and memory management"""
 
     def __init__(self, config: Optional[CacheConfig] = None):
         self.config = config or CacheConfig()
-        self._memory_cache = {}
+        self._memory_cache = LRUCache(self.config.max_size)
         self._cache_stats = {"hits": 0, "misses": 0, "evictions": 0}
         self._processing_times = []
+        self._operation_count = 0
+
+        # Performance monitoring
+        self._slow_operations = []
+        self._operation_timings = {}
 
         # Create cache directory if needed
         if self.config.enable_disk_cache:
             os.makedirs(self.config.cache_dir, exist_ok=True)
 
     def cached(self, category: str = "default", key_func: Optional[Callable] = None):
-        """Decorator for caching function results"""
+        """Enhanced decorator with monitoring"""
 
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
+                start_time = time.time()
+
                 # Generate cache key
                 if key_func:
                     cache_key = key_func(*args, **kwargs)
@@ -69,171 +140,55 @@ class PerformanceOptimizer:
                 cached_result = self._get_from_cache(cache_key, category)
                 if cached_result is not None:
                     self._cache_stats["hits"] += 1
+                    elapsed = time.time() - start_time
+                    self._record_timing(func.__name__, elapsed, True)
                     return cached_result
 
                 # Cache miss - compute result
                 self._cache_stats["misses"] += 1
-                start_time = time.time()
-                result = func(*args, **kwargs)
-                elapsed = time.time() - start_time
 
-                # Store in cache
-                self._store_in_cache(cache_key, result, category)
+                try:
+                    result = func(*args, **kwargs)
 
-                # Track performance
-                self._processing_times.append(
-                    {
-                        "function": func.__name__,
-                        "category": category,
-                        "elapsed": elapsed,
-                        "timestamp": datetime.now(),
-                    }
-                )
+                    # Cache the result
+                    self._add_to_cache(cache_key, result, category)
 
-                return result
+                    elapsed = time.time() - start_time
+                    self._record_timing(func.__name__, elapsed, False)
+
+                    # Check for slow operations
+                    if self.config.enable_monitoring and elapsed > self.config.slow_operation_threshold:
+                        self._record_slow_operation(func.__name__, elapsed, args, kwargs)
+
+                    return result
+
+                except Exception as e:
+                    elapsed = time.time() - start_time
+                    self._record_timing(func.__name__, elapsed, False, error=True)
+                    logger.error(f"Error in {func.__name__}: {e}")
+                    raise
+                finally:
+                    # Periodic memory check
+                    self._operation_count += 1
+                    if self._operation_count % self.config.check_memory_interval == 0:
+                        self._check_memory_usage()
 
             return wrapper
 
         return decorator
 
-    def batch_process(
-        self, items: List[Any], process_func: Callable, batch_size: int = 50, max_workers: int = 4
-    ) -> List[Any]:
-        """Process items in batches for efficiency"""
-        results = []
-        total_items = len(items)
-
-        logger.info(f"Batch processing {total_items} items in batches of {batch_size}")
-
-        # Process in batches
-        for i in range(0, total_items, batch_size):
-            batch = items[i : i + batch_size]
-            batch_results = self._process_batch(batch, process_func, max_workers)
-            results.extend(batch_results)
-
-            # Log progress
-            processed = min(i + batch_size, total_items)
-            logger.debug(f"Processed {processed}/{total_items} items")
-
-        return results
-
-    def _process_batch(
-        self, batch: List[Any], process_func: Callable, max_workers: int
-    ) -> List[Any]:
-        """Process a single batch with threading"""
-        results = [None] * len(batch)
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_index = {
-                executor.submit(process_func, item): i for i, item in enumerate(batch)
-            }
-
-            # Collect results
-            for future in as_completed(future_to_index):
-                index = future_to_index[future]
-                try:
-                    results[index] = future.result()
-                except Exception as e:
-                    logger.error(f"Error processing item {index}: {e}")
-                    results[index] = None
-
-        return results
-
-    def lazy_calculate(self, player: Any, calculation_func: Callable) -> "LazyCalculator":
-        """Create a lazy calculator for deferred computation"""
-        return LazyCalculator(player, calculation_func, self)
-
-    def optimize_player_pool(
-        self, players: List[Any], enrichment_funcs: List[Callable]
-    ) -> List[Any]:
-        """Optimize enrichment of player pool"""
-        logger.info(f"Optimizing enrichment for {len(players)} players")
-
-        # Sort players by priority (higher projection = higher priority)
-        sorted_players = sorted(
-            players, key=lambda p: getattr(p, "base_projection", 0), reverse=True
-        )
-
-        # Track which enrichments each player needs
-        enrichment_needed = {}
-        for player in sorted_players:
-            needed = []
-
-            # Check what enrichments are needed
-            if not hasattr(player, "_enrichment_complete"):
-                player._enrichment_complete = set()
-
-            for func in enrichment_funcs:
-                func_name = func.__name__
-                if func_name not in player._enrichment_complete:
-                    needed.append(func)
-
-            if needed:
-                enrichment_needed[getattr(player, "id", player.name)] = needed
-
-        # Batch process enrichments by type
-        for func in enrichment_funcs:
-            # Get players needing this enrichment
-            players_needing = [
-                p
-                for p in sorted_players
-                if getattr(p, "id", p.name) in enrichment_needed
-                and func in enrichment_needed[getattr(p, "id", p.name)]
-            ]
-
-            if not players_needing:
-                continue
-
-            logger.info(f"Applying {func.__name__} to {len(players_needing)} players")
-
-            # Process in batches
-            enriched = self.batch_process(players_needing, func, batch_size=50)
-
-            # Mark as complete
-            for player in players_needing:
-                if hasattr(player, "_enrichment_complete"):
-                    player._enrichment_complete.add(func.__name__)
-
-        return sorted_players
-
-    def _generate_cache_key(self, func_name: str, args: tuple, kwargs: dict) -> str:
-        """Generate cache key from function and arguments"""
-        # Create a string representation
-        key_parts = [func_name]
-
-        # Handle args
-        for arg in args:
-            if hasattr(arg, "id"):
-                key_parts.append(f"id:{arg.id}")
-            elif hasattr(arg, "name"):
-                key_parts.append(f"name:{arg.name}")
-            elif isinstance(arg, (str, int, float, bool)):
-                key_parts.append(str(arg))
-            else:
-                key_parts.append(str(type(arg).__name__))
-
-        # Handle kwargs
-        for k, v in sorted(kwargs.items()):
-            key_parts.append(f"{k}={v}")
-
-        # Create hash
-        key_str = "|".join(key_parts)
-        return hashlib.md5(key_str.encode()).hexdigest()
-
     def _get_from_cache(self, key: str, category: str) -> Optional[Any]:
-        """Get value from cache"""
-        # Check memory cache first
-        if key in self._memory_cache:
-            entry = self._memory_cache[key]
+        """Get value from cache with TTL check"""
+        # Check memory cache
+        cached = self._memory_cache.get(key)
+        if cached:
+            value, timestamp = cached
             ttl = self.config.ttl_seconds.get(category, 300)
-
-            if datetime.now() - entry["timestamp"] < timedelta(seconds=ttl):
-                return entry["data"]
+            if (datetime.now() - timestamp).total_seconds() < ttl:
+                return value
             else:
                 # Expired - remove from cache
-                del self._memory_cache[key]
-                self._cache_stats["evictions"] += 1
+                self._memory_cache.cache.pop(key, None)
 
         # Check disk cache if enabled
         if self.config.enable_disk_cache:
@@ -241,167 +196,262 @@ class PerformanceOptimizer:
 
         return None
 
-    def _store_in_cache(self, key: str, data: Any, category: str):
-        """Store value in cache"""
-        # Check cache size limit
-        if len(self._memory_cache) >= self.config.max_size:
-            # Evict oldest entries
-            self._evict_oldest(self.config.max_size // 10)
+    def _add_to_cache(self, key: str, value: Any, category: str):
+        """Add value to cache with size management"""
+        timestamp = datetime.now()
 
-        # Store in memory
-        self._memory_cache[key] = {"data": data, "timestamp": datetime.now(), "category": category}
+        # Add to memory cache (LRU handles eviction)
+        self._memory_cache.put(key, value, timestamp)
 
-        # Store on disk if enabled
+        # Also save to disk if enabled
         if self.config.enable_disk_cache:
-            self._store_in_disk_cache(key, data, category)
+            self._save_to_disk_cache(key, value, category)
 
-    def _evict_oldest(self, count: int):
-        """Evict oldest cache entries"""
-        if not self._memory_cache:
-            return
-
-        # Sort by timestamp
-        sorted_keys = sorted(
-            self._memory_cache.keys(), key=lambda k: self._memory_cache[k]["timestamp"]
-        )
-
-        # Remove oldest
-        for key in sorted_keys[:count]:
-            del self._memory_cache[key]
-            self._cache_stats["evictions"] += 1
-
-    def _get_from_disk_cache(self, key: str, category: str) -> Optional[Any]:
-        """Get from disk cache"""
-        cache_file = os.path.join(self.config.cache_dir, f"{key}.pkl")
-
-        if not os.path.exists(cache_file):
-            return None
-
+    def _generate_cache_key(self, func_name: str, args: tuple, kwargs: dict) -> str:
+        """Generate cache key with better handling of complex objects"""
         try:
-            with open(cache_file, "rb") as f:
-                entry = pickle.load(f)
+            # Create a string representation
+            key_parts = [func_name]
 
-            ttl = self.config.ttl_seconds.get(category, 300)
-            if datetime.now() - entry["timestamp"] < timedelta(seconds=ttl):
-                return entry["data"]
-            else:
-                # Expired - remove file
-                os.remove(cache_file)
+            # Handle args
+            for arg in args:
+                if hasattr(arg, '__dict__'):
+                    # For objects, use their attributes
+                    key_parts.append(str(sorted(arg.__dict__.items())))
+                else:
+                    key_parts.append(str(arg))
+
+            # Handle kwargs
+            for k, v in sorted(kwargs.items()):
+                key_parts.append(f"{k}={v}")
+
+            key_string = "|".join(key_parts)
+
+            # Hash for consistent length
+            return hashlib.md5(key_string.encode()).hexdigest()
 
         except Exception as e:
-            logger.error(f"Error reading disk cache: {e}")
+            logger.warning(f"Error generating cache key: {e}")
+            # Fallback to timestamp-based key
+            return f"{func_name}_{int(time.time() * 1000000)}"
+
+    def _get_from_disk_cache(self, key: str, category: str) -> Optional[Any]:
+        """Load from disk cache"""
+        cache_file = os.path.join(self.config.cache_dir, f"{key}.pkl")
+
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'rb') as f:
+                    data = pickle.load(f)
+
+                # Check TTL
+                ttl = self.config.ttl_seconds.get(category, 300)
+                if (datetime.now() - data['timestamp']).total_seconds() < ttl:
+                    return data['value']
+                else:
+                    # Expired - remove file
+                    os.remove(cache_file)
+            except Exception as e:
+                logger.warning(f"Error reading disk cache: {e}")
+                # Remove corrupted file
+                try:
+                    os.remove(cache_file)
+                except:
+                    pass
 
         return None
 
-    def _store_in_disk_cache(self, key: str, data: Any, category: str):
-        """Store in disk cache"""
+    def _save_to_disk_cache(self, key: str, value: Any, category: str):
+        """Save to disk cache"""
         cache_file = os.path.join(self.config.cache_dir, f"{key}.pkl")
 
         try:
-            entry = {"data": data, "timestamp": datetime.now(), "category": category}
+            data = {
+                'value': value,
+                'timestamp': datetime.now(),
+                'category': category
+            }
 
-            with open(cache_file, "wb") as f:
-                pickle.dump(entry, f)
+            with open(cache_file, 'wb') as f:
+                pickle.dump(data, f)
 
         except Exception as e:
-            logger.error(f"Error writing disk cache: {e}")
+            logger.warning(f"Error saving to disk cache: {e}")
 
-    def clear_cache(self, category: Optional[str] = None):
-        """Clear cache (optionally by category)"""
-        if category:
-            # Clear specific category
-            keys_to_remove = [
-                k for k, v in self._memory_cache.items() if v.get("category") == category
-            ]
-            for key in keys_to_remove:
-                del self._memory_cache[key]
-        else:
-            # Clear all
-            self._memory_cache.clear()
+    def _record_timing(self, func_name: str, elapsed: float, cache_hit: bool, error: bool = False):
+        """Record operation timing for monitoring"""
+        if not self.config.enable_monitoring:
+            return
 
-        # Clear disk cache
-        if self.config.enable_disk_cache:
-            try:
-                import shutil
+        if func_name not in self._operation_timings:
+            self._operation_timings[func_name] = {
+                'count': 0,
+                'total_time': 0,
+                'cache_hits': 0,
+                'errors': 0,
+                'max_time': 0,
+                'min_time': float('inf')
+            }
 
-                shutil.rmtree(self.config.cache_dir)
-                os.makedirs(self.config.cache_dir)
-            except:
-                pass
+        stats = self._operation_timings[func_name]
+        stats['count'] += 1
+        stats['total_time'] += elapsed
+        stats['max_time'] = max(stats['max_time'], elapsed)
+        stats['min_time'] = min(stats['min_time'], elapsed)
 
-        logger.info(f"Cleared cache for category: {category or 'all'}")
+        if cache_hit:
+            stats['cache_hits'] += 1
+        if error:
+            stats['errors'] += 1
 
-    def get_performance_stats(self) -> Dict[str, Any]:
-        """Get performance statistics"""
-        hit_rate = self._cache_stats["hits"] / max(
-            self._cache_stats["hits"] + self._cache_stats["misses"], 1
-        )
+    def _record_slow_operation(self, func_name: str, elapsed: float, args: tuple, kwargs: dict):
+        """Record slow operations for analysis"""
+        self._slow_operations.append({
+            'function': func_name,
+            'elapsed': elapsed,
+            'timestamp': datetime.now(),
+            'args_preview': str(args)[:100],  # Truncate for memory
+            'kwargs_preview': str(kwargs)[:100]
+        })
 
-        # Calculate average processing times
-        avg_times = {}
-        if self._processing_times:
-            from itertools import groupby
+        # Keep only recent slow operations
+        if len(self._slow_operations) > 100:
+            self._slow_operations = self._slow_operations[-100:]
 
-            sorted_times = sorted(self._processing_times, key=lambda x: x["function"])
+        logger.warning(f"Slow operation: {func_name} took {elapsed:.3f}s")
 
-            for func_name, times in groupby(sorted_times, key=lambda x: x["function"]):
-                times_list = list(times)
-                avg_times[func_name] = sum(t["elapsed"] for t in times_list) / len(times_list)
+    def _check_memory_usage(self):
+        """Check memory usage and clear cache if needed"""
+        try:
+            import psutil
+            process = psutil.Process()
+            memory_mb = process.memory_info().rss / 1024 / 1024
+
+            if memory_mb > self.config.max_memory_mb:
+                logger.warning(f"Memory usage ({memory_mb:.1f}MB) exceeds limit ({self.config.max_memory_mb}MB)")
+                # Clear 20% of cache
+                self.clear_cache(partial=0.2)
+        except ImportError:
+            # psutil not available
+            pass
+
+    def batch_process(self, items: List[Any], process_func: Callable,
+                      batch_size: Optional[int] = None, max_workers: Optional[int] = None) -> List[Any]:
+        """Enhanced batch processing with progress tracking"""
+        if not items:
+            return []
+
+        batch_size = batch_size or 50
+        max_workers = max_workers or 4
+
+        results = [None] * len(items)  # Pre-allocate results array
+        total_items = len(items)
+        processed = 0
+
+        # Process in batches
+        for i in range(0, total_items, batch_size):
+            batch = items[i:i + batch_size]
+            batch_start_idx = i
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit batch with index tracking
+                future_to_idx = {}
+                for batch_idx, item in enumerate(batch):
+                    future = executor.submit(process_func, item)
+                    actual_idx = batch_start_idx + batch_idx
+                    future_to_idx[future] = actual_idx
+
+                # Collect results in order
+                for future in as_completed(future_to_idx):
+                    idx = future_to_idx[future]
+                    try:
+                        results[idx] = future.result()
+                        processed += 1
+
+                        # Progress callback
+                        if processed % 10 == 0:
+                            logger.info(f"Processed {processed}/{total_items} items")
+
+                    except Exception as e:
+                        logger.error(f"Error processing item at index {idx}: {e}")
+                        results[idx] = None
+
+        return results
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive performance statistics"""
+        cache_stats = self._memory_cache.get_stats()
+
+        # Calculate operation statistics
+        operation_stats = {}
+        for func_name, stats in self._operation_timings.items():
+            if stats['count'] > 0:
+                operation_stats[func_name] = {
+                    'count': stats['count'],
+                    'avg_time': stats['total_time'] / stats['count'],
+                    'max_time': stats['max_time'],
+                    'min_time': stats['min_time'],
+                    'cache_hit_rate': stats['cache_hits'] / stats['count'],
+                    'error_rate': stats['errors'] / stats['count']
+                }
 
         return {
-            "cache_stats": self._cache_stats,
-            "cache_hit_rate": hit_rate,
-            "cache_size": len(self._memory_cache),
-            "average_processing_times": avg_times,
-            "total_processing_calls": len(self._processing_times),
+            'cache': {
+                **cache_stats,
+                'hit_rate': self._cache_stats['hits'] / max(1, self._cache_stats['hits'] + self._cache_stats['misses'])
+            },
+            'operations': operation_stats,
+            'slow_operations': len(self._slow_operations),
+            'total_operations': self._operation_count
         }
 
+    def clear_cache(self, partial: float = None):
+        """Clear cache with optional partial clearing"""
+        if partial and 0 < partial < 1:
+            # Clear only a portion of the cache
+            current_size = len(self._memory_cache.cache)
+            items_to_remove = int(current_size * partial)
 
-class LazyCalculator:
-    """Lazy calculation wrapper for deferred computation"""
+            # Remove oldest items
+            for _ in range(items_to_remove):
+                if self._memory_cache.cache:
+                    self._memory_cache.cache.popitem(last=False)
 
-    def __init__(self, obj: Any, calc_func: Callable, optimizer: PerformanceOptimizer):
-        self._obj = obj
-        self._calc_func = calc_func
-        self._optimizer = optimizer
-        self._result = None
-        self._calculated = False
+            logger.info(f"Cleared {items_to_remove} items from cache")
+        else:
+            # Clear everything
+            self._memory_cache.clear()
+            self._cache_stats = {"hits": 0, "misses": 0, "evictions": 0}
 
-    @property
-    def value(self) -> Any:
-        """Get calculated value (calculates on first access)"""
-        if not self._calculated:
-            # Use caching if available
-            cache_key = f"lazy:{id(self._obj)}:{self._calc_func.__name__}"
+            # Clear disk cache if enabled
+            if self.config.enable_disk_cache:
+                self._clear_disk_cache()
 
-            cached = self._optimizer._get_from_cache(cache_key, "lazy")
-            if cached is not None:
-                self._result = cached
-            else:
-                self._result = self._calc_func(self._obj)
-                self._optimizer._store_in_cache(cache_key, self._result, "lazy")
-
-            self._calculated = True
-
-        return self._result
-
-    def invalidate(self):
-        """Invalidate the calculated value"""
-        self._calculated = False
-        self._result = None
+    def _clear_disk_cache(self):
+        """Clear disk cache"""
+        try:
+            for file in os.listdir(self.config.cache_dir):
+                if file.endswith('.pkl'):
+                    os.remove(os.path.join(self.config.cache_dir, file))
+        except Exception as e:
+            logger.error(f"Error clearing disk cache: {e}")
 
 
-# Global optimizer instance
+# Singleton instance getter
 _optimizer_instance = None
 
 
-def get_performance_optimizer(config: Optional[CacheConfig] = None) -> PerformanceOptimizer:
-    """Get or create global performance optimizer"""
+def get_performance_optimizer(config: Optional[CacheConfig] = None) -> EnhancedPerformanceOptimizer:
+    """Get or create the performance optimizer instance"""
     global _optimizer_instance
 
+    # If config is provided and we need a different instance
+    if config is not None:
+        # Always create new instance with specific config for testing
+        return EnhancedPerformanceOptimizer(config)
+
+    # Otherwise use singleton
     if _optimizer_instance is None:
-        _optimizer_instance = PerformanceOptimizer(config)
-    elif config is not None:
-        _optimizer_instance.config = config
+        _optimizer_instance = EnhancedPerformanceOptimizer()
 
     return _optimizer_instance
