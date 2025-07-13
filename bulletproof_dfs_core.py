@@ -250,46 +250,180 @@ REAL_DATA_SOURCES = {
 # PLAYER CLASS
 # ============================================================================
 
+
 class AdvancedPlayer:
-    """Player model with all advanced features including enhanced pitcher detection"""
+    """Complete fixed AdvancedPlayer class with all required attributes"""
 
-    def __init__(self):
-        """Initialize BulletproofDFSCore with all modules and configuration"""
-        # Basic attributes
-        self.players = []
-        self.contest_type = 'classic'
-        self.salary_cap = 50000
-        self.optimization_mode = 'bulletproof'
-        self.dff_classic_file = None
-        self.dff_showdown_file = None
-        self.current_dff_file = None
+    def __init__(self, player_data):
+        """Initialize from dictionary with all required fields"""
+        if isinstance(player_data, dict):
+            # Basic fields from CSV
+            self.id = player_data.get('id', 0)
+            self.name = player_data.get('name', '')
+            self.team = player_data.get('team', '')
+            self.salary = int(player_data.get('salary', 0))
+            self.primary_position = player_data.get('position', 'UTIL')
+            self.positions = [self.primary_position]
+            self.base_projection = float(player_data.get('projection', 0))
+            self.contest_type = player_data.get('contest_type', 'classic')
+            self.game_info = player_data.get('game_info', '')
 
-        # Set game date
-        self.game_date = datetime.now().strftime('%Y-%m-%d')
+            # IMPORTANT: Parse opponent from game_info
+            self.opponent = None
+            self.opponent_team = None
+            self.home_away = None
+            self._parse_opponent_from_game_info()
 
-        # Load configuration
+        else:
+            # Fallback
+            self.id = 0
+            self.name = str(player_data)
+            self.team = ''
+            self.salary = 0
+            self.primary_position = 'UTIL'
+            self.positions = ['UTIL']
+            self.base_projection = 0.0
+            self.contest_type = 'classic'
+            self.game_info = ''
+            self.opponent = None
+            self.opponent_team = None
+            self.home_away = None
+
+        # Set derived attributes
+        self.projection = self.base_projection
+        self.enhanced_score = self.base_projection
+        self.value = (self.base_projection / self.salary * 1000) if self.salary > 0 else 0
+
+        # Status flags
+        self.is_confirmed = False
+        self.is_manual_selected = False
+        self.is_excluded = False
+        self.is_locked = False
+
+        # Additional data fields
+        self.confirmation_sources = []
+        self.batting_order = None  # Will be None by default
+        self.ownership = 0.0
+        self.roster_position = ''
+
+        # Data enrichment storage
+        self._vegas_data = None
+        self._statcast_data = None
+        self._recent_performance = None
+        self._park_factors = None
+        self._matchup_data = None
+        self._score_audit = None
+        self._score_components = None
+        self._score_calculated = False
+        self._is_enriched = False
+
+        # Performance tracking
+        self.recent_scores = []
+        self.data_quality_score = 0.0
+        self._enrichment_complete = set()
+
+        # DFF integration
+        self.dff_projection = None
+        self.dff_l5_avg = None
+        self.dff_data = None
+
+        # For showdown contests
+        self.original_position = self.primary_position
+        self.original_positions = self.positions.copy()
+        self.showdown_eligible = False
+
+        # For stacking
+        self._stack_bonus = 0.0
+        self.optimization_score = self.base_projection
+
+    def _parse_opponent_from_game_info(self):
+        """Parse opponent from DraftKings game_info string"""
+        if not self.game_info:
+            return
+
         try:
-            from dfs_config import dfs_config
-            self.config = dfs_config
-            self.salary_cap = self.config.get('optimization.salary_cap', 50000)
-            self.batch_size = self.config.get('optimization.batch_size', 25)
-            self.max_form_analysis_players = self.config.get('optimization.max_form_analysis_players', None)
-        except:
-            self.config = None
-            self.batch_size = 25
-            self.max_form_analysis_players = None
+            # DraftKings format examples:
+            # "TB@NYY 07:05PM ET"
+            # "NYY vs TB 07:05PM ET"
+            parts = self.game_info.split()
+            if not parts:
+                return
 
-        # Initialize tracking for duplicate prevention
-        self._enrichment_applied = {}
+            game_part = parts[0]
 
-        # Initialize external modules (Vegas, Statcast, etc.)
-        self._initialize_modules()
+            # Handle @ format (most common)
+            if '@' in game_part:
+                teams = game_part.split('@')
+                if len(teams) == 2:
+                    away_team = teams[0].strip()
+                    home_team = teams[1].strip()
 
-        # ====== NEW OPTIMIZATION MODULES INITIALIZATION ======
-        # This is the critical fix - initialize the unified optimization system
-        self._initialize_optimization_modules()
+                    if self.team == away_team:
+                        self.opponent = home_team
+                        self.opponent_team = home_team
+                        self.home_away = 'away'
+                    elif self.team == home_team:
+                        self.opponent = away_team
+                        self.opponent_team = away_team
+                        self.home_away = 'home'
 
-        print("🚀 Bulletproof DFS Core initialized successfully")
+            # Handle 'vs' format
+            elif ' vs ' in self.game_info.lower():
+                game_lower = self.game_info.lower()
+                vs_index = game_lower.find(' vs ')
+
+                if vs_index > 0:
+                    home_part = self.game_info[:vs_index].strip()
+                    away_part = self.game_info[vs_index + 4:].strip().split()[0]
+
+                    # Extract team codes
+                    home_team = home_part.split()[-1] if home_part else ''
+                    away_team = away_part
+
+                    if self.team == home_team:
+                        self.opponent = away_team
+                        self.opponent_team = away_team
+                        self.home_away = 'home'
+                    elif self.team == away_team:
+                        self.opponent = home_team
+                        self.opponent_team = home_team
+                        self.home_away = 'away'
+
+        except Exception:
+            # Silently fail - opponent parsing is not critical
+            pass
+
+    def copy(self):
+        """Create a copy of this player"""
+        import copy
+        return copy.deepcopy(self)
+
+    def apply_statcast_data(self, stats):
+        """Apply statcast data to player"""
+        if stats:
+            self._statcast_data = stats
+            self._enrichment_complete.add('statcast')
+
+    def apply_vegas_data(self, vegas_data):
+        """Apply Vegas data to player"""
+        if vegas_data:
+            self._vegas_data = vegas_data
+            self._enrichment_complete.add('vegas')
+
+    def is_eligible_for_selection(self, mode='bulletproof'):
+        """Check if player is eligible based on mode"""
+        if mode == 'all':
+            return True
+        elif mode == 'manual_only':
+            return self.is_manual_selected
+        elif mode == 'confirmed_only':
+            return self.is_confirmed
+        else:  # bulletproof
+            return self.is_confirmed or self.is_manual_selected
+
+    def __repr__(self):
+        opp_str = f" vs {self.opponent}" if self.opponent else ""
+        return f"AdvancedPlayer({self.name}, {self.team}{opp_str}, ${self.salary})"
 
     def _initialize_optimization_modules(self):
         """
@@ -2525,14 +2659,24 @@ class BulletproofDFSCore:
         if self.statcast_fetcher and not self._enrichment_applied['statcast']:
             print("📊 Fetching Statcast data...")
             try:
+                enriched_count = 0
                 for player in truly_confirmed:
-                    if player.primary_position == 'P':
-                        stats = self.statcast_fetcher.get_pitcher_stats(player.name)
-                    else:
-                        stats = self.statcast_fetcher.get_hitter_stats(player.name)
+                    try:
+                        if player.primary_position == 'P':
+                            stats = self.statcast_fetcher.get_pitcher_stats(player.name)
+                        else:
+                            stats = self.statcast_fetcher.get_hitter_stats(player.name)
 
-                    if stats:
-                        player.apply_statcast_data(stats)
+                        if stats:
+                            if hasattr(player, 'apply_statcast_data'):
+                                player.apply_statcast_data(stats)
+                            else:
+                                player._statcast_data = stats
+                            enriched_count += 1
+                    except Exception as e:
+                        print(f"   ⚠️ Failed to enrich {player.name}: {e}")
+
+                print(f"   ✅ {enriched_count} players enriched with Statcast data")
             except Exception as e:
                 print(f"   ❌ Statcast enrichment failed: {e}")
             self._enrichment_applied['statcast'] = True
@@ -3010,7 +3154,7 @@ class BulletproofDFSCore:
                 up.is_manual_selected = getattr(p, 'is_manual_selected', False)
 
                 # Copy data
-                if hasattr(p, 'dff_data'):
+                if hasattr(p, 'dff_data') and p.dff_data is not None:
                     up.apply_dff_data(p.dff_data)
                 if hasattr(p, 'dff_l5_avg'):
                     up.dff_l5_avg = p.dff_l5_avg

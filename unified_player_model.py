@@ -379,6 +379,10 @@ class UnifiedPlayer:
     # Data application methods
     def apply_dff_data(self, dff_data: Dict):
         """Apply DFF data to player"""
+        # Handle None or empty data
+        if dff_data is None:
+            return
+
         if 'projection' in dff_data:
             self.dff_projection = dff_data['projection']
         if 'l5_avg' in dff_data:

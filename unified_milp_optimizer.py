@@ -12,11 +12,13 @@ import logging
 import numpy as np
 from datetime import datetime
 import json
+import copy
 
 # Import unified player model
 from unified_player_model import UnifiedPlayer
 
 # Import new optimization modules
+
 try:
     from unified_scoring_engine import get_scoring_engine
     from performance_optimizer import get_performance_optimizer
@@ -77,6 +79,64 @@ class UnifiedMILPOptimizer:
         # Load real data sources
         self._initialize_data_sources()
 
+    def _load_dfs_config(self):
+        """Load configuration from dfs_config.json or optimization_config.json"""
+        config_loaded = False
+
+        # Try optimization_config.json first
+        try:
+            with open('optimization_config.json', 'r') as f:
+                config_data = json.load(f)
+
+            self.config.salary_cap = config_data.get('optimization', {}).get('salary_cap', 50000)
+            self.config.min_salary_usage = config_data.get('optimization', {}).get('min_salary_usage', 0.95)
+            self.config.max_players_per_team = config_data.get('optimization', {}).get('max_players_per_team', 4)
+            self.max_form_analysis_players = config_data.get('optimization', {}).get('max_form_analysis_players', 100)
+
+            self.logger.info("✅ Loaded configuration from optimization_config.json")
+            config_loaded = True
+        except:
+            pass
+
+        # Fallback to dfs_config.json
+        if not config_loaded:
+            try:
+                with open('dfs_config.json', 'r') as f:
+                    config_data = json.load(f)
+
+                self.config.salary_cap = config_data.get('optimization', {}).get('salary_cap', 50000)
+                self.config.min_salary_usage = config_data.get('optimization', {}).get('min_salary_usage', 0.95)
+                self.max_form_analysis_players = config_data.get('optimization', {}).get('max_form_analysis_players', 100)
+
+                self.logger.info("✅ Loaded configuration from dfs_config.json")
+            except:
+                self.logger.warning("⚠️ Using default configuration")
+
+    def _load_park_factors(self) -> Dict[str, float]:
+        """Load park factors from file or use defaults"""
+        try:
+            with open('park_factors.json', 'r') as f:
+                return json.load(f)
+        except:
+            # Default park factors for major parks
+            return {
+                'COL': 1.15,  # Coors Field
+                'BOS': 1.08,  # Fenway
+                'TEX': 1.06,  # Globe Life
+                'CIN': 1.05,  # Great American
+                'MIL': 1.04,  # Miller Park
+                'SF': 0.92,   # Oracle Park
+                'SD': 0.93,   # Petco
+                'NYM': 0.95,  # Citi Field
+                'SEA': 0.96,  # T-Mobile
+                'MIA': 0.97   # Marlins Park
+            }
+
+    def _initialize_data_sources(self):
+        """Initialize connections to real data sources"""
+        # This is a placeholder - implement based on your data sources
+        pass
+
     def get_optimization_score(self, player: UnifiedPlayer) -> float:
         """
         Get the player's score for optimization (includes pre-calculated bonuses)
@@ -128,109 +188,19 @@ class UnifiedMILPOptimizer:
 
         return players
 
-    def _load_dfs_config(self):
-        """Load configuration from dfs_config.json or optimization_config.json"""
-        config_loaded = False
-
-        # Try optimization_config.json first
-        try:
-            with open('optimization_config.json', 'r') as f:
-                config_data = json.load(f)
-
-            self.config.salary_cap = config_data.get('optimization', {}).get('salary_cap', 50000)
-            self.config.min_salary_usage = config_data.get('optimization', {}).get('min_salary_usage', 0.95)
-            self.config.max_players_per_team = config_data.get('optimization', {}).get('max_players_per_team', 4)
-            self.max_form_analysis_players = config_data.get('optimization', {}).get('max_form_analysis_players', 100)
-
-            self.logger.info("✅ Loaded configuration from optimization_config.json")
-            config_loaded = True
-        except:
-            pass
-
-        # Fallback to dfs_config.json
-        if not config_loaded:
-            try:
-                with open('dfs_config.json', 'r') as f:
-                    config_data = json.load(f)
-
-                self.config.salary_cap = config_data.get('optimization', {}).get('salary_cap', 50000)
-                self.config.min_salary_usage = config_data.get('optimization', {}).get('min_salary_usage', 0.95)
-                self.max_form_analysis_players = config_data.get('optimization', {}).get('max_form_analysis_players')
-
-                self.logger.info("✅ Loaded configuration from dfs_config.json")
-            except:
-                self.logger.warning("⚠️ Using default configuration")
-
-    def _load_park_factors(self) -> Dict[str, float]:
-        """Load park factors from file or use defaults"""
-        try:
-            with open('park_factors.json', 'r') as f:
-                return json.load(f)
-        except:
-            # Default park factors for major parks
-            return {
-                'COL': 1.15,  # Coors Field
-                'BOS': 1.08,  # Fenway
-                'TEX': 1.06,  # Globe Life
-                'CIN': 1.05,  # Great American
-                'MIL': 1.04,  # Miller Park
-                'SF': 0.92,  # Oracle Park
-                'SD': 0.93,  # Petco
-                'NYM': 0.95,  # Citi Field
-                'SEA': 0.96,  # T-Mobile
-                'MIA': 0.97  # Marlins Park
-            }
-
-    def _initialize_data_sources(self):
-        """Initialize connections to real data sources"""
-        # Recent form analyzer
-        try:
-            from recent_form_analyzer import RecentFormAnalyzer
-            self.form_analyzer = RecentFormAnalyzer()
-            self.logger.info("✅ Recent form analyzer initialized")
-        except:
-            self.form_analyzer = None
-            self.logger.warning("⚠️ Recent form analyzer not available")
-
-        # Statcast fetcher
-        try:
-            from simple_statcast_fetcher import SimpleStatcastFetcher
-            self.statcast = SimpleStatcastFetcher()
-            self.logger.info("✅ Statcast fetcher initialized")
-        except:
-            self.statcast = None
-            self.logger.warning("⚠️ Statcast fetcher not available")
-
-        # Vegas lines
-        try:
-            from vegas_lines import VegasLines
-            self.vegas_lines = VegasLines()
-            self.logger.info("✅ Vegas lines initialized")
-        except:
-            self.vegas_lines = None
-            self.logger.warning("⚠️ Vegas lines not available")
-
     def calculate_player_scores(self, players: List[UnifiedPlayer]) -> List[UnifiedPlayer]:
-        """Calculate enhanced scores using unified engine or fallback"""
-
+        """
+        Calculate enhanced scores for all players using available data
+        """
         if OPTIMIZATION_MODULES_AVAILABLE:
-            # Use new optimization system
-            engine = get_scoring_engine()
+            # Use new scoring system
+            scoring_engine = get_scoring_engine()
             perf_opt = get_performance_optimizer()
 
-            # Count already calculated
-            already_calculated = sum(1 for p in players if hasattr(p, '_score_calculated') and p._score_calculated)
-            if already_calculated > 0:
-                self.logger.info(f"Skipping {already_calculated}/{len(players)} already calculated players")
+            # Use score_player method
+            score_player = scoring_engine.score_player
 
-            # Define cached scoring function
-            @perf_opt.cached(category='player_scores')
-            def score_player(player):
-                if hasattr(player, '_score_calculated') and player._score_calculated:
-                    return player.enhanced_score
-                return engine.calculate_score(player)
-
-            # Batch process all players
+            # Process in batches
             scores = perf_opt.batch_process(
                 players,
                 score_player,
@@ -335,10 +305,6 @@ class UnifiedMILPOptimizer:
 
         prob += objective
 
-
-
-
-
         # CONSTRAINTS
 
         # 1. Exactly 10 players (or as specified)
@@ -364,135 +330,94 @@ class UnifiedMILPOptimizer:
                 for i in range(len(players))
             ]) == required
 
-        # 5. Player can only be assigned to one position
-        for i in range(len(players)):
+        # 5. Link player and position variables
+        for i, player in enumerate(players):
+            # If player is selected, they must fill exactly one position
             prob += pulp.lpSum([
                 position_vars.get((i, pos), 0)
-                for pos in players[i].positions
+                for pos in player.positions
                 if pos in self.config.position_requirements
-            ]) <= player_vars[i]
+            ]) == player_vars[i]
 
-        # 6. Player must be selected if assigned to position
-        for i, pos in position_vars:
-            prob += position_vars[(i, pos)] <= player_vars[i]
-
-        # 7. Team stacking constraints
-        teams = list(set(p.team for p in players if p.team))
-        for team in teams:
-            team_indices = [i for i, p in enumerate(players) if p.team == team]
-            if team_indices:
-                # Max players per team
+        # 6. Max players per team (handle None batting_order)
+        team_counts = {}
+        for team in set(p.team for p in players):
+            team_players = [i for i, p in enumerate(players) if p.team == team]
+            if team_players:
                 prob += pulp.lpSum([
-                    player_vars[i] for i in team_indices
+                    player_vars[i] for i in team_players
                 ]) <= self.config.max_players_per_team
 
-        # 8. Pitcher vs opposing hitters constraint
-        if self.config.enforce_lineup_rules:
-            self._add_pitcher_hitter_constraints(prob, players, player_vars)
+        # 7. Batting order diversity (if enabled) - handle None values
+        if self.config.use_correlation and self.config.enforce_lineup_rules:
+            # Group by team and batting order
+            team_order_groups = {}
+            for i, player in enumerate(players):
+                if hasattr(player, 'batting_order') and player.batting_order is not None:
+                    key = (player.team, player.batting_order)
+                    if key not in team_order_groups:
+                        team_order_groups[key] = []
+                    team_order_groups[key].append(i)
 
-        # Solve
-        solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=self.config.timeout_seconds)
+            # Max 1 player per batting order per team
+            for (team, order), player_indices in team_order_groups.items():
+                if len(player_indices) > 1:
+                    prob += pulp.lpSum([
+                        player_vars[i] for i in player_indices
+                    ]) <= 1
+
+        # 8. Hitter vs Pitcher constraints (with opponent handling)
+        if self.config.max_hitters_vs_pitcher > 0:
+            pitcher_opponents = {}
+            for i, player in enumerate(players):
+                if 'P' in player.positions:
+                    opp = player.opponent if hasattr(player, 'opponent') else None
+                    if opp:
+                        if opp not in pitcher_opponents:
+                            pitcher_opponents[opp] = []
+                        pitcher_opponents[opp].append(i)
+
+            # For each team, limit hitters facing selected pitchers
+            for team in set(p.team for p in players if 'P' not in p.positions):
+                team_hitters = [i for i, p in enumerate(players)
+                                if p.team == team and 'P' not in p.positions]
+
+                opposing_pitchers = pitcher_opponents.get(team, [])
+
+                if team_hitters and opposing_pitchers:
+                    # If we select a pitcher, limit hitters from opposing team
+                    for pitcher_idx in opposing_pitchers:
+                        prob += pulp.lpSum([
+                            player_vars[h] for h in team_hitters
+                        ]) <= self.config.max_hitters_vs_pitcher + \
+                                (1 - player_vars[pitcher_idx]) * len(team_hitters)
+
+        # Solve with timeout
+        solver = pulp.PULP_CBC_CMD(timeLimit=self.config.timeout_seconds, msg=0)
         prob.solve(solver)
 
-        if prob.status == pulp.LpStatusOptimal:
-            return self._extract_solution(players, player_vars, position_vars)
-        else:
-            raise Exception(f"Optimization failed: {pulp.LpStatus[prob.status]}")
+        # Extract solution
+        if prob.status != pulp.LpStatusOptimal:
+            self.logger.warning("No optimal solution found")
+            return [], 0
 
-
-        """
-        Calculate small correlation bonuses for stacks
-        Based on REAL batting order data only
-        """
-        if not self.config.use_correlation:
-            return None
-
-        correlation_terms = []
-
-        # Group players by team
-        team_players = {}
-        for i, player in enumerate(players):
-            if player.team and player.primary_position != 'P':
-                if player.team not in team_players:
-                    team_players[player.team] = []
-                team_players[player.team].append(i)
-
-        # Create correlation bonuses for consecutive batting order
-        for team, indices in team_players.items():
-            # Only if we have batting order data
-            team_with_order = []
-            for idx in indices:
-                player = players[idx]
-                if hasattr(player, 'batting_order') and player.batting_order:
-                    team_with_order.append((idx, player.batting_order))
-
-            if len(team_with_order) >= 2:
-                # Sort by batting order
-                team_with_order.sort(key=lambda x: x[1])
-
-                # Add small bonus for consecutive batters
-                for i in range(len(team_with_order) - 1):
-                    idx1, order1 = team_with_order[i]
-                    idx2, order2 = team_with_order[i + 1]
-
-                    if order2 - order1 == 1:  # Consecutive
-                        # Small bonus for selecting both
-                        bonus = players[idx1].enhanced_score * self.config.correlation_boost
-                        correlation_terms.append(
-                            bonus * player_vars[idx1] * player_vars[idx2]
-                        )
-
-        if correlation_terms:
-            return pulp.lpSum(correlation_terms)
-        return None
-
-    def _add_pitcher_hitter_constraints(self, prob: pulp.LpProblem,
-                                        players: List[UnifiedPlayer],
-                                        player_vars: Dict):
-        """Add constraints to prevent selecting hitters against your own pitchers"""
-        # Find all pitcher indices
-        pitcher_indices = [i for i, p in enumerate(players) if p.primary_position == 'P']
-
-        # For each pitcher, limit opposing team hitters
-        for p_idx in pitcher_indices:
-            pitcher = players[p_idx]
-            if not pitcher.opponent:
-                continue
-
-            # Find opposing team hitters
-            opp_hitter_indices = [
-                i for i, p in enumerate(players)
-                if p.team == pitcher.opponent and p.primary_position != 'P'
-            ]
-
-            if opp_hitter_indices:
-                # Limit to max allowed
-                prob += pulp.lpSum([
-                    player_vars[h_idx] for h_idx in opp_hitter_indices
-                ]) <= self.config.max_hitters_vs_pitcher * (1 - player_vars[p_idx])
-
-    def _extract_solution(self, players: List[UnifiedPlayer],
-                          player_vars: Dict,
-                          position_vars: Dict) -> Tuple[List[UnifiedPlayer], float]:
-        """Extract lineup from solved MILP"""
+        # Build lineup with assigned positions
         lineup = []
         total_score = 0
 
         for i, player in enumerate(players):
-            if player_vars[i].value() == 1:
+            if player_vars[i].value() > 0.5:
                 # Find assigned position
-                assigned_pos = None
                 for pos in player.positions:
-                    if (i, pos) in position_vars and position_vars[(i, pos)].value() == 1:
-                        assigned_pos = pos
-                        break
-
-                # Create player copy with assigned position
-                player_copy = player.copy()
-                player_copy.assigned_position = assigned_pos
-                lineup.append(player_copy)
-                # Use the same score that was used in optimization
-                total_score += self.get_optimization_score(player)
+                    if pos in self.config.position_requirements:
+                        if position_vars.get((i, pos), None) and position_vars[(i, pos)].value() > 0.5:
+                            # Create a copy to avoid modifying original
+                            player_copy = copy.copy(player)
+                            player_copy.assigned_position = pos
+                            lineup.append(player_copy)
+                            # Use the same score that was used in optimization
+                            total_score += self.get_optimization_score(player)
+                            break
 
         return lineup, total_score
 
@@ -548,54 +473,41 @@ class StrategyFilter:
                 # Check recent form
                 if hasattr(player, '_recent_performance') and player._recent_performance:
                     form = player._recent_performance.get('form_score', 1.0)
-                    if form > 1.15:
-                        ceiling_score += 2
-                    elif form > 1.10:
-                        ceiling_score += 1
+                    if form > 1.15:  # Hot streak
+                        ceiling_score = player.enhanced_score * 1.2
+                        ceiling_players.append(player)
+                        continue
 
-                # Check Vegas data
-                if hasattr(player, '_vegas_data') and player._vegas_data:
-                    implied = player._vegas_data.get('implied_total', 0)
-                    if implied > 5.0:
-                        ceiling_score += 2
-                    elif implied > 4.5:
-                        ceiling_score += 1
+                # Check high upside stats
+                if hasattr(player, 'statcast_data') and player.statcast_data:
+                    data = player.statcast_data
+                    if data.get('barrel_rate', 0) > 10 or data.get('hard_hit_rate', 0) > 45:
+                        ceiling_score = player.enhanced_score * 1.15
+                        ceiling_players.append(player)
 
-                # Check recent hot streak
-                if hasattr(player, 'dff_l5_avg') and player.base_projection > 0:
-                    if player.dff_l5_avg / player.base_projection > 1.20:
-                        ceiling_score += 2
-
-                if ceiling_score >= 2:  # Multiple positive indicators
-                    ceiling_players.append(player)
-
-            # Ensure minimum pool size
-            if len(ceiling_players) < 30:
-                remaining = [p for p in players if p not in ceiling_players]
-                remaining.sort(key=lambda x: x.enhanced_score, reverse=True)
-                ceiling_players.extend(remaining[:30 - len(ceiling_players)])
-
-            return ceiling_players
+            # Sort by ceiling potential
+            ceiling_players.sort(key=lambda x: x.enhanced_score, reverse=True)
+            return ceiling_players[:max(30, len(players) // 3)]
 
         elif strategy == 'balanced':
-            base_set = set(confirmed_players + manual_players)
+            # Mix of confirmed, high-value, and top-projected
+            pool = set(confirmed_players + manual_players)
 
-            # Add high-value players
-            value_players = sorted(players,
-                                   key=lambda x: x.enhanced_score / (x.salary / 1000) if x.salary > 0 else 0,
-                                   reverse=True)
+            # Add some high-value plays
+            values = [(p, p.enhanced_score / (p.salary / 1000))
+                      for p in players if p.salary > 0 and p not in pool]
+            values.sort(key=lambda x: x[1], reverse=True)
+            pool.update([p for p, _ in values[:10]])
 
-            for player in value_players:
-                if player not in base_set:
-                    base_set.add(player)
-                if len(base_set) >= 60:
-                    break
+            # Add top projections
+            remaining = [p for p in players if p not in pool]
+            remaining.sort(key=lambda x: x.enhanced_score, reverse=True)
+            pool.update(remaining[:20])
 
-            return list(base_set)
+            return list(pool)
 
-        else:
-            # Default: confirmed only
-            return confirmed_players
+        else:  # 'all_players' or unknown
+            return players
 
     def _parse_manual_selections(self, all_players: List[UnifiedPlayer],
                                  manual_input: str) -> List[UnifiedPlayer]:
