@@ -1,259 +1,79 @@
 #!/usr/bin/env python3
-"""
-TEST SCRIPT FOR DFS OPTIMIZER FIXES
-==================================
-Run this after implementing all fixes to verify everything works
-"""
+"""Fix cache and check DFF setup"""
 
+# Fix 1: Ensure cache works
+print("🔧 Fixing cache issue...")
+cache_content = '''"""Cache manager for DFS optimizer"""
 
-def test_all_fixes():
-    """Comprehensive test of all fixes"""
-    print("🧪 DFS OPTIMIZER FIX VERIFICATION")
-    print("=" * 60)
+class DataCache:
+    """Simple cache implementation"""
+    def __init__(self):
+        self.cache = {}
 
-    # Test 1: AdvancedPlayer initialization
-    print("\n1️⃣ Testing AdvancedPlayer initialization...")
-    try:
-        from bulletproof_dfs_core import AdvancedPlayer
+    def get(self, key, default=None):
+        return self.cache.get(key, default)
 
-        # Test dictionary initialization
-        player_data = {
-            'id': 1,
-            'name': 'Mike Trout',
-            'team': 'LAA',
-            'position': 'OF',
-            'salary': 8500,
-            'projection': 12.5,
-            'game_info': 'LAA@NYY 07:05PM ET'
-        }
+    def set(self, key, value):
+        self.cache[key] = value
+        return True
 
-        player = AdvancedPlayer(player_data)
-        print(f"   ✅ Created player: {player.name}")
-        print(f"   ✅ Opponent parsed: {player.opponent}")
-        print(f"   ✅ Home/Away: {player.home_away}")
+    def clear(self):
+        self.cache.clear()
 
-        # Verify all attributes exist
-        required_attrs = ['opponent', 'batting_order', '_statcast_data', 'optimization_score']
-        for attr in required_attrs:
-            if hasattr(player, attr):
-                print(f"   ✅ Has attribute: {attr}")
-            else:
-                print(f"   ❌ Missing attribute: {attr}")
+# Global instance
+cache = DataCache()
+'''
 
-    except Exception as e:
-        print(f"   ❌ AdvancedPlayer test failed: {e}")
-        return False
+with open('utils/cache_manager.py', 'w') as f:
+    f.write(cache_content)
 
-    # Test 2: Statcast Fetcher
-    print("\n2️⃣ Testing Statcast Fetcher...")
-    try:
-        from simple_statcast_fetcher import FastStatcastFetcher
+print("✅ Cache fixed!")
 
-        fetcher = FastStatcastFetcher()
+# Test recent form
+try:
+    from recent_form_analyzer import RecentFormAnalyzer
+    from utils.cache_manager import cache
 
-        # Test if methods exist
-        if hasattr(fetcher, 'get_pitcher_stats'):
-            print("   ✅ Has get_pitcher_stats method")
-        else:
-            print("   ❌ Missing get_pitcher_stats method")
+    analyzer = RecentFormAnalyzer(cache_manager=cache)
+    print("✅ Recent Form Analyzer now working!")
+except Exception as e:
+    print(f"❌ Recent Form still has issues: {e}")
 
-        if hasattr(fetcher, 'get_hitter_stats'):
-            print("   ✅ Has get_hitter_stats method")
-        else:
-            print("   ❌ Missing get_hitter_stats method")
+# Check for DFF files
+import os
+import glob
 
-        # Test actual fetch (will return None if no connection)
-        try:
-            stats = fetcher.get_pitcher_stats("Zac Gallen")
-            if stats is None:
-                print("   ⚠️ No stats returned (check internet/pybaseball)")
-            else:
-                print(f"   ✅ Got stats: {list(stats.keys())[:3]}...")
-        except Exception as e:
-            print(f"   ❌ Fetch failed: {e}")
+print("\n🔍 Looking for DFF/Cheatsheet files...")
+possible_dff = []
+for pattern in ['*DFF*.csv', '*dff*.csv', '*cheat*.csv', '*Cheat*.csv']:
+    possible_dff.extend(glob.glob(pattern))
 
-    except Exception as e:
-        print(f"   ❌ Statcast test failed: {e}")
-        return False
+if possible_dff:
+    print(f"✅ Found potential DFF files: {possible_dff}")
+else:
+    print("❌ No DFF files found")
+    print("   To use DFF: Save your DFF cheatsheet as 'DFF_Cheatsheet.csv' in this directory")
 
-    # Test 3: Batting Order Sorting
-    print("\n3️⃣ Testing Batting Order Sorting...")
-    try:
-        from unified_milp_optimizer import UnifiedMILPOptimizer
+# Check scoring weights
+print("\n🔧 Checking scoring configuration...")
+try:
+    # Load config
+    import json
 
-        # Create test players with None batting orders
-        test_players = []
-        for i in range(5):
-            p = AdvancedPlayer({
-                'name': f'Player{i}',
-                'team': 'NYY',
-                'salary': 5000,
-                'position': 'OF',
-                'projection': 10.0
-            })
-            # Mix of None and numeric batting orders
-            p.batting_order = i + 1 if i < 3 else None
-            test_players.append(p)
+    config_files = glob.glob('*config*.json')
 
-        # Try to sort them
-        try:
-            sorted_players = sorted(
-                test_players,
-                key=lambda p: p.batting_order if p.batting_order is not None else 999
-            )
-            print("   ✅ Sorting with None values works")
+    for cf in config_files:
+        with open(cf, 'r') as f:
+            config = json.load(f)
+            if 'scoring_weights' in config:
+                print(f"✅ Found scoring weights in {cf}:")
+                for k, v in config['scoring_weights'].items():
+                    print(f"   - {k}: {v}")
+except:
+    pass
 
-            # Show sorted order
-            for p in sorted_players:
-                print(f"      {p.name}: batting_order = {p.batting_order}")
-
-        except TypeError as e:
-            print(f"   ❌ Sorting failed: {e}")
-            return False
-
-    except Exception as e:
-        print(f"   ❌ Batting order test failed: {e}")
-        return False
-
-    # Test 4: MILP Optimizer
-    print("\n4️⃣ Testing MILP Optimizer...")
-    try:
-        from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
-
-        config = OptimizationConfig()
-        optimizer = UnifiedMILPOptimizer(config)
-
-        # Create test lineup
-        test_lineup = []
-        positions = ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']
-
-        for i, pos in enumerate(positions):
-            p = AdvancedPlayer({
-                'name': f'{pos}_Player{i}',
-                'team': 'NYY' if i % 2 == 0 else 'BOS',
-                'position': pos,
-                'salary': 4000 + i * 200,
-                'projection': 8.0 + i * 0.5,
-                'game_info': 'NYY@BOS 07:05PM ET' if i % 2 == 0 else 'BOS@NYY 07:05PM ET'
-            })
-            p.enhanced_score = p.base_projection
-            test_lineup.append(p)
-
-        # Test prepare_players_for_optimization
-        try:
-            prepared = optimizer.prepare_players_for_optimization(test_lineup)
-            print("   ✅ prepare_players_for_optimization works")
-
-            # Check optimization scores
-            has_opt_score = all(hasattr(p, 'optimization_score') for p in prepared)
-            if has_opt_score:
-                print("   ✅ All players have optimization_score")
-            else:
-                print("   ❌ Some players missing optimization_score")
-
-        except Exception as e:
-            print(f"   ❌ Optimization prep failed: {e}")
-            return False
-
-    except Exception as e:
-        print(f"   ❌ MILP test failed: {e}")
-        return False
-
-    # Test 5: Full Integration
-    print("\n5️⃣ Testing Full Integration...")
-    try:
-        from bulletproof_dfs_core import BulletproofDFSCore
-
-        core = BulletproofDFSCore()
-        print("   ✅ Core initialized")
-
-        # Check all modules
-        modules = {
-            'scoring_engine': core.scoring_engine,
-            'validator': core.validator,
-            'performance_optimizer': core.performance_optimizer,
-            'statcast_fetcher': core.statcast_fetcher,
-            'vegas_lines': core.vegas_lines
-        }
-
-        for name, module in modules.items():
-            if module is not None:
-                print(f"   ✅ {name} is available")
-            else:
-                print(f"   ⚠️ {name} is not available")
-
-    except Exception as e:
-        print(f"   ❌ Integration test failed: {e}")
-        return False
-
-    print("\n" + "=" * 60)
-    print("✅ ALL TESTS COMPLETED!")
-    print("\nNext steps:")
-    print("1. Load your CSV file")
-    print("2. Run optimization")
-    print("3. Check for any remaining errors")
-
-    return True
-
-
-def quick_csv_test(csv_path):
-    """Quick test with actual CSV file"""
-    print(f"\n📄 Testing with CSV: {csv_path}")
-    print("=" * 60)
-
-    try:
-        from bulletproof_dfs_core import BulletproofDFSCore
-
-        core = BulletproofDFSCore()
-        success = core.load_draftkings_csv(csv_path)
-
-        if success:
-            print(f"✅ Loaded {len(core.players)} players")
-
-            # Check first few players
-            print("\nFirst 3 players:")
-            for i, p in enumerate(core.players[:3]):
-                print(f"{i + 1}. {p.name} ({p.team})")
-                print(f"   Position: {p.primary_position}")
-                print(f"   Salary: ${p.salary}")
-                print(f"   Projection: {p.base_projection}")
-                print(f"   Opponent: {p.opponent}")
-                print(f"   Game Info: {p.game_info}")
-
-            # Check for zero projections
-            zero_proj = [p for p in core.players if p.base_projection == 0]
-            if zero_proj:
-                print(f"\n⚠️ {len(zero_proj)} players have 0 projection")
-                for p in zero_proj[:3]:
-                    print(f"   - {p.name}")
-
-            # Try optimization
-            print("\n🎯 Testing optimization...")
-            lineup, score = core.optimize_lineup_with_mode()
-
-            if lineup:
-                print(f"✅ Generated lineup with score: {score:.2f}")
-            else:
-                print("❌ No lineup generated")
-
-        else:
-            print("❌ Failed to load CSV")
-
-    except Exception as e:
-        print(f"❌ CSV test failed: {e}")
-        import traceback
-        traceback.print_exc()
-
-
-if __name__ == "__main__":
-    import sys
-
-    # Run all tests
-    test_all_fixes()
-
-    # If CSV provided, test with it
-    if len(sys.argv) > 1:
-        quick_csv_test(sys.argv[1])
-    else:
-        print("\n💡 Tip: Run with your CSV file:")
-        print("   python test_fixes.py your_file.csv")
+print("\n✅ Setup check complete!")
+print("\nTo use DFF rankings:")
+print("1. Save your DFF CSV in this directory")
+print("2. Name it something with 'DFF' or 'cheat' in the filename")
+print("3. The GUI should detect it automatically or have a 'Load DFF' button")

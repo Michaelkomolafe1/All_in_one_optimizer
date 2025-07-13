@@ -5,9 +5,8 @@ Only returns real data - no fake/mock data generation
 """
 
 import logging
-from typing import List, Dict, Optional
 from datetime import datetime, timedelta
-from typing import Tuple, Optional, List, Dict
+from typing import Dict, List, Optional, Tuple
 
 # Check for pybaseball availability
 try:

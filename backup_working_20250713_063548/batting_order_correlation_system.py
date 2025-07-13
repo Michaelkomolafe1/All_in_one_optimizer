@@ -5,10 +5,9 @@ BATTING ORDER & CORRELATION OPTIMIZATION SYSTEM
 FIXED VERSION: No multiplicative adjustments
 """
 
-import numpy as np
-from typing import Dict, List, Optional, Tuple, Any, Set
-from datetime import datetime
 import logging
+from typing import Dict, List, Optional, Tuple
+
 
 logger = logging.getLogger(__name__)
 

@@ -7,12 +7,12 @@ Professional bankroll analytics and recommendations
 
 import json
 import os
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional
-import numpy as np
-from PyQt5.QtWidgets import *
+from datetime import datetime
+from typing import Dict, List
+
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
 
 
 class BankrollManager:
@@ -954,7 +954,7 @@ class BankrollManagementWidget(QWidget):
 
         if reply == QMessageBox.Yes:
             # Update starting bankroll
-            old_starting = self.manager.data['starting_bankroll']
+            self.manager.data['starting_bankroll']
             self.manager.data['starting_bankroll'] = new_starting
 
             # Optionally update current bankroll
@@ -1138,7 +1138,7 @@ def update_clean_gui_with_bankroll(gui_class):
     """Add bankroll management to the clean GUI"""
 
     # Add to the create_analytics_tab method
-    original_create_analytics = gui_class.create_analytics_tab
+    gui_class.create_analytics_tab
 
     def new_create_analytics_tab(self):
         """Enhanced analytics tab with bankroll management"""

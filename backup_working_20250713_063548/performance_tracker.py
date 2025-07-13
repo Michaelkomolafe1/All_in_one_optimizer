@@ -4,10 +4,9 @@ Track results, analyze accuracy, improve over time
 """
 
 import sqlite3
-import json
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple
-import os
+from typing import Dict, List, Optional
+
 
 class PerformanceTracker:
     """Track and analyze DFS performance"""

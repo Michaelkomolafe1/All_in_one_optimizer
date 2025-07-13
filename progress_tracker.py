@@ -5,8 +5,8 @@ Progress Tracking System for DFS Optimizer
 Provides visual progress feedback for long-running operations
 """
 
-import time
 import sys
+import time
 from typing import Optional
 
 
@@ -60,7 +60,7 @@ class ProgressTracker:
         # Build progress bar
         bar_length = 30
         filled_length = int(bar_length * self.current / self.total)
-        bar = '█' * filled_length + '░' * (bar_length - filled_length)
+        bar = "█" * filled_length + "░" * (bar_length - filled_length)
 
         # Build status line
         status = f"\r{self.description}: [{bar}] {self.current}/{self.total} ({percentage:.1f}%){time_info}"
@@ -69,11 +69,11 @@ class ProgressTracker:
             # Truncate message if too long
             max_msg_len = 40
             if len(message) > max_msg_len:
-                message = message[:max_msg_len - 3] + "..."
+                message = message[: max_msg_len - 3] + "..."
             status += f" - {message}"
 
         # Clear line and print
-        sys.stdout.write('\r' + ' ' * 100 + '\r')  # Clear previous line
+        sys.stdout.write("\r" + " " * 100 + "\r")  # Clear previous line
         sys.stdout.write(status)
         sys.stdout.flush()
 
@@ -119,10 +119,7 @@ class MultiStageProgress:
         stage_name = self.stages[self.current_stage]
         print(f"\n📊 Stage {self.current_stage + 1}/{len(self.stages)}: {stage_name}")
 
-        self.stage_tracker = ProgressTracker(
-            total_items,
-            f"  {stage_name}"
-        )
+        self.stage_tracker = ProgressTracker(total_items, f"  {stage_name}")
 
     def update(self, increment: int = 1, message: Optional[str] = None):
         """Update current stage progress"""

@@ -6,13 +6,12 @@ No bonuses for confirmed/manual players - pure performance-based optimization
 Integrates all existing data systems with NO fake fallbacks
 """
 
-import pulp
-from typing import List, Dict, Optional, Tuple, Set, Any
-from dataclasses import dataclass, field
-import logging
-import numpy as np
-from datetime import datetime
 import json
+import logging
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
+import pulp
 
 # Import your existing models and systems
 from unified_player_model import UnifiedPlayer

@@ -24,7 +24,7 @@ from performance_optimizer import get_performance_optimizer
 from unified_scoring_engine import get_scoring_engine
 
 # Suppress warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 # ============================================================================
 # MODULE IMPORTS WITH FALLBACKS
@@ -76,9 +76,9 @@ except ImportError:
     ENHANCED_STATS_AVAILABLE = False
     print("⚠️ Enhanced stats engine not found - using basic analysis")
 
-
     def apply_enhanced_statistical_analysis(players, verbose=False):
         return 0
+
 
 # Optimization library
 try:
@@ -100,7 +100,6 @@ except ImportError:
     VEGAS_AVAILABLE = False
     print("⚠️ vegas_lines.py not found")
 
-
     class VegasLines:
         def __init__(self, **kwargs):
             self.lines = {}
@@ -111,6 +110,7 @@ except ImportError:
         def apply_to_players(self, players):
             return players
 
+
 try:
     from smart_confirmation_system import SmartConfirmationSystem
 
@@ -119,7 +119,6 @@ try:
 except ImportError:
     CONFIRMED_AVAILABLE = False
     print("⚠️ smart_confirmation_system.py not found")
-
 
     class SmartConfirmationSystem:
         def __init__(self, **kwargs):
@@ -135,6 +134,7 @@ except ImportError:
         def is_pitcher_confirmed(self, name, team):
             return False
 
+
 try:
     from simple_statcast_fetcher import FastStatcastFetcher, SimpleStatcastFetcher
 
@@ -143,7 +143,6 @@ try:
 except ImportError:
     STATCAST_AVAILABLE = False
     print("⚠️ simple_statcast_fetcher.py not found")
-
 
     class SimpleStatcastFetcher:
         def __init__(self):
@@ -158,6 +157,7 @@ except ImportError:
         def test_connection(self):
             return False
 
+
 try:
     from recent_form_analyzer import RecentFormAnalyzer
 
@@ -169,7 +169,6 @@ except ImportError:
 
 try:
     from batting_order_correlation_system import integrate_batting_order_correlation
-
 
     BATTING_CORRELATION_AVAILABLE = True
     print("✅ Batting Order & Correlation System imported")
@@ -185,48 +184,70 @@ except ImportError:
 PARK_FACTORS = {
     # Extreme hitter-friendly
     "COL": 1.20,  # Coors Field
-
     # Hitter-friendly
-    "CIN": 1.12, "TEX": 1.10, "PHI": 1.08, "MIL": 1.06,
-    "BAL": 1.05, "HOU": 1.04, "TOR": 1.03, "BOS": 1.03,
-
+    "CIN": 1.12,
+    "TEX": 1.10,
+    "PHI": 1.08,
+    "MIL": 1.06,
+    "BAL": 1.05,
+    "HOU": 1.04,
+    "TOR": 1.03,
+    "BOS": 1.03,
     # Slight hitter-friendly
-    "NYY": 1.02, "CHC": 1.01,
-
+    "NYY": 1.02,
+    "CHC": 1.01,
     # Neutral
-    "ARI": 1.00, "ATL": 1.00, "MIN": 0.99,
-
+    "ARI": 1.00,
+    "ATL": 1.00,
+    "MIN": 0.99,
     # Slight pitcher-friendly
-    "WSH": 0.98, "NYM": 0.97, "LAA": 0.96, "STL": 0.95,
-
+    "WSH": 0.98,
+    "NYM": 0.97,
+    "LAA": 0.96,
+    "STL": 0.95,
     # Pitcher-friendly
-    "CLE": 0.94, "TB": 0.93, "KC": 0.92, "DET": 0.91, "SEA": 0.90,
-
+    "CLE": 0.94,
+    "TB": 0.93,
+    "KC": 0.92,
+    "DET": 0.91,
+    "SEA": 0.90,
     # Extreme pitcher-friendly
-    "OAK": 0.89, "SF": 0.88, "SD": 0.87, "MIA": 0.86, "PIT": 0.85,
-
+    "OAK": 0.89,
+    "SF": 0.88,
+    "SD": 0.87,
+    "MIA": 0.86,
+    "PIT": 0.85,
     # Additional teams
-    "LAD": 0.98, "CHW": 0.96, "CWS": 0.96,
+    "LAD": 0.98,
+    "CHW": 0.96,
+    "CWS": 0.96,
 }
 
 KNOWN_RELIEF_PITCHERS = {
-    'jhoan duran', 'edwin diaz', 'felix bautista', 'ryan helsley',
-    'david bednar', 'alexis diaz', 'josh hader', 'emmanuel clase',
-    'jordan romano', 'clay holmes'
+    "jhoan duran",
+    "edwin diaz",
+    "felix bautista",
+    "ryan helsley",
+    "david bednar",
+    "alexis diaz",
+    "josh hader",
+    "emmanuel clase",
+    "jordan romano",
+    "clay holmes",
 }
 
 # Real data configuration
 USE_ONLY_REAL_DATA = True
 
 REAL_DATA_SOURCES = {
-    'statcast': True,  # Real Baseball Savant
-    'vegas': True,  # Real API calls
-    'mlb_lineups': True,  # Real MLB API
-    'dff_rankings': True,  # Manual upload via GUI
-    'park_factors': True,  # Built-in factors
-    'recent_form': True,  # Real game logs
-    'weather': False,  # DISABLED - No real source
-    'fallbacks': False  # DISABLED - No fallback data
+    "statcast": True,  # Real Baseball Savant
+    "vegas": True,  # Real API calls
+    "mlb_lineups": True,  # Real MLB API
+    "dff_rankings": True,  # Manual upload via GUI
+    "park_factors": True,  # Built-in factors
+    "recent_form": True,  # Real game logs
+    "weather": False,  # DISABLED - No real source
+    "fallbacks": False,  # DISABLED - No fallback data
 }
 
 
@@ -242,15 +263,15 @@ class AdvancedPlayer:
         """Initialize from dictionary with all required fields"""
         if isinstance(player_data, dict):
             # Basic fields from CSV
-            self.id = player_data.get('id', 0)
-            self.name = player_data.get('name', '')
-            self.team = player_data.get('team', '')
-            self.salary = int(player_data.get('salary', 0))
-            self.primary_position = player_data.get('position', 'UTIL')
+            self.id = player_data.get("id", 0)
+            self.name = player_data.get("name", "")
+            self.team = player_data.get("team", "")
+            self.salary = int(player_data.get("salary", 0))
+            self.primary_position = player_data.get("position", "UTIL")
             self.positions = [self.primary_position]
-            self.base_projection = float(player_data.get('projection', 0))
-            self.contest_type = player_data.get('contest_type', 'classic')
-            self.game_info = player_data.get('game_info', '')
+            self.base_projection = float(player_data.get("projection", 0))
+            self.contest_type = player_data.get("contest_type", "classic")
+            self.game_info = player_data.get("game_info", "")
 
             # IMPORTANT: Parse opponent from game_info
             self.opponent = None
@@ -262,13 +283,13 @@ class AdvancedPlayer:
             # Fallback
             self.id = 0
             self.name = str(player_data)
-            self.team = ''
+            self.team = ""
             self.salary = 0
-            self.primary_position = 'UTIL'
-            self.positions = ['UTIL']
+            self.primary_position = "UTIL"
+            self.positions = ["UTIL"]
             self.base_projection = 0.0
-            self.contest_type = 'classic'
-            self.game_info = ''
+            self.contest_type = "classic"
+            self.game_info = ""
             self.opponent = None
             self.opponent_team = None
             self.home_away = None
@@ -288,7 +309,7 @@ class AdvancedPlayer:
         self.confirmation_sources = []
         self.batting_order = None  # Will be None by default
         self.ownership = 0.0
-        self.roster_position = ''
+        self.roster_position = ""
 
         # Data enrichment storage
         self._vegas_data = None
@@ -336,8 +357,8 @@ class AdvancedPlayer:
             game_part = parts[0]
 
             # Handle @ format (most common)
-            if '@' in game_part:
-                teams = game_part.split('@')
+            if "@" in game_part:
+                teams = game_part.split("@")
                 if len(teams) == 2:
                     away_team = teams[0].strip()
                     home_team = teams[1].strip()
@@ -345,33 +366,33 @@ class AdvancedPlayer:
                     if self.team == away_team:
                         self.opponent = home_team
                         self.opponent_team = home_team
-                        self.home_away = 'away'
+                        self.home_away = "away"
                     elif self.team == home_team:
                         self.opponent = away_team
                         self.opponent_team = away_team
-                        self.home_away = 'home'
+                        self.home_away = "home"
 
             # Handle 'vs' format
-            elif ' vs ' in self.game_info.lower():
+            elif " vs " in self.game_info.lower():
                 game_lower = self.game_info.lower()
-                vs_index = game_lower.find(' vs ')
+                vs_index = game_lower.find(" vs ")
 
                 if vs_index > 0:
                     home_part = self.game_info[:vs_index].strip()
-                    away_part = self.game_info[vs_index + 4:].strip().split()[0]
+                    away_part = self.game_info[vs_index + 4 :].strip().split()[0]
 
                     # Extract team codes
-                    home_team = home_part.split()[-1] if home_part else ''
+                    home_team = home_part.split()[-1] if home_part else ""
                     away_team = away_part
 
                     if self.team == home_team:
                         self.opponent = away_team
                         self.opponent_team = away_team
-                        self.home_away = 'home'
+                        self.home_away = "home"
                     elif self.team == away_team:
                         self.opponent = home_team
                         self.opponent_team = home_team
-                        self.home_away = 'away'
+                        self.home_away = "away"
 
         except Exception:
             # Silently fail - opponent parsing is not critical
@@ -380,27 +401,28 @@ class AdvancedPlayer:
     def copy(self):
         """Create a copy of this player"""
         import copy
+
         return copy.deepcopy(self)
 
     def apply_statcast_data(self, stats):
         """Apply statcast data to player"""
         if stats:
             self._statcast_data = stats
-            self._enrichment_complete.add('statcast')
+            self._enrichment_complete.add("statcast")
 
     def apply_vegas_data(self, vegas_data):
         """Apply Vegas data to player"""
         if vegas_data:
             self._vegas_data = vegas_data
-            self._enrichment_complete.add('vegas')
+            self._enrichment_complete.add("vegas")
 
-    def is_eligible_for_selection(self, mode='bulletproof'):
+    def is_eligible_for_selection(self, mode="bulletproof"):
         """Check if player is eligible based on mode"""
-        if mode == 'all':
+        if mode == "all":
             return True
-        elif mode == 'manual_only':
+        elif mode == "manual_only":
             return self.is_manual_selected
-        elif mode == 'confirmed_only':
+        elif mode == "confirmed_only":
             return self.is_confirmed
         else:  # bulletproof
             return self.is_confirmed or self.is_manual_selected
@@ -422,9 +444,9 @@ class AdvancedPlayer:
 
             # Try to load config from file first
             scoring_config = None
-            if os.path.exists('optimization_config.json'):
+            if os.path.exists("optimization_config.json"):
                 try:
-                    scoring_config = load_config_from_file('optimization_config.json')
+                    scoring_config = load_config_from_file("optimization_config.json")
                     print("  ✅ Loaded scoring config from optimization_config.json")
                 except Exception as e:
                     print(f"  ⚠️ Could not load config file: {e}")
@@ -445,7 +467,7 @@ class AdvancedPlayer:
             print("  ✅ Data Validator initialized")
 
             # If we have loaded players, update validator with salary ranges
-            if hasattr(self, 'players') and self.players:
+            if hasattr(self, "players") and self.players:
                 self._update_validator_salary_ranges()
 
         except Exception as e:
@@ -458,13 +480,13 @@ class AdvancedPlayer:
 
             # Create performance config from DFS config if available
             perf_config = None
-            if self.config and 'performance' in self.config:
-                perf_settings = self.config['performance']
+            if self.config and "performance" in self.config:
+                perf_settings = self.config["performance"]
                 perf_config = CacheConfig(
-                    ttl_seconds=perf_settings.get('cache_ttl', {}),
-                    enable_disk_cache=perf_settings.get('enable_disk_cache', True),
-                    cache_dir=perf_settings.get('cache_dir', '.dfs_cache'),
-                    max_memory_mb=perf_settings.get('max_memory_mb', 100)
+                    ttl_seconds=perf_settings.get("cache_ttl", {}),
+                    enable_disk_cache=perf_settings.get("enable_disk_cache", True),
+                    cache_dir=perf_settings.get("cache_dir", ".dfs_cache"),
+                    max_memory_mb=perf_settings.get("max_memory_mb", 100),
                 )
 
             self.performance_optimizer = get_performance_optimizer(perf_config)
@@ -484,14 +506,14 @@ class AdvancedPlayer:
 
         try:
             # Get actual salary range from players
-            salaries = [p.salary for p in self.players if hasattr(p, 'salary') and p.salary > 0]
+            salaries = [p.salary for p in self.players if hasattr(p, "salary") and p.salary > 0]
             if salaries:
                 min_salary = min(salaries)
                 max_salary = max(salaries)
 
                 # Update validator rules
-                self.validator.rules.player_rules['salary']['min'] = min_salary
-                self.validator.rules.player_rules['salary']['max'] = max_salary
+                self.validator.rules.player_rules["salary"]["min"] = min_salary
+                self.validator.rules.player_rules["salary"]["max"] = max_salary
 
                 print(f"  📊 Updated validator salary range: ${min_salary:,} - ${max_salary:,}")
         except Exception as e:
@@ -500,9 +522,9 @@ class AdvancedPlayer:
     def _verify_module_integration(self):
         """Verify that all optimization modules are properly integrated"""
         modules_status = {
-            'Scoring Engine': self.scoring_engine is not None,
-            'Data Validator': self.validator is not None,
-            'Performance Optimizer': self.performance_optimizer is not None
+            "Scoring Engine": self.scoring_engine is not None,
+            "Data Validator": self.validator is not None,
+            "Performance Optimizer": self.performance_optimizer is not None,
         }
 
         all_ready = all(modules_status.values())
@@ -516,6 +538,7 @@ class AdvancedPlayer:
             # Test scoring engine with dummy player
             try:
                 from unified_player_model import UnifiedPlayer
+
                 test_player = UnifiedPlayer(
                     id="test",
                     name="Test Player",
@@ -523,7 +546,7 @@ class AdvancedPlayer:
                     salary=5000,
                     primary_position="OF",
                     positions=["OF"],
-                    base_projection=10.0
+                    base_projection=10.0,
                 )
 
                 test_score = self.scoring_engine.calculate_score(test_player)
@@ -554,7 +577,7 @@ class AdvancedPlayer:
                 player.enhanced_score = score
 
                 # Copy audit trail if available
-                if hasattr(player, '_score_audit'):
+                if hasattr(player, "_score_audit"):
                     player._score_components = player._score_audit
 
                 return score
@@ -564,12 +587,11 @@ class AdvancedPlayer:
                 # Fall through to legacy scoring
 
         # Fallback to legacy scoring
-        if hasattr(player, 'calculate_enhanced_score'):
+        if hasattr(player, "calculate_enhanced_score"):
             return player.calculate_enhanced_score()
         else:
             # Last resort - use base projection
-            return getattr(player, 'base_projection',
-                           getattr(player, 'projection', 0))
+            return getattr(player, "base_projection", getattr(player, "projection", 0))
 
     def validate_player_data(self, player):
         """
@@ -601,18 +623,17 @@ class AdvancedPlayer:
         warnings = []
 
         # Basic salary check
-        if not hasattr(player, 'salary') or player.salary <= 0:
+        if not hasattr(player, "salary") or player.salary <= 0:
             return False, player, ["Invalid salary"]
 
         # Basic projection check
-        proj = getattr(player, 'base_projection',
-                       getattr(player, 'projection', 0))
+        proj = getattr(player, "base_projection", getattr(player, "projection", 0))
         if proj < 0:
             warnings.append("Negative projection")
             player.base_projection = 0
 
         # Basic position check
-        if not hasattr(player, 'primary_position'):
+        if not hasattr(player, "primary_position"):
             return False, player, ["No position"]
 
         return True, player, warnings
@@ -634,7 +655,7 @@ class AdvancedPlayer:
         # Use performance optimizer for caching if available
         if self.performance_optimizer:
             # Define enrichment function
-            @self.performance_optimizer.cached(category='player_enrichment')
+            @self.performance_optimizer.cached(category="player_enrichment")
             def enrich_player_cached(player_id):
                 # Find player
                 player = next((p for p in truly_confirmed if p.id == player_id), None)
@@ -648,31 +669,32 @@ class AdvancedPlayer:
                 if self.vegas_lines:
                     vegas_data = self.vegas_lines.get_player_vegas_data(player)
                     if vegas_data:
-                        enrichment_data['vegas'] = vegas_data
+                        enrichment_data["vegas"] = vegas_data
 
                 # Statcast
                 if self.statcast_fetcher:
-                    if player.primary_position == 'P':
+                    if player.primary_position == "P":
                         stats = self.statcast_fetcher.get_pitcher_stats(player.name)
                     else:
                         stats = self.statcast_fetcher.get_hitter_stats(player.name)
                     if stats:
-                        enrichment_data['statcast'] = stats
+                        enrichment_data["statcast"] = stats
 
                 # Recent form
-                if self.form_analyzer and not self._enrichment_applied['recent_form']:
+                if self.form_analyzer and not self._enrichment_applied["recent_form"]:
                     print("📈 Analyzing recent form (batch mode)...")
                     try:
                         # Use new batch method
                         form_results = self.form_analyzer.analyze_players_batch(
-                            truly_confirmed,
-                            use_cache=True
+                            truly_confirmed, use_cache=True
                         )
                         print(f"   ✅ {len(form_results)} players analyzed")
 
                         # Report hot/cold
-                        hot = sum(1 for p in truly_confirmed if getattr(p, 'hot_streak', False))
-                        cold = sum(1 for p in truly_confirmed if getattr(p, 'form_score', 1.0) < 0.9)
+                        hot = sum(1 for p in truly_confirmed if getattr(p, "hot_streak", False))
+                        cold = sum(
+                            1 for p in truly_confirmed if getattr(p, "form_score", 1.0) < 0.9
+                        )
                         if hot:
                             print(f"   🔥 {hot} hot players")
                         if cold:
@@ -680,7 +702,7 @@ class AdvancedPlayer:
 
                     except Exception as e:
                         print(f"   ❌ Form analysis failed: {e}")
-                    self._enrichment_applied['recent_form'] = True
+                    self._enrichment_applied["recent_form"] = True
 
                 return enrichment_data
 
@@ -691,12 +713,12 @@ class AdvancedPlayer:
 
                     if enrichment_data:
                         # Apply enrichments
-                        if 'vegas' in enrichment_data:
-                            player.apply_vegas_data(enrichment_data['vegas'])
-                        if 'statcast' in enrichment_data:
-                            player.apply_statcast_data(enrichment_data['statcast'])
-                        if 'form' in enrichment_data:
-                            player.apply_recent_form(enrichment_data['form'])
+                        if "vegas" in enrichment_data:
+                            player.apply_vegas_data(enrichment_data["vegas"])
+                        if "statcast" in enrichment_data:
+                            player.apply_statcast_data(enrichment_data["statcast"])
+                        if "form" in enrichment_data:
+                            player.apply_recent_form(enrichment_data["form"])
 
                 except Exception as e:
                     print(f"⚠️ Error enriching {player.name}: {e}")
@@ -716,42 +738,54 @@ class AdvancedPlayer:
     def _parse_positions_enhanced(self, position_str: str) -> List[str]:
         """Enhanced position parsing that properly handles DraftKings format"""
         if not position_str:
-            return ['UTIL']
+            return ["UTIL"]
 
         position_str = str(position_str).strip().upper()
 
         # IMPORTANT: If this is just "UTIL", don't return it yet -
         # it might be a multi-position player marked as UTIL
-        if position_str == 'UTIL':
+        if position_str == "UTIL":
             # This is likely a DH or multi-position player
             # We'll need to check the Roster Position column
-            return ['UTIL']  # Will be overridden if Roster Position has real positions
+            return ["UTIL"]  # Will be overridden if Roster Position has real positions
 
         # Handle multi-position formats
         positions = []
 
         # Try different delimiters
-        if '/' in position_str:
-            positions = position_str.split('/')
-        elif ',' in position_str:
-            positions = position_str.split(',')
-        elif '-' in position_str and position_str.count('-') == 1:  # Avoid splitting "1B-2B-3B" incorrectly
-            positions = position_str.split('-')
+        if "/" in position_str:
+            positions = position_str.split("/")
+        elif "," in position_str:
+            positions = position_str.split(",")
+        elif (
+            "-" in position_str and position_str.count("-") == 1
+        ):  # Avoid splitting "1B-2B-3B" incorrectly
+            positions = position_str.split("-")
         else:
             positions = [position_str]
 
         # Clean and map positions
         valid_positions = []
         position_mapping = {
-            'P': 'P', 'SP': 'P', 'RP': 'P',
-            'C': 'C',
-            '1B': '1B', 'FIRST': '1B',
-            '2B': '2B', 'SECOND': '2B',
-            '3B': '3B', 'THIRD': '3B',
-            'SS': 'SS', 'SHORTSTOP': 'SS',
-            'OF': 'OF', 'OUTFIELD': 'OF',
-            'LF': 'OF', 'CF': 'OF', 'RF': 'OF',
-            'UTIL': 'UTIL', 'DH': 'UTIL'
+            "P": "P",
+            "SP": "P",
+            "RP": "P",
+            "C": "C",
+            "1B": "1B",
+            "FIRST": "1B",
+            "2B": "2B",
+            "SECOND": "2B",
+            "3B": "3B",
+            "THIRD": "3B",
+            "SS": "SS",
+            "SHORTSTOP": "SS",
+            "OF": "OF",
+            "OUTFIELD": "OF",
+            "LF": "OF",
+            "CF": "OF",
+            "RF": "OF",
+            "UTIL": "UTIL",
+            "DH": "UTIL",
         }
 
         for pos in positions:
@@ -764,15 +798,15 @@ class AdvancedPlayer:
         if valid_positions:
             return valid_positions
         else:
-            return ['UTIL']
+            return ["UTIL"]
 
     def _parse_salary(self, salary_input: Any) -> int:
         """Enhanced salary parsing"""
         try:
             if isinstance(salary_input, (int, float)):
                 return max(1000, int(salary_input))
-            cleaned = str(salary_input).replace('$', '').replace(',', '').strip()
-            return max(1000, int(float(cleaned))) if cleaned and cleaned != 'nan' else 3000
+            cleaned = str(salary_input).replace("$", "").replace(",", "").strip()
+            return max(1000, int(float(cleaned))) if cleaned and cleaned != "nan" else 3000
         except:
             return 3000
 
@@ -782,24 +816,24 @@ class AdvancedPlayer:
             if isinstance(value, (int, float)):
                 return max(0.0, float(value))
             cleaned = str(value).strip()
-            return max(0.0, float(cleaned)) if cleaned and cleaned != 'nan' else 0.0
+            return max(0.0, float(cleaned)) if cleaned and cleaned != "nan" else 0.0
         except:
             return 0.0
 
-    def is_eligible_for_selection(self, mode: str = 'bulletproof') -> bool:
+    def is_eligible_for_selection(self, mode: str = "bulletproof") -> bool:
         """Enhanced eligibility check with pitcher validation"""
         # SHOWDOWN: All players are eligible!
-        if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
+        if hasattr(self, "contest_type") and self.contest_type == "showdown":
             return True
 
-        if mode == 'all':
+        if mode == "all":
             return True
-        elif mode == 'manual_only':
+        elif mode == "manual_only":
             return self.is_manual_selected
-        elif mode == 'confirmed_only':
+        elif mode == "confirmed_only":
             # Extra check for pitchers
-            if self.primary_position == 'P':
-                return self.is_confirmed and 'mlb_starter' in self.confirmation_sources
+            if self.primary_position == "P":
+                return self.is_confirmed and "mlb_starter" in self.confirmation_sources
             return self.is_confirmed
         else:  # bulletproof (default)
             # Manual selections always eligible
@@ -808,9 +842,9 @@ class AdvancedPlayer:
 
             # For confirmed players, extra validation for pitchers
             if self.is_confirmed:
-                if self.primary_position == 'P':
+                if self.primary_position == "P":
                     # Pitcher MUST be MLB confirmed starter
-                    return 'mlb_starter' in self.confirmation_sources
+                    return "mlb_starter" in self.confirmation_sources
                 return True
 
             return False
@@ -832,12 +866,12 @@ class AdvancedPlayer:
 
     def can_play_position(self, position: str) -> bool:
         """Check if player can play position"""
-        return position in self.positions or position == 'UTIL'
+        return position in self.positions or position == "UTIL"
 
     def apply_dff_data(self, dff_data: Dict):
         """Apply DFF data"""
         self.dff_data = dff_data
-        if str(dff_data.get('confirmed_order', '')).upper() == 'YES':
+        if str(dff_data.get("confirmed_order", "")).upper() == "YES":
             self.add_confirmation_source("dff_confirmed")
 
     def apply_vegas_data(self, vegas_data: Dict):
@@ -860,7 +894,7 @@ class AdvancedPlayer:
 
     def get_position_display(self) -> str:
         """Get display string for GUI"""
-        if hasattr(self, 'assigned_position') and self.assigned_position != self.primary_position:
+        if hasattr(self, "assigned_position") and self.assigned_position != self.primary_position:
             # Show assigned position with flexibility indicator
             if len(self.positions) > 1:
                 return f"{self.assigned_position}*"  # * indicates flex usage
@@ -884,48 +918,50 @@ class AdvancedPlayer:
             status_parts.append("MANUAL")
 
         # DFF data
-        if hasattr(self, 'dff_data') and self.dff_data:
+        if hasattr(self, "dff_data") and self.dff_data:
             dff_parts = []
-            if self.dff_data.get('ppg_projection', 0) > 0:
+            if self.dff_data.get("ppg_projection", 0) > 0:
                 dff_parts.append(f"PROJ:{self.dff_data['ppg_projection']:.1f}")
-            if self.dff_data.get('ownership', 0) > 0:
+            if self.dff_data.get("ownership", 0) > 0:
                 dff_parts.append(f"OWN:{self.dff_data['ownership']:.1f}%")
             if dff_parts:
                 status_parts.append(f"DFF({','.join(dff_parts)})")
 
         # Statcast data
-        if hasattr(self, 'statcast_data') and self.statcast_data:
+        if hasattr(self, "statcast_data") and self.statcast_data:
             statcast_parts = []
-            if 'xwOBA' in self.statcast_data:
+            if "xwOBA" in self.statcast_data:
                 statcast_parts.append(f"xwOBA:{self.statcast_data['xwOBA']:.3f}")
-            if 'Hard_Hit' in self.statcast_data:
+            if "Hard_Hit" in self.statcast_data:
                 statcast_parts.append(f"HH:{self.statcast_data['Hard_Hit']:.1f}%")
             if statcast_parts:
                 status_parts.append(f"STATCAST({','.join(statcast_parts)})")
 
         # Vegas data
-        if hasattr(self, 'vegas_data') and self.vegas_data:
+        if hasattr(self, "vegas_data") and self.vegas_data:
             vegas_parts = []
-            if 'team_total' in self.vegas_data:
+            if "team_total" in self.vegas_data:
                 vegas_parts.append(f"TT:{self.vegas_data['team_total']:.1f}")
             if vegas_parts:
                 status_parts.append(f"VEGAS({','.join(vegas_parts)})")
 
         # Park factors
-        if hasattr(self, 'park_factors') and self.park_factors:
-            factor = self.park_factors.get('factor', 1.0)
+        if hasattr(self, "park_factors") and self.park_factors:
+            factor = self.park_factors.get("factor", 1.0)
             status_parts.append(f"PARK({factor:.2f}x)")
 
         # Batting order
-        if hasattr(self, 'batting_order') and self.batting_order:
+        if hasattr(self, "batting_order") and self.batting_order:
             status_parts.append(f"BAT-{self.batting_order}")
 
         # Recent form
-        if hasattr(self, '_recent_performance') and self._recent_performance:
+        if hasattr(self, "_recent_performance") and self._recent_performance:
             form = self._recent_performance
-            if form.get('streak_type'):
-                status_parts.append(f"{form['streak_type'].upper()}-STREAK({form['streak_length']})")
-            elif form.get('form_score', 1.0) != 1.0:
+            if form.get("streak_type"):
+                status_parts.append(
+                    f"{form['streak_type'].upper()}-STREAK({form['streak_length']})"
+                )
+            elif form.get("form_score", 1.0) != 1.0:
                 status_parts.append(f"FORM({form['form_score']:.2f})")
 
         return " | ".join(status_parts) if status_parts else "UNCONFIRMED"
@@ -941,13 +977,17 @@ class AdvancedPlayer:
         return 0.0
 
     def __repr__(self):
-        pos_str = '/'.join(self.positions)
+        pos_str = "/".join(self.positions)
         status = "✅" if self.is_eligible_for_selection() else "❌"
-        return f"Player({self.name}, {pos_str}, ${self.salary}, {self.enhanced_score:.1f}, {status})"
+        return (
+            f"Player({self.name}, {pos_str}, ${self.salary}, {self.enhanced_score:.1f}, {status})"
+        )
+
 
 # ============================================================================
 # MAIN DFS CORE CLASS
 # ============================================================================
+
 
 class BulletproofDFSCore:
     """Main DFS optimization system"""
@@ -956,14 +996,14 @@ class BulletproofDFSCore:
         """Initialize the Bulletproof DFS Core System"""
         # Basic attributes
         self.salary_cap = 50000
-        self.contest_type = 'classic'
+        self.contest_type = "classic"
         self.players = []
         self.confirmed_players = []
         self.game_date = None
         self.csv_file_path = None
 
         # Optimization settings
-        self.optimization_mode = 'bulletproof'
+        self.optimization_mode = "bulletproof"
         self.manual_selections_text = ""
         self.use_ceiling_mode = False
 
@@ -1065,12 +1105,12 @@ class BulletproofDFSCore:
             salary_cap=self.salary_cap,
             min_salary_usage=0.95,
             use_correlation=True,
-            max_hitters_vs_pitcher=2
+            max_hitters_vs_pitcher=2,
         )
 
         # Handle contest type
-        if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
-            config.position_requirements = {'CPT': 1, 'UTIL': 5}
+        if hasattr(self, "contest_type") and self.contest_type == "showdown":
+            config.position_requirements = {"CPT": 1, "UTIL": 5}
 
         optimizer = UnifiedMILPOptimizer(config)
 
@@ -1081,54 +1121,56 @@ class BulletproofDFSCore:
                 up = p
             else:
                 up = UnifiedPlayer(
-                    id=str(getattr(p, 'id', p.name)),
+                    id=str(getattr(p, "id", p.name)),
                     name=p.name,
                     team=p.team,
                     salary=p.salary,
                     primary_position=p.primary_position,
                     positions=p.positions.copy(),
-                    base_projection=getattr(p, 'projection', 0)
+                    base_projection=getattr(p, "projection", 0),
                 )
 
                 # Copy status (NO BONUSES)
-                up.is_confirmed = getattr(p, 'is_confirmed', False)
-                up.is_manual_selected = getattr(p, 'is_manual_selected', False)
+                up.is_confirmed = getattr(p, "is_confirmed", False)
+                up.is_manual_selected = getattr(p, "is_manual_selected", False)
 
                 # Copy data if available
-                if hasattr(p, 'dff_data'):
+                if hasattr(p, "dff_data"):
                     up.apply_dff_data(p.dff_data)
-                if hasattr(p, 'vegas_data'):
+                if hasattr(p, "vegas_data"):
                     up.apply_vegas_data(p.vegas_data)
-                if hasattr(p, 'statcast_data'):
+                if hasattr(p, "statcast_data"):
                     up.apply_statcast_data(p.statcast_data)
 
             unified_players.append(up)
 
         # Get strategy
         strategy_map = {
-            'bulletproof': 'confirmed_plus_manual',
-            'all': 'all_players',
-            'manual_only': 'manual_only',
-            'confirmed_only': 'confirmed_plus_manual'
+            "bulletproof": "confirmed_plus_manual",
+            "all": "all_players",
+            "manual_only": "manual_only",
+            "confirmed_only": "confirmed_plus_manual",
         }
 
         # Check if we have enough eligible players in bulletproof mode
-        if self.optimization_mode == 'bulletproof':
-            eligible_count = sum(1 for p in unified_players if p.is_confirmed or p.is_manual_selected)
+        if self.optimization_mode == "bulletproof":
+            eligible_count = sum(
+                1 for p in unified_players if p.is_confirmed or p.is_manual_selected
+            )
 
             if eligible_count < 10:
                 print(f"⚠️ Only {eligible_count} eligible players in bulletproof mode")
                 print("💡 Switching to 'all players' mode for this optimization")
                 print("   (To use bulletproof mode, confirm players or add manual selections)")
-                strategy = 'all_players'
+                strategy = "all_players"
             else:
-                strategy = strategy_map.get(self.optimization_mode, 'balanced')
+                strategy = strategy_map.get(self.optimization_mode, "balanced")
                 print(f"✅ Found {eligible_count} eligible players for bulletproof mode")
         else:
-            strategy = strategy_map.get(self.optimization_mode, 'balanced')
+            strategy = strategy_map.get(self.optimization_mode, "balanced")
 
         # Get manual selections
-        manual_text = getattr(self, 'manual_selections_text', '')
+        manual_text = getattr(self, "manual_selections_text", "")
 
         # Show what strategy we're using
         print(f"📋 Using strategy: {strategy}")
@@ -1137,9 +1179,7 @@ class BulletproofDFSCore:
 
         # Optimize!
         lineup, score = optimizer.optimize_lineup(
-            unified_players,
-            strategy=strategy,
-            manual_selections=manual_text
+            unified_players, strategy=strategy, manual_selections=manual_text
         )
 
         if lineup:
@@ -1150,12 +1190,13 @@ class BulletproofDFSCore:
             print("\n📋 LINEUP:")
             print("-" * 60)
             for i, player in enumerate(lineup, 1):
-                pos = getattr(player, 'assigned_position', player.primary_position)
+                pos = getattr(player, "assigned_position", player.primary_position)
                 conf = "✓" if player.is_confirmed else " "
                 manual = "M" if player.is_manual_selected else " "
 
                 print(
-                    f"{i:2d}. {pos:4s} {conf}{manual} {player.name:20s} {player.team:3s} ${player.salary:6,} → {player.enhanced_score:6.1f}")
+                    f"{i:2d}. {pos:4s} {conf}{manual} {player.name:20s} {player.team:3s} ${player.salary:6,} → {player.enhanced_score:6.1f}"
+                )
             print("-" * 60)
 
             return lineup, score
@@ -1180,8 +1221,8 @@ class BulletproofDFSCore:
         for pitcher_name in pitcher_names:
             for player in self.players:
                 if pitcher_name.lower() in player.name.lower():
-                    player.original_position = 'P'
-                    player.original_positions = ['P']
+                    player.original_position = "P"
+                    player.original_positions = ["P"]
                     identified.append(player)
                     print(f"   ✅ Manually identified: {player.name} as pitcher")
                     break
@@ -1203,21 +1244,23 @@ class BulletproofDFSCore:
 
         if self.confirmation_system:
             # Get confirmed pitchers for these teams
-            if hasattr(self.confirmation_system, 'confirmed_pitchers'):
+            if hasattr(self.confirmation_system, "confirmed_pitchers"):
                 for team in teams:
                     if team in self.confirmation_system.confirmed_pitchers:
                         pitcher_data = self.confirmation_system.confirmed_pitchers[team]
-                        pitcher_name = pitcher_data.get('name', '')
+                        pitcher_name = pitcher_data.get("name", "")
 
                         # Find this pitcher in our player list
                         for player in self.players:
                             if self.confirmation_system.data_system.match_player_names(
-                                    player.name, pitcher_name
+                                player.name, pitcher_name
                             ):
-                                player.original_position = 'P'
-                                player.original_positions = ['P']
+                                player.original_position = "P"
+                                player.original_positions = ["P"]
                                 identified_pitchers.append(player)
-                                print(f"   ⚾ Confirmed starter found: {player.name} ({player.team})")
+                                print(
+                                    f"   ⚾ Confirmed starter found: {player.name} ({player.team})"
+                                )
                                 break
 
         # Method 2: Use projections as fallback
@@ -1227,17 +1270,18 @@ class BulletproofDFSCore:
             # Sort by projection to find likely pitchers
             sorted_by_proj = sorted(
                 [p for p in self.players if p.projection > 0 and p not in identified_pitchers],
-                key=lambda x: x.projection
+                key=lambda x: x.projection,
             )
 
             # In showdown, typically the 2-4 lowest projected players are pitchers
             for player in sorted_by_proj[:4]:
                 if len(identified_pitchers) < 2:
-                    player.original_position = 'P'
-                    player.original_positions = ['P']
+                    player.original_position = "P"
+                    player.original_positions = ["P"]
                     identified_pitchers.append(player)
                     print(
-                        f"   ⚾ Likely pitcher (low projection): {player.name} ({player.team}) - Proj: {player.projection}")
+                        f"   ⚾ Likely pitcher (low projection): {player.name} ({player.team}) - Proj: {player.projection}"
+                    )
 
         print(f"\n✅ Identified {len(identified_pitchers)} pitchers in showdown")
         return identified_pitchers
@@ -1255,23 +1299,35 @@ class BulletproofDFSCore:
         """Get eligible players based on optimization mode"""
 
         # For showdown, ALL players are eligible regardless of position
-        if self.contest_type == 'showdown':
-            if self.optimization_mode == 'all':
+        if self.contest_type == "showdown":
+            if self.optimization_mode == "all":
                 eligible = self.players.copy()
-                print(f"🌐 ALL PLAYERS MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} players eligible")
-            elif self.optimization_mode == 'manual_only':
+                print(
+                    f"🌐 ALL PLAYERS MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} players eligible"
+                )
+            elif self.optimization_mode == "manual_only":
                 eligible = [p for p in self.players if p.is_manual_selected]
-                print(f"🎯 MANUAL-ONLY MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} manually selected players")
-            elif self.optimization_mode == 'confirmed_only':
+                print(
+                    f"🎯 MANUAL-ONLY MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} manually selected players"
+                )
+            elif self.optimization_mode == "confirmed_only":
                 eligible = [p for p in self.players if p.is_confirmed]
-                print(f"🔒 CONFIRMED-ONLY MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} confirmed players")
+                print(
+                    f"🔒 CONFIRMED-ONLY MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} confirmed players"
+                )
             else:  # bulletproof
                 eligible = [p for p in self.players if p.is_confirmed or p.is_manual_selected]
-                print(f"🛡️ BULLETPROOF MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} players eligible")
+                print(
+                    f"🛡️ BULLETPROOF MODE (SHOWDOWN): {len(eligible)}/{len(self.players)} players eligible"
+                )
 
                 # Show breakdown
-                confirmed_only = sum(1 for p in eligible if p.is_confirmed and not p.is_manual_selected)
-                manual_only = sum(1 for p in eligible if p.is_manual_selected and not p.is_confirmed)
+                confirmed_only = sum(
+                    1 for p in eligible if p.is_confirmed and not p.is_manual_selected
+                )
+                manual_only = sum(
+                    1 for p in eligible if p.is_manual_selected and not p.is_confirmed
+                )
                 both = sum(1 for p in eligible if p.is_confirmed and p.is_manual_selected)
 
                 print(f"   - Confirmed only: {confirmed_only}")
@@ -1282,7 +1338,7 @@ class BulletproofDFSCore:
             position_types = {}
             for player in eligible:
                 # Use ORIGINAL position for display
-                orig_pos = getattr(player, 'original_position', 'UTIL')
+                orig_pos = getattr(player, "original_position", "UTIL")
                 position_types[orig_pos] = position_types.get(orig_pos, 0) + 1
 
             if position_types:
@@ -1293,13 +1349,15 @@ class BulletproofDFSCore:
         # CLASSIC MODE - original logic with position validation
         self._validate_confirmations()
 
-        if self.optimization_mode == 'all':
+        if self.optimization_mode == "all":
             eligible = self.players.copy()
             print(f"🌐 ALL PLAYERS MODE: {len(eligible)}/{len(self.players)} players eligible")
-        elif self.optimization_mode == 'manual_only':
+        elif self.optimization_mode == "manual_only":
             eligible = [p for p in self.players if p.is_manual_selected]
-            print(f"🎯 MANUAL-ONLY MODE: {len(eligible)}/{len(self.players)} manually selected players")
-        elif self.optimization_mode == 'confirmed_only':
+            print(
+                f"🎯 MANUAL-ONLY MODE: {len(eligible)}/{len(self.players)} manually selected players"
+            )
+        elif self.optimization_mode == "confirmed_only":
             eligible = [p for p in self.players if p.is_confirmed and not p.is_manual_selected]
             print(f"🔒 CONFIRMED-ONLY MODE: {len(eligible)}/{len(self.players)} confirmed players")
         else:  # bulletproof (default)
@@ -1316,7 +1374,7 @@ class BulletproofDFSCore:
             print(f"   - Both confirmed & manual: {both}")
 
         # Extra validation for pitchers (skip in 'all' mode)
-        if self.optimization_mode != 'all':
+        if self.optimization_mode != "all":
             eligible = self._validate_pitcher_eligibility(eligible)
 
         return eligible
@@ -1333,8 +1391,8 @@ class BulletproofDFSCore:
                     issues.append(f"{player.name} marked confirmed but no sources")
 
                 # Extra validation for pitchers
-                if player.primary_position == 'P':
-                    if 'mlb_starter' not in player.confirmation_sources:
+                if player.primary_position == "P":
+                    if "mlb_starter" not in player.confirmation_sources:
                         issues.append(f"Pitcher {player.name} confirmed but not MLB starter")
 
         if issues:
@@ -1359,9 +1417,9 @@ class BulletproofDFSCore:
             if CONFIRMED_AVAILABLE:
                 try:
                     from smart_confirmation_system import SmartConfirmationSystem
+
                     self.confirmation_system = SmartConfirmationSystem(
-                        csv_players=self.players,
-                        verbose=True
+                        csv_players=self.players, verbose=True
                     )
                     print("✅ Smart Confirmation System initialized successfully")
                 except Exception as e:
@@ -1373,7 +1431,7 @@ class BulletproofDFSCore:
                 return 0
 
         # Update CSV players in confirmation system
-        if hasattr(self.confirmation_system, 'csv_players'):
+        if hasattr(self.confirmation_system, "csv_players"):
             self.confirmation_system.csv_players = self.players
             self.confirmation_system.csv_teams = set(p.team for p in self.players if p.team)
 
@@ -1381,7 +1439,9 @@ class BulletproofDFSCore:
         lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
 
         # FOR SHOWDOWN: Use the MLB pitcher data to identify our pitchers
-        if self.contest_type == 'showdown' and hasattr(self.confirmation_system, 'confirmed_pitchers'):
+        if self.contest_type == "showdown" and hasattr(
+            self.confirmation_system, "confirmed_pitchers"
+        ):
             print("\n⚾ MATCHING SHOWDOWN PITCHERS FROM MLB DATA")
             print("=" * 60)
 
@@ -1391,7 +1451,7 @@ class BulletproofDFSCore:
             for team in teams:
                 if team in self.confirmation_system.confirmed_pitchers:
                     pitcher_info = self.confirmation_system.confirmed_pitchers[team]
-                    mlb_pitcher_name = pitcher_info.get('name', '')
+                    mlb_pitcher_name = pitcher_info.get("name", "")
 
                     if not mlb_pitcher_name:
                         continue
@@ -1412,38 +1472,47 @@ class BulletproofDFSCore:
                         mlb_name_lower = mlb_pitcher_name.lower()
 
                         # Check for match
-                        if (player_name_lower == mlb_name_lower or
-                                mlb_name_lower in player_name_lower or
-                                player_name_lower in mlb_name_lower or
-                                (mlb_name_lower.split()[-1] == player_name_lower.split()[-1])):  # Last name match
+                        if (
+                            player_name_lower == mlb_name_lower
+                            or mlb_name_lower in player_name_lower
+                            or player_name_lower in mlb_name_lower
+                            or (mlb_name_lower.split()[-1] == player_name_lower.split()[-1])
+                        ):  # Last name match
 
                             # FOUND IT!
-                            player.original_position = 'P'
-                            player.original_positions = ['P']
+                            player.original_position = "P"
+                            player.original_positions = ["P"]
                             player.is_confirmed = True
                             player.add_confirmation_source("mlb_starter")
                             matched = True
                             showdown_pitchers_found += 1
                             print(
-                                f"   ✅ MATCHED: {player.name} (Proj: {player.projection}, Salary: ${player.salary:,})")
+                                f"   ✅ MATCHED: {player.name} (Proj: {player.projection}, Salary: ${player.salary:,})"
+                            )
                             break
 
                     # Second pass: If no name match, look for SP with high projection
                     if not matched:
-                        print(f"   ⚠️ No exact match for {mlb_pitcher_name}, checking SP positions...")
+                        print(
+                            f"   ⚠️ No exact match for {mlb_pitcher_name}, checking SP positions..."
+                        )
 
                         for player in self.players:
-                            if (player.team == team and
-                                    player.primary_position == 'SP' and
-                                    10 <= player.projection <= 25):  # Starting pitchers have higher projections
+                            if (
+                                player.team == team
+                                and player.primary_position == "SP"
+                                and 10 <= player.projection <= 25
+                            ):  # Starting pitchers have higher projections
 
-                                player.original_position = 'P'
-                                player.original_positions = ['P']
+                                player.original_position = "P"
+                                player.original_positions = ["P"]
                                 player.is_confirmed = True
                                 player.add_confirmation_source("mlb_starter_projection")
                                 matched = True
                                 showdown_pitchers_found += 1
-                                print(f"   ✅ MATCHED BY POSITION: {player.name} (SP, Proj: {player.projection})")
+                                print(
+                                    f"   ✅ MATCHED BY POSITION: {player.name} (SP, Proj: {player.projection})"
+                                )
                                 break
 
                     if not matched:
@@ -1457,8 +1526,11 @@ class BulletproofDFSCore:
 
         for player in self.players:
             # Count already marked pitchers
-            if self.contest_type == 'showdown' and hasattr(player,
-                                                           'original_position') and player.original_position == 'P':
+            if (
+                self.contest_type == "showdown"
+                and hasattr(player, "original_position")
+                and player.original_position == "P"
+            ):
                 confirmed_count += 1
                 confirmed_pitchers += 1
                 continue
@@ -1475,30 +1547,42 @@ class BulletproofDFSCore:
                 confirmed_count += 1
 
         # Final showdown verification
-        if self.contest_type == 'showdown':
-            final_pitcher_count = sum(1 for p in self.players
-                                      if hasattr(p, 'original_position') and p.original_position == 'P')
+        if self.contest_type == "showdown":
+            final_pitcher_count = sum(
+                1
+                for p in self.players
+                if hasattr(p, "original_position") and p.original_position == "P"
+            )
 
             print(f"\n📊 FINAL SHOWDOWN STATUS:")
             print(f"   Total confirmed players: {confirmed_count}")
             print(f"   Starting pitchers identified: {final_pitcher_count}")
 
             # List the pitchers
-            pitchers = [p for p in self.players
-                        if hasattr(p, 'original_position') and p.original_position == 'P']
+            pitchers = [
+                p
+                for p in self.players
+                if hasattr(p, "original_position") and p.original_position == "P"
+            ]
 
             if pitchers:
                 print(f"\n   Starting Pitchers:")
                 for p in pitchers:
-                    sources = ', '.join(p.confirmation_sources) if hasattr(p, 'confirmation_sources') else 'Unknown'
-                    print(f"      ⚾ {p.name} ({p.team}) - ${p.salary:,} - Proj: {p.projection} - Sources: [{sources}]")
+                    sources = (
+                        ", ".join(p.confirmation_sources)
+                        if hasattr(p, "confirmation_sources")
+                        else "Unknown"
+                    )
+                    print(
+                        f"      ⚾ {p.name} ({p.team}) - ${p.salary:,} - Proj: {p.projection} - Sources: [{sources}]"
+                    )
             else:
                 print("   ❌ NO PITCHERS IDENTIFIED!")
 
         print(f"\n📊 Total confirmed: {confirmed_count} players")
 
         # Apply DFF if available
-        if hasattr(self, 'current_dff_file') and self.current_dff_file:
+        if hasattr(self, "current_dff_file") and self.current_dff_file:
             print("\n🎯 APPLYING DFF RANKINGS...")
             self.apply_dff_rankings(self.current_dff_file)
 
@@ -1531,8 +1615,7 @@ class BulletproofDFSCore:
         if CONFIRMED_AVAILABLE:
             try:
                 self.confirmation_system = SmartConfirmationSystem(
-                    csv_players=[],  # Empty at first, will be updated when CSV loads
-                    verbose=True
+                    csv_players=[], verbose=True  # Empty at first, will be updated when CSV loads
                 )
                 print("✅ Smart Confirmation System initialized")
             except Exception as e:
@@ -1557,6 +1640,7 @@ class BulletproofDFSCore:
             try:
                 from recent_form_analyzer import RecentFormAnalyzer
                 from utils.cache_manager import cache
+
                 self.form_analyzer = RecentFormAnalyzer(cache_manager=cache)
                 print("✅ Recent Form Analyzer initialized")
             except Exception as e:
@@ -1576,6 +1660,7 @@ class BulletproofDFSCore:
         # Park Factors - NEW ADDITION
         try:
             from park_factors import get_park_factors
+
             self.park_factors = get_park_factors()
             print("✅ Park factors module initialized")
         except Exception as e:
@@ -1621,14 +1706,14 @@ class BulletproofDFSCore:
                 print(f"\n🔍 Validating {len(raw_players)} players...")
 
                 # First, update validator with actual salary ranges from raw data
-                salaries = [p.salary for p in raw_players if hasattr(p, 'salary') and p.salary > 0]
+                salaries = [p.salary for p in raw_players if hasattr(p, "salary") and p.salary > 0]
                 if salaries:
                     min_salary = min(salaries)
                     max_salary = max(salaries)
 
                     # Update validator rules dynamically
-                    self.validator.rules.player_rules['salary']['min'] = min_salary
-                    self.validator.rules.player_rules['salary']['max'] = max_salary
+                    self.validator.rules.player_rules["salary"]["min"] = min_salary
+                    self.validator.rules.player_rules["salary"]["max"] = max_salary
                     print(f"  📊 Dynamic salary range: ${min_salary:,} - ${max_salary:,}")
 
                 # Validate each player
@@ -1646,7 +1731,9 @@ class BulletproofDFSCore:
                             warning_count += len(warnings)
                             # Log first few warnings as examples
                             if len(validation_issues) < 5:
-                                validation_issues.append(f"  ⚠️ {player.name}: {', '.join(warnings)}")
+                                validation_issues.append(
+                                    f"  ⚠️ {player.name}: {', '.join(warnings)}"
+                                )
                     else:
                         invalid_count += 1
                         if invalid_count <= 5:  # Show first 5 invalid players
@@ -1681,12 +1768,12 @@ class BulletproofDFSCore:
 
                 # Pre-calculate base projections for all players
                 for player in self.players:
-                    if not hasattr(player, 'base_projection') or player.base_projection <= 0:
+                    if not hasattr(player, "base_projection") or player.base_projection <= 0:
                         # Determine base projection from available data
-                        base_proj = getattr(player, 'projection', 0)
+                        base_proj = getattr(player, "projection", 0)
                         if base_proj > 0:
                             player.base_projection = base_proj
-                        elif hasattr(player, 'points'):
+                        elif hasattr(player, "points"):
                             player.base_projection = player.points
                         else:
                             player.base_projection = 0
@@ -1694,13 +1781,15 @@ class BulletproofDFSCore:
                 print("  ✅ Scoring engine ready for optimization")
 
             # Update confirmation system if available
-            if self.confirmation_system and hasattr(self.confirmation_system, 'csv_players'):
+            if self.confirmation_system and hasattr(self.confirmation_system, "csv_players"):
                 self.confirmation_system.csv_players = self.players
                 self.confirmation_system.csv_teams = set(p.team for p in self.players if p.team)
                 print(f"\n✅ Updated confirmation system with {len(self.players)} players")
 
             # Final summary
-            print(f"\n✅ Successfully loaded {len(self.players)} valid {self.contest_type.upper()} players")
+            print(
+                f"\n✅ Successfully loaded {len(self.players)} valid {self.contest_type.upper()} players"
+            )
 
             # Show position statistics
             self._show_position_stats()
@@ -1709,18 +1798,16 @@ class BulletproofDFSCore:
             if self.performance_optimizer:
                 # Log CSV load event for performance tracking
                 load_stats = {
-                    'file': Path(file_path).name,
-                    'total_rows': len(df),
-                    'valid_players': len(self.players),
-                    'contest_type': self.contest_type,
-                    'timestamp': datetime.now().isoformat()
+                    "file": Path(file_path).name,
+                    "total_rows": len(df),
+                    "valid_players": len(self.players),
+                    "contest_type": self.contest_type,
+                    "timestamp": datetime.now().isoformat(),
                 }
 
                 # Cache for future reference
                 self.performance_optimizer._store_in_cache(
-                    f"csv_load_{Path(file_path).stem}",
-                    load_stats,
-                    'csv_loads'
+                    f"csv_load_{Path(file_path).stem}", load_stats, "csv_loads"
                 )
 
             return True
@@ -1728,6 +1815,7 @@ class BulletproofDFSCore:
         except Exception as e:
             print(f"❌ Error loading CSV: {e}")
             import traceback
+
             traceback.print_exc()
 
             # Clear any partial data
@@ -1742,7 +1830,7 @@ class BulletproofDFSCore:
 
         try:
             # Get actual salary range from players
-            salaries = [p.salary for p in self.players if hasattr(p, 'salary') and p.salary > 0]
+            salaries = [p.salary for p in self.players if hasattr(p, "salary") and p.salary > 0]
             if salaries:
                 min_salary = min(salaries)
                 max_salary = max(salaries)
@@ -1753,10 +1841,10 @@ class BulletproofDFSCore:
                 p90 = salaries_sorted[int(len(salaries_sorted) * 0.9)]
 
                 # Update validator rules
-                self.validator.rules.player_rules['salary']['min'] = min_salary
-                self.validator.rules.player_rules['salary']['max'] = max_salary
-                self.validator.rules.player_rules['salary']['p10'] = p10
-                self.validator.rules.player_rules['salary']['p90'] = p90
+                self.validator.rules.player_rules["salary"]["min"] = min_salary
+                self.validator.rules.player_rules["salary"]["max"] = max_salary
+                self.validator.rules.player_rules["salary"]["p10"] = p10
+                self.validator.rules.player_rules["salary"]["p90"] = p90
 
                 print(f"  📊 Updated validator salary stats:")
                 print(f"     Range: ${min_salary:,} - ${max_salary:,}")
@@ -1764,16 +1852,18 @@ class BulletproofDFSCore:
 
                 # Also check projection ranges
                 projections = [
-                    getattr(p, 'base_projection', getattr(p, 'projection', 0))
+                    getattr(p, "base_projection", getattr(p, "projection", 0))
                     for p in self.players
-                    if getattr(p, 'base_projection', getattr(p, 'projection', 0)) > 0
+                    if getattr(p, "base_projection", getattr(p, "projection", 0)) > 0
                 ]
 
                 if projections:
                     min_proj = min(projections)
                     max_proj = max(projections)
-                    self.validator.rules.player_rules['projection']['min'] = 0
-                    self.validator.rules.player_rules['projection']['max'] = max_proj * 1.2  # 20% buffer
+                    self.validator.rules.player_rules["projection"]["min"] = 0
+                    self.validator.rules.player_rules["projection"]["max"] = (
+                        max_proj * 1.2
+                    )  # 20% buffer
 
                     print(f"     Projections: {min_proj:.1f} - {max_proj:.1f}")
 
@@ -1810,18 +1900,18 @@ class BulletproofDFSCore:
         warnings = []
 
         # Basic required fields check
-        if not hasattr(player, 'name') or not player.name:
+        if not hasattr(player, "name") or not player.name:
             return False, player, ["No player name"]
 
-        if not hasattr(player, 'salary') or player.salary <= 0:
+        if not hasattr(player, "salary") or player.salary <= 0:
             return False, player, ["Invalid salary"]
 
-        if not hasattr(player, 'primary_position') or not player.primary_position:
+        if not hasattr(player, "primary_position") or not player.primary_position:
             return False, player, ["No position"]
 
         # Fix common issues
         # Negative projections
-        for proj_field in ['projection', 'base_projection', 'points']:
+        for proj_field in ["projection", "base_projection", "points"]:
             if hasattr(player, proj_field):
                 value = getattr(player, proj_field)
                 if value < 0:
@@ -1829,11 +1919,11 @@ class BulletproofDFSCore:
                     setattr(player, proj_field, 0)
 
         # Ensure base_projection exists
-        if not hasattr(player, 'base_projection'):
-            player.base_projection = getattr(player, 'projection', 0)
+        if not hasattr(player, "base_projection"):
+            player.base_projection = getattr(player, "projection", 0)
 
         # Ensure positions list exists
-        if not hasattr(player, 'positions'):
+        if not hasattr(player, "positions"):
             player.positions = [player.primary_position]
 
         return True, player, warnings
@@ -1843,30 +1933,30 @@ class BulletproofDFSCore:
         filename = os.path.basename(file_path).lower()
 
         # Check filename
-        if any(indicator in filename for indicator in ['showdown', 'captain', 'sd', 'cptn']):
-            self.contest_type = 'showdown'
+        if any(indicator in filename for indicator in ["showdown", "captain", "sd", "cptn"]):
+            self.contest_type = "showdown"
             print("🎯 SHOWDOWN DETECTED (filename)")
         else:
             # Check team count
             team_col_idx = None
             for i, col in enumerate(df.columns):
-                if 'team' in str(col).lower():
+                if "team" in str(col).lower():
                     team_col_idx = i
                     break
 
             if team_col_idx is not None:
                 unique_teams = df.iloc[:, team_col_idx].dropna().unique()
-                team_count = len([t for t in unique_teams if str(t).strip() and str(t) != 'nan'])
+                team_count = len([t for t in unique_teams if str(t).strip() and str(t) != "nan"])
 
                 if team_count <= 2:
-                    self.contest_type = 'showdown'
+                    self.contest_type = "showdown"
                     print(f"🎯 SHOWDOWN DETECTED ({team_count} teams)")
                 else:
-                    self.contest_type = 'classic'
+                    self.contest_type = "classic"
                     print(f"🏈 CLASSIC CONTEST ({team_count} teams)")
 
         # Update salary cap for showdown
-        if self.contest_type == 'showdown':
+        if self.contest_type == "showdown":
             self.salary_cap = 50000
             print("💰 Showdown salary cap: $50,000")
 
@@ -1879,38 +1969,40 @@ class BulletproofDFSCore:
             col_lower = str(col).lower().strip()
 
             # Check for Roster Position column specifically
-            if 'roster position' in col_lower:
+            if "roster position" in col_lower:
                 roster_position_idx = i
                 print(f"   Found Roster Position column at index {i}")
 
             # Name column
-            if any(name in col_lower for name in ['name', 'player']):
-                if 'name' in col_lower and '+' not in col_lower and 'name' not in column_map:
-                    column_map['name'] = i
+            if any(name in col_lower for name in ["name", "player"]):
+                if "name" in col_lower and "+" not in col_lower and "name" not in column_map:
+                    column_map["name"] = i
 
             # Position column
-            elif any(pos in col_lower for pos in ['position']) and 'roster' not in col_lower:
-                if 'position' not in column_map:
-                    column_map['position'] = i
+            elif any(pos in col_lower for pos in ["position"]) and "roster" not in col_lower:
+                if "position" not in column_map:
+                    column_map["position"] = i
 
             # Team column
-            elif any(team in col_lower for team in ['team', 'teamabbrev', 'tm']):
-                if 'team' not in column_map:
-                    column_map['team'] = i
+            elif any(team in col_lower for team in ["team", "teamabbrev", "tm"]):
+                if "team" not in column_map:
+                    column_map["team"] = i
 
             # Salary column
-            elif any(sal in col_lower for sal in ['salary', 'sal', 'cost']):
-                if 'salary' not in column_map:
-                    column_map['salary'] = i
+            elif any(sal in col_lower for sal in ["salary", "sal", "cost"]):
+                if "salary" not in column_map:
+                    column_map["salary"] = i
 
             # Projection column
-            elif any(proj in col_lower for proj in ['avgpointspergame', 'fppg', 'projection', 'points']):
-                if 'projection' not in column_map:
-                    column_map['projection'] = i
+            elif any(
+                proj in col_lower for proj in ["avgpointspergame", "fppg", "projection", "points"]
+            ):
+                if "projection" not in column_map:
+                    column_map["projection"] = i
 
         # Store roster position index separately
         if roster_position_idx is not None:
-            column_map['roster_position'] = roster_position_idx
+            column_map["roster_position"] = roster_position_idx
 
         # Debug output
         print(f"📋 Detected columns:")
@@ -1927,12 +2019,12 @@ class BulletproofDFSCore:
         print(f"\n📊 Parsing {len(df)} rows...")
 
         # For showdown, we need to identify pitchers by projection
-        if self.contest_type == 'showdown':
+        if self.contest_type == "showdown":
             # First pass: Get all projections to find the threshold
             projections = []
             for idx, row in df.iterrows():
                 try:
-                    proj = float(row.iloc[column_map.get('projection', 4)])
+                    proj = float(row.iloc[column_map.get("projection", 4)])
                     if proj > 0:
                         projections.append(proj)
                 except:
@@ -1942,50 +2034,61 @@ class BulletproofDFSCore:
             if projections:
                 projections.sort()
                 # Pitchers are usually the 2-4 lowest projections
-                pitcher_threshold = projections[min(4, len(projections) // 4)] if len(projections) > 10 else 10.0
+                pitcher_threshold = (
+                    projections[min(4, len(projections) // 4)] if len(projections) > 10 else 10.0
+                )
                 print(f"⚾ Pitcher detection threshold: projections < {pitcher_threshold:.1f}")
 
         for idx, row in df.iterrows():
             try:
                 # Get player data
-                player_name = str(row.iloc[column_map.get('name', 0)]).strip()
-                projection = float(row.iloc[column_map.get('projection', 4)])
-                salary = row.iloc[column_map.get('salary', 3)]
+                player_name = str(row.iloc[column_map.get("name", 0)]).strip()
+                projection = float(row.iloc[column_map.get("projection", 4)])
+                salary = row.iloc[column_map.get("salary", 3)]
 
                 # For showdown, check if this is likely a pitcher
                 is_likely_pitcher = False
-                if self.contest_type == 'showdown' and projection > 0:
+                if self.contest_type == "showdown" and projection > 0:
                     # Multiple criteria for pitcher detection
                     is_likely_pitcher = (
-                            projection < pitcher_threshold or  # Low projection
-                            (projection < 5.0 and salary >= 7000) or  # Low proj + high salary = SP
-                            any(pitcher_name in player_name.lower() for pitcher_name in
-                                ['cecconi', 'walter', 'brown', 'blanco'])  # Known pitchers
+                        projection < pitcher_threshold  # Low projection
+                        or (projection < 5.0 and salary >= 7000)  # Low proj + high salary = SP
+                        or any(
+                            pitcher_name in player_name.lower()
+                            for pitcher_name in ["cecconi", "walter", "brown", "blanco"]
+                        )  # Known pitchers
                     )
 
                 # Determine position
                 if is_likely_pitcher:
-                    position_str = 'P'
+                    position_str = "P"
                     pitcher_count += 1
-                    print(f"   ⚾ Identified pitcher: {player_name} (Proj: {projection:.1f}, Salary: ${salary:,})")
+                    print(
+                        f"   ⚾ Identified pitcher: {player_name} (Proj: {projection:.1f}, Salary: ${salary:,})"
+                    )
                 else:
                     # Original position logic
-                    primary_position = str(row.iloc[column_map.get('position', 0)]).strip().upper()
+                    primary_position = str(row.iloc[column_map.get("position", 0)]).strip().upper()
                     roster_position = ""
-                    if 'roster_position' in column_map:
-                        roster_position = str(row.iloc[column_map['roster_position']]).strip().upper()
+                    if "roster_position" in column_map:
+                        roster_position = (
+                            str(row.iloc[column_map["roster_position"]]).strip().upper()
+                        )
 
-                    position_str = roster_position if roster_position and roster_position not in ['', 'NAN', 'NONE',
-                                                                                                  'UTIL'] else primary_position
+                    position_str = (
+                        roster_position
+                        if roster_position and roster_position not in ["", "NAN", "NONE", "UTIL"]
+                        else primary_position
+                    )
 
                 player_data = {
-                    'id': idx + 1,
-                    'name': player_name,
-                    'position': position_str,
-                    'team': str(row.iloc[column_map.get('team', 2)]).strip(),
-                    'salary': salary,
-                    'projection': projection,
-                    'contest_type': self.contest_type
+                    "id": idx + 1,
+                    "name": player_name,
+                    "position": position_str,
+                    "team": str(row.iloc[column_map.get("team", 2)]).strip(),
+                    "salary": salary,
+                    "projection": projection,
+                    "contest_type": self.contest_type,
                 }
 
                 # Create player
@@ -1996,9 +2099,9 @@ class BulletproofDFSCore:
                 player.original_position = player.primary_position
 
                 # For showdown, change positions but keep original
-                if self.contest_type == 'showdown':
-                    player.positions = ['CPT', 'UTIL']
-                    player.primary_position = 'UTIL'
+                if self.contest_type == "showdown":
+                    player.positions = ["CPT", "UTIL"]
+                    player.primary_position = "UTIL"
                     player.showdown_eligible = True
 
                 if player.name and player.salary > 0:
@@ -2009,7 +2112,7 @@ class BulletproofDFSCore:
                 continue
 
         print(f"✅ Successfully parsed {len(players)} players")
-        if self.contest_type == 'showdown':
+        if self.contest_type == "showdown":
             print(f"⚾ Identified {pitcher_count} pitchers")
 
         return players
@@ -2019,7 +2122,9 @@ class BulletproofDFSCore:
         multi_position_count = sum(1 for p in self.players if len(p.positions) > 1)
         single_position_count = sum(1 for p in self.players if len(p.positions) == 1)
 
-        print(f"📊 Position stats: {multi_position_count} multi-position, {single_position_count} single-position")
+        print(
+            f"📊 Position stats: {multi_position_count} multi-position, {single_position_count} single-position"
+        )
 
         # Position breakdown
         position_counts = {}
@@ -2035,15 +2140,15 @@ class BulletproofDFSCore:
 
     def set_optimization_mode(self, mode: str):
         """Set optimization mode with validation"""
-        valid_modes = ['bulletproof', 'manual_only', 'confirmed_only', 'all']
+        valid_modes = ["bulletproof", "manual_only", "confirmed_only", "all"]
 
         # Handle different mode names from GUI
         mode_mapping = {
-            'all players': 'all',
-            'all_players': 'all',
-            'manual only': 'manual_only',
-            'confirmed only': 'confirmed_only',
-            'bulletproof (confirmed + manual)': 'bulletproof'
+            "all players": "all",
+            "all_players": "all",
+            "manual only": "manual_only",
+            "confirmed only": "confirmed_only",
+            "bulletproof (confirmed + manual)": "bulletproof",
         }
 
         # Normalize the mode
@@ -2073,7 +2178,7 @@ class BulletproofDFSCore:
 
         # Parse manual input
         manual_names = []
-        for delimiter in [',', ';', '\n', '|']:
+        for delimiter in [",", ";", "\n", "|"]:
             if delimiter in manual_input:
                 manual_names = [name.strip() for name in manual_input.split(delimiter)]
                 break
@@ -2124,14 +2229,13 @@ class BulletproofDFSCore:
         self.reset_all_confirmations()
 
         # FOR SHOWDOWN: First identify who the pitchers are
-        if self.contest_type == 'showdown':
+        if self.contest_type == "showdown":
             print("🔄 Identifying pitchers in showdown format...")
-
 
             # Now temporarily restore positions for confirmation
             print("🔄 Temporarily restoring original positions for confirmation...")
             for player in self.players:
-                if hasattr(player, 'original_position'):
+                if hasattr(player, "original_position"):
                     player._temp_position = player.primary_position  # Save current
                     player.primary_position = player.original_position  # Restore original
 
@@ -2140,9 +2244,9 @@ class BulletproofDFSCore:
             if CONFIRMED_AVAILABLE:
                 try:
                     from smart_confirmation_system import SmartConfirmationSystem
+
                     self.confirmation_system = SmartConfirmationSystem(
-                        csv_players=self.players,
-                        verbose=True
+                        csv_players=self.players, verbose=True
                     )
                     print("✅ Smart Confirmation System initialized successfully")
                 except Exception as e:
@@ -2154,7 +2258,7 @@ class BulletproofDFSCore:
                 return 0
 
         # Update CSV players in confirmation system
-        if hasattr(self.confirmation_system, 'csv_players'):
+        if hasattr(self.confirmation_system, "csv_players"):
             self.confirmation_system.csv_players = self.players
             self.confirmation_system.csv_teams = set(p.team for p in self.players if p.team)
 
@@ -2168,7 +2272,7 @@ class BulletproofDFSCore:
         # Process regular players
         for player in self.players:
             # Use primary_position which has been set correctly (original for showdown)
-            if player.primary_position != 'P':  # Non-pitchers
+            if player.primary_position != "P":  # Non-pitchers
                 is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
                     player.name, player.team
                 )
@@ -2181,7 +2285,7 @@ class BulletproofDFSCore:
 
         # Process pitchers
         for player in self.players:
-            if player.primary_position == 'P':
+            if player.primary_position == "P":
                 is_confirmed = self.confirmation_system.is_pitcher_confirmed(
                     player.name, player.team
                 )
@@ -2191,33 +2295,33 @@ class BulletproofDFSCore:
                     confirmed_count += 1
                     confirmed_pitchers += 1
 
-                    if self.contest_type == 'showdown':
+                    if self.contest_type == "showdown":
                         print(f"   ⚾ Pitcher CONFIRMED as starter: {player.name} ({player.team})")
 
         # FOR SHOWDOWN: Restore UTIL positions after confirmation
-        if self.contest_type == 'showdown':
+        if self.contest_type == "showdown":
             print("🔄 Restoring showdown positions...")
             for player in self.players:
-                if hasattr(player, '_temp_position'):
+                if hasattr(player, "_temp_position"):
                     player.primary_position = player._temp_position  # Restore showdown position
-                    delattr(player, '_temp_position')
+                    delattr(player, "_temp_position")
 
         print(f"\n📊 Total confirmed: {confirmed_count} players")
-        if self.contest_type == 'showdown':
+        if self.contest_type == "showdown":
             print(f"   Including {confirmed_pitchers} confirmed starting pitchers")
 
         # Show breakdown by position for showdown
-        if self.contest_type == 'showdown':
+        if self.contest_type == "showdown":
             position_breakdown = {}
             for player in self.players:
                 if player.is_confirmed:
-                    orig_pos = getattr(player, 'original_position', 'UTIL')
+                    orig_pos = getattr(player, "original_position", "UTIL")
                     position_breakdown[orig_pos] = position_breakdown.get(orig_pos, 0) + 1
 
             print(f"📊 Confirmed by original position: {position_breakdown}")
 
         # Apply DFF if available
-        if hasattr(self, 'current_dff_file') and self.current_dff_file:
+        if hasattr(self, "current_dff_file") and self.current_dff_file:
             print("\n🎯 APPLYING DFF RANKINGS...")
             self.apply_dff_rankings(self.current_dff_file)
 
@@ -2236,7 +2340,7 @@ class BulletproofDFSCore:
 
         return confirmed_count
 
-    def safe_sort_key(player, attribute='projection', default=0):
+    def safe_sort_key(player, attribute="projection", default=0):
         """
         Safe sorting key that handles None values
         """
@@ -2245,16 +2349,18 @@ class BulletproofDFSCore:
             return default
         return value
 
-
-
     def _validate_pitcher_eligibility(self, eligible: List[AdvancedPlayer]) -> List[AdvancedPlayer]:
         """Extra validation for pitcher eligibility"""
-        eligible_pitchers = [p for p in eligible if p.primary_position == 'P']
+        eligible_pitchers = [p for p in eligible if p.primary_position == "P"]
         print(f"\n⚾ PITCHER VALIDATION:")
         print(f"   Total eligible pitchers: {len(eligible_pitchers)}")
 
         for pitcher in eligible_pitchers[:5]:  # Show first 5
-            sources = ', '.join(pitcher.confirmation_sources) if pitcher.confirmation_sources else 'MANUAL'
+            sources = (
+                ", ".join(pitcher.confirmation_sources)
+                if pitcher.confirmation_sources
+                else "MANUAL"
+            )
             print(f"   - {pitcher.name} ({pitcher.team}) - Sources: [{sources}]")
 
         # Remove any pitcher without proper confirmation
@@ -2262,9 +2368,9 @@ class BulletproofDFSCore:
         removed_count = 0
 
         for player in eligible:
-            if player.primary_position == 'P' and not player.is_manual_selected:
+            if player.primary_position == "P" and not player.is_manual_selected:
                 # Pitcher MUST have mlb_starter confirmation
-                if 'mlb_starter' not in player.confirmation_sources:
+                if "mlb_starter" not in player.confirmation_sources:
                     print(f"   ❌ REMOVING unconfirmed pitcher: {player.name}")
                     removed_count += 1
                     continue
@@ -2300,20 +2406,21 @@ class BulletproofDFSCore:
             filename = os.path.basename(dff_file_path).lower()
 
             # Check if file matches contest type
-            is_showdown_file = any(ind in filename for ind in ['showdown', 'sd', 'captain', 'cptn'])
+            is_showdown_file = any(ind in filename for ind in ["showdown", "sd", "captain", "cptn"])
 
-            if self.contest_type == 'showdown' and is_showdown_file:
+            if self.contest_type == "showdown" and is_showdown_file:
                 print(f"✅ Loading SHOWDOWN DFF file: {os.path.basename(dff_file_path)}")
                 self.dff_showdown_file = dff_file_path
                 return self.apply_dff_rankings(dff_file_path)
-            elif self.contest_type == 'classic' and not is_showdown_file:
+            elif self.contest_type == "classic" and not is_showdown_file:
                 print(f"✅ Loading CLASSIC DFF file: {os.path.basename(dff_file_path)}")
                 self.dff_classic_file = dff_file_path
                 return self.apply_dff_rankings(dff_file_path)
             else:
                 # Mismatch warning but still load
                 print(
-                    f"⚠️ DFF file type mismatch! Contest: {self.contest_type}, File type: {'showdown' if is_showdown_file else 'classic'}")
+                    f"⚠️ DFF file type mismatch! Contest: {self.contest_type}, File type: {'showdown' if is_showdown_file else 'classic'}"
+                )
                 print(f"   Loading anyway: {os.path.basename(dff_file_path)}")
                 return self.apply_dff_rankings(dff_file_path)
 
@@ -2323,7 +2430,7 @@ class BulletproofDFSCore:
 
             # Look for all DFF files
             dff_files = []
-            for pattern in ['DFF_MLB_*.csv', 'DFF_*.csv', '*cheatsheet*.csv']:
+            for pattern in ["DFF_MLB_*.csv", "DFF_*.csv", "*cheatsheet*.csv"]:
                 dff_files.extend(glob.glob(pattern))
 
             # Remove duplicates
@@ -2343,13 +2450,13 @@ class BulletproofDFSCore:
 
             for file in dff_files:
                 filename_lower = file.lower()
-                if any(ind in filename_lower for ind in ['showdown', 'sd', 'captain', 'cptn']):
+                if any(ind in filename_lower for ind in ["showdown", "sd", "captain", "cptn"]):
                     showdown_files.append(file)
                 else:
                     classic_files.append(file)
 
             # Load appropriate file based on contest type
-            if self.contest_type == 'showdown':
+            if self.contest_type == "showdown":
                 if showdown_files:
                     showdown_files.sort(key=os.path.getmtime, reverse=True)
                     selected_file = showdown_files[0]
@@ -2374,9 +2481,14 @@ class BulletproofDFSCore:
 
         return False
 
-    def _apply_diversity_penalties(self, players: List, player_usage: Dict,
-                                   lineups_generated: int, max_exposure: float,
-                                   diversity_factor: float) -> List:
+    def _apply_diversity_penalties(
+        self,
+        players: List,
+        player_usage: Dict,
+        lineups_generated: int,
+        max_exposure: float,
+        diversity_factor: float,
+    ) -> List:
         """
         FIXED: Create players with diversity-adjusted scores for optimization
         """
@@ -2431,16 +2543,21 @@ class BulletproofDFSCore:
         def clean_dff_name(name):
             """Clean DFF names only - removes team abbreviations and normalizes"""
             if not name:
-                return ''
+                return ""
             # Remove team abbreviations in parentheses
-            name = re.sub(r'\s*\([^)]*\)', '', str(name)).strip()
+            name = re.sub(r"\s*\([^)]*\)", "", str(name)).strip()
             # Remove extra spaces
-            name = ' '.join(name.split())
+            name = " ".join(name.split())
             return name
 
         try:
             print(f"\n🎯 Loading DFF rankings: {Path(dff_file_path).name}")
             df = pd.read_csv(dff_file_path)
+            
+            # Handle separate first_name and last_name columns
+            if 'first_name' in df.columns and 'last_name' in df.columns:
+                df['name'] = df['first_name'] + ' ' + df['last_name']
+                print("✅ Combined first_name and last_name into 'name' column")
 
             print(f"📊 DFF Data Summary:")
             print(f"   Rows: {len(df)}")
@@ -2455,15 +2572,17 @@ class BulletproofDFSCore:
 
             for col in df.columns:
                 col_lower = col.lower()
-                if not name_col and any(x in col_lower for x in ['name', 'player']):
+                if not name_col and any(x in col_lower for x in ["name", "player"]):
                     name_col = col
-                elif not proj_col and any(x in col_lower for x in ['projection', 'proj', 'ppg', 'fpts', 'points']):
+                elif not proj_col and any(
+                    x in col_lower for x in ["projection", "proj", "ppg", "fpts", "points"]
+                ):
                     proj_col = col
-                elif not own_col and any(x in col_lower for x in ['own', 'ownership', '%']):
+                elif not own_col and any(x in col_lower for x in ["own", "ownership", "%"]):
                     own_col = col
-                elif not value_col and any(x in col_lower for x in ['value', 'val']):
+                elif not value_col and any(x in col_lower for x in ["value", "val"]):
                     value_col = col
-                elif not team_col and any(x in col_lower for x in ['team', 'tm']):
+                elif not team_col and any(x in col_lower for x in ["team", "tm"]):
                     team_col = col
 
             if not name_col:
@@ -2487,41 +2606,42 @@ class BulletproofDFSCore:
                 try:
                     # Get raw DFF name
                     dff_name_raw = str(row[name_col]).strip()
-                    if not dff_name_raw or dff_name_raw == 'nan':
+                    if not dff_name_raw or dff_name_raw == "nan":
                         continue
 
                     # Clean DFF name
                     dff_name = clean_dff_name(dff_name_raw)
 
                     # Get team if available
-                    dff_team = str(row[team_col]).strip().upper() if team_col and pd.notna(row[team_col]) else None
+                    dff_team = (
+                        str(row[team_col]).strip().upper()
+                        if team_col and pd.notna(row[team_col])
+                        else None
+                    )
 
                     # Build DFF data dict
-                    dff_data = {
-                        'dff_name': dff_name,
-                        'source': 'DFF Rankings'
-                    }
+                    dff_data = {"dff_name": dff_name, "source": "DFF Rankings"}
 
                     # Extract projection
                     if proj_col and pd.notna(row[proj_col]):
                         try:
-                            proj_str = str(row[proj_col]).replace('$', '').replace(',', '').strip()
-                            dff_data['ppg_projection'] = float(proj_str)
+                            proj_str = str(row[proj_col]).replace("$", "").replace(",", "").strip()
+                            dff_data["ppg_projection"] = float(proj_str)
                         except:
                             pass
 
                     # Extract ownership
                     if own_col and pd.notna(row[own_col]):
                         try:
-                            own_str = str(row[own_col]).replace('%', '').strip()
-                            dff_data['ownership'] = float(own_str)
+                            own_str = str(row[own_col]).replace("%", "").strip()
+                            dff_data["ownership"] = float(own_str)
                         except:
                             pass
 
                     # Extract value
                     if value_col and pd.notna(row[value_col]):
                         try:
-                            dff_data['value'] = float(row[value_col])
+                            dff_data["value"] = float(row[value_col])
                         except:
                             pass
 
@@ -2540,7 +2660,7 @@ class BulletproofDFSCore:
                             best_score = similarity
                             best_match = player
 
-                    if best_match and 'ppg_projection' in dff_data:
+                    if best_match and "ppg_projection" in dff_data:
                         # Apply to matched player
                         best_match.apply_dff_data(dff_data)
                         matches += 1
@@ -2551,12 +2671,19 @@ class BulletproofDFSCore:
                             eligible_enriched += 1
 
                             # Show match details for first few
-                            if eligible_enriched <= 5 or abs(dff_data['ppg_projection'] - best_match.base_score) > 2:
-                                proj = dff_data['ppg_projection']
-                                own = dff_data.get('ownership', 'N/A')
-                                match_indicator = "✅" if best_score >= 0.95 else f"🔄 ({best_score:.2f})"
+                            if (
+                                eligible_enriched <= 5
+                                or abs(dff_data["ppg_projection"] - best_match.base_score) > 2
+                            ):
+                                proj = dff_data["ppg_projection"]
+                                own = dff_data.get("ownership", "N/A")
+                                match_indicator = (
+                                    "✅" if best_score >= 0.95 else f"🔄 ({best_score:.2f})"
+                                )
 
-                                print(f"\n   {match_indicator} DFF MATCH: {dff_name} → {best_match.name}")
+                                print(
+                                    f"\n   {match_indicator} DFF MATCH: {dff_name} → {best_match.name}"
+                                )
                                 if dff_name != dff_name_raw:
                                     print(f"      (Original: {dff_name_raw})")
                                 print(f"      Team: {dff_team or 'N/A'} → {best_match.team}")
@@ -2586,7 +2713,9 @@ class BulletproofDFSCore:
             # Special message if no eligible players got DFF
             if eligible_enriched == 0 and matches > 0:
                 print(f"\n⚠️ WARNING: DFF matched {matches} players but NONE were eligible!")
-                print(f"   This usually means DFF players aren't in your confirmed/manual selections")
+                print(
+                    f"   This usually means DFF players aren't in your confirmed/manual selections"
+                )
                 print(f"   Consider adding some DFF players to manual selections")
 
             return matches > 0
@@ -2594,6 +2723,7 @@ class BulletproofDFSCore:
         except Exception as e:
             print(f"❌ Error loading DFF data: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
@@ -2612,47 +2742,51 @@ class BulletproofDFSCore:
         print(f"\n📊 ENRICHING {len(truly_confirmed)} CONFIRMED PLAYERS...")
 
         # Track what we've applied
-        if not hasattr(self, '_enrichment_applied'):
+        if not hasattr(self, "_enrichment_applied"):
             self._enrichment_applied = {
-                'dff': False,
-                'vegas': False,
-                'statcast': False,
-                'recent_form': False,
-                'batting_order': False,
-                'statistical_analysis': False,
-                'park_factors': False
+                "dff": False,
+                "vegas": False,
+                "statcast": False,
+                "recent_form": False,
+                "batting_order": False,
+                "statistical_analysis": False,
+                "park_factors": False,
             }
 
         # 1. DFF Rankings
-        if hasattr(self, 'current_dff_file') and self.current_dff_file and not self._enrichment_applied['dff']:
+        if (
+            hasattr(self, "current_dff_file")
+            and self.current_dff_file
+            and not self._enrichment_applied["dff"]
+        ):
             print("🎯 Applying DFF rankings...")
             self.apply_dff_rankings(self.current_dff_file)
-            self._enrichment_applied['dff'] = True
+            self._enrichment_applied["dff"] = True
 
         # 2. Vegas Lines
-        if self.vegas_lines and not self._enrichment_applied['vegas']:
+        if self.vegas_lines and not self._enrichment_applied["vegas"]:
             print("🎰 Enriching with Vegas lines...")
             try:
                 enriched_count = self.vegas_lines.enrich_players(truly_confirmed)
                 print(f"   ✅ {enriched_count} players enriched with Vegas data")
             except Exception as e:
                 print(f"   ❌ Vegas enrichment failed: {e}")
-            self._enrichment_applied['vegas'] = True
+            self._enrichment_applied["vegas"] = True
 
         # 3. Statcast Data
-        if self.statcast_fetcher and not self._enrichment_applied['statcast']:
+        if self.statcast_fetcher and not self._enrichment_applied["statcast"]:
             print("📊 Fetching Statcast data...")
             try:
                 enriched_count = 0
                 for player in truly_confirmed:
                     try:
-                        if player.primary_position == 'P':
+                        if player.primary_position == "P":
                             stats = self.statcast_fetcher.get_pitcher_stats(player.name)
                         else:
                             stats = self.statcast_fetcher.get_hitter_stats(player.name)
 
                         if stats:
-                            if hasattr(player, 'apply_statcast_data'):
+                            if hasattr(player, "apply_statcast_data"):
                                 player.apply_statcast_data(stats)
                             else:
                                 player._statcast_data = stats
@@ -2663,29 +2797,37 @@ class BulletproofDFSCore:
                 print(f"   ✅ {enriched_count} players enriched with Statcast data")
             except Exception as e:
                 print(f"   ❌ Statcast enrichment failed: {e}")
-            self._enrichment_applied['statcast'] = True
+            self._enrichment_applied["statcast"] = True
 
         # 4. Recent Form
-        if not self._enrichment_applied['recent_form']:
+        if not self._enrichment_applied["recent_form"]:
             print("📈 Analyzing recent form for ALL confirmed players...")
             self._apply_recent_form_all_players()
-            self._enrichment_applied['recent_form'] = True
+            self._enrichment_applied["recent_form"] = True
 
         # 5. Batting Order (if available)
-        if hasattr(self, 'enrich_with_batting_order') and not self._enrichment_applied['batting_order']:
+        if (
+            hasattr(self, "enrich_with_batting_order")
+            and not self._enrichment_applied["batting_order"]
+        ):
             print("🔢 Enriching with batting order...")
             self.enrich_with_batting_order()
-            self._enrichment_applied['batting_order'] = True
+            self._enrichment_applied["batting_order"] = True
 
         # 6. Statistical Analysis (combines all data sources) - DISABLED to prevent double processing
-        if not self._enrichment_applied['statistical_analysis']:
-            print("🔬 Skipping enhanced statistical analysis (already applied in calculate_enhanced_score)")
+        if not self._enrichment_applied["statistical_analysis"]:
+            print(
+                "🔬 Skipping enhanced statistical analysis (already applied in calculate_enhanced_score)"
+            )
             # COMMENTED OUT to prevent double processing:
             # self._apply_comprehensive_statistical_analysis(truly_confirmed)
-            self._enrichment_applied['statistical_analysis'] = True
+            self._enrichment_applied["statistical_analysis"] = True
 
-        if hasattr(self, 'park_factors') and self.park_factors and not self._enrichment_applied.get('park_factors',
-                                                                                                    False):
+        if (
+            hasattr(self, "park_factors")
+            and self.park_factors
+            and not self._enrichment_applied.get("park_factors", False)
+        ):
             print("🏟️ Applying park factors...")
             try:
                 # Use the correct method name: enrich_players
@@ -2693,16 +2835,23 @@ class BulletproofDFSCore:
                 print(f"   ✅ {enriched_count} players enriched with park factors")
             except Exception as e:
                 print(f"   ❌ Park factors enrichment failed: {e}")
-            self._enrichment_applied['park_factors'] = True
+            self._enrichment_applied["park_factors"] = True
 
         # Show summary of enrichments
         enrichment_summary = {
-            'DFF': sum(1 for p in truly_confirmed if hasattr(p, 'dff_data') and p.dff_data),
-            'Vegas': sum(1 for p in truly_confirmed if hasattr(p, 'vegas_data') and p.vegas_data),
-            'Statcast': sum(1 for p in truly_confirmed if hasattr(p, 'statcast_data') and p.statcast_data),
-            'Batting Order': sum(1 for p in truly_confirmed if hasattr(p, 'batting_order') and p.batting_order),
-            'Recent Form': sum(
-                1 for p in truly_confirmed if hasattr(p, '_recent_performance') and p._recent_performance)
+            "DFF": sum(1 for p in truly_confirmed if hasattr(p, "dff_data") and p.dff_data),
+            "Vegas": sum(1 for p in truly_confirmed if hasattr(p, "vegas_data") and p.vegas_data),
+            "Statcast": sum(
+                1 for p in truly_confirmed if hasattr(p, "statcast_data") and p.statcast_data
+            ),
+            "Batting Order": sum(
+                1 for p in truly_confirmed if hasattr(p, "batting_order") and p.batting_order
+            ),
+            "Recent Form": sum(
+                1
+                for p in truly_confirmed
+                if hasattr(p, "_recent_performance") and p._recent_performance
+            ),
         }
 
         print(f"\n📊 Enrichment Summary:")
@@ -2712,8 +2861,12 @@ class BulletproofDFSCore:
         # Recalculate all enhanced scores after enrichments
         print("\n🔄 Recalculating enhanced scores...")
         for player in truly_confirmed:
-            if hasattr(player, 'calculate_enhanced_score'):
-                self.scoring_engine.calculate_score(player) if self.scoring_engine else player.calculate_enhanced_score()
+            if hasattr(player, "calculate_enhanced_score"):
+                (
+                    self.scoring_engine.calculate_score(player)
+                    if self.scoring_engine
+                    else player.calculate_enhanced_score()
+                )
 
         print("✅ All enrichments complete!")
 
@@ -2733,7 +2886,9 @@ class BulletproofDFSCore:
                 return
 
             # Only apply to confirmed/eligible players
-            eligible_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
+            eligible_players = [
+                p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)
+            ]
 
             enriched_count = 0
             for player in eligible_players:
@@ -2747,6 +2902,7 @@ class BulletproofDFSCore:
         except Exception as e:
             print(f"❌ Vegas enrichment failed: {e}")
             import traceback
+
             traceback.print_exc()
 
     def enrich_with_statcast_priority(self):
@@ -2761,43 +2917,49 @@ class BulletproofDFSCore:
         print("🔬 Priority Statcast enrichment for confirmed players...")
 
         # Get all confirmed/manual players
-        priority_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
+        priority_players = [
+            p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)
+        ]
 
         print(f"🎯 Enriching ALL {len(priority_players)} confirmed players with Statcast")
 
         # Check if we have the fast parallel fetcher
-        if hasattr(self.statcast_fetcher, 'fetch_multiple_players_parallel'):
+        if hasattr(self.statcast_fetcher, "fetch_multiple_players_parallel"):
             print("   Using FAST parallel fetching...")
 
             try:
                 # Prepare player data for batch fetch
                 player_info = []
                 for player in priority_players:
-                    player_info.append({
-                        'name': player.name,
-                        'position': player.primary_position,
-                        'player_obj': player  # Keep reference
-                    })
+                    player_info.append(
+                        {
+                            "name": player.name,
+                            "position": player.primary_position,
+                            "player_obj": player,  # Keep reference
+                        }
+                    )
 
                 # Fetch all data in parallel (MUCH faster!)
                 results = self.statcast_fetcher.fetch_multiple_players_parallel(
                     player_info,
                     max_workers=5,  # Use 5 parallel threads
-                    delay=0.05  # Small delay between requests
+                    delay=0.05,  # Small delay between requests
                 )
 
                 # Apply results
                 enriched_count = 0
                 for player_data, stats in results.items():
                     if stats:
-                        player = player_data['player_obj']
-                        if hasattr(player, 'apply_statcast_data'):
+                        player = player_data["player_obj"]
+                        if hasattr(player, "apply_statcast_data"):
                             player.apply_statcast_data(stats)
                         else:
                             player.statcast_data = stats
                         enriched_count += 1
 
-                print(f"   ✅ Parallel fetch complete: {enriched_count}/{len(priority_players)} enriched")
+                print(
+                    f"   ✅ Parallel fetch complete: {enriched_count}/{len(priority_players)} enriched"
+                )
 
             except Exception as e:
                 print(f"   ❌ Parallel fetch failed: {e}, falling back to sequential")
@@ -2816,13 +2978,13 @@ class BulletproofDFSCore:
                 print(f"   Progress: {i}/{len(players)} players...")
 
             try:
-                if player.primary_position == 'P':
+                if player.primary_position == "P":
                     stats = self.statcast_fetcher.get_pitcher_stats(player.name)
                 else:
                     stats = self.statcast_fetcher.get_hitter_stats(player.name)
 
                 if stats:
-                    if hasattr(player, 'apply_statcast_data'):
+                    if hasattr(player, "apply_statcast_data"):
                         player.apply_statcast_data(stats)
                     else:
                         player.statcast_data = stats
@@ -2834,13 +2996,15 @@ class BulletproofDFSCore:
 
     def apply_park_factors(self):
         """Apply park factors using built-in constants"""
-        if not REAL_DATA_SOURCES.get('park_factors', False):
+        if not REAL_DATA_SOURCES.get("park_factors", False):
             print("⚠️ Park factors disabled in REAL_DATA_SOURCES")
             return
 
         print("🏟️ Priority park factors for confirmed players...")
 
-        eligible_players = [p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)]
+        eligible_players = [
+            p for p in self.players if p.is_eligible_for_selection(self.optimization_mode)
+        ]
         adjusted_count = 0
 
         for player in eligible_players:
@@ -2848,7 +3012,7 @@ class BulletproofDFSCore:
                 factor = PARK_FACTORS[player.team]
 
                 # Apply factor based on position
-                if player.primary_position == 'P':
+                if player.primary_position == "P":
                     # Invert for pitchers (pitcher-friendly = good for pitchers)
                     adjusted_factor = 2.0 - factor
                 else:
@@ -2859,10 +3023,10 @@ class BulletproofDFSCore:
                     # Don't use old_score variable - it's not defined
                     # Store the park factors for later use
                     player.park_factors = {
-                        'park_team': player.team,
-                        'factor': adjusted_factor,
-                        'original_factor': factor,
-                        'adjustment': (adjusted_factor - 1.0) * 100  # Store as percentage
+                        "park_team": player.team,
+                        "factor": adjusted_factor,
+                        "original_factor": factor,
+                        "adjustment": (adjusted_factor - 1.0) * 100,  # Store as percentage
                     }
 
                     adjusted_count += 1
@@ -2870,10 +3034,14 @@ class BulletproofDFSCore:
                     # Log significant adjustments
                     if abs(adjusted_factor - 1.0) > 0.05:
                         change_pct = (adjusted_factor - 1.0) * 100
-                        print(f"   {player.name} ({player.primary_position}) at {player.team}: "
-                              f"Park adjustment: {change_pct:+.0f}%")
+                        print(
+                            f"   {player.name} ({player.primary_position}) at {player.team}: "
+                            f"Park adjustment: {change_pct:+.0f}%"
+                        )
 
-        print(f"✅ Park factors: {adjusted_count}/{len(eligible_players)} confirmed players adjusted")
+        print(
+            f"✅ Park factors: {adjusted_count}/{len(eligible_players)} confirmed players adjusted"
+        )
 
     def _apply_recent_form_all_players(self):
         """
@@ -2883,12 +3051,14 @@ class BulletproofDFSCore:
         try:
             # Try the enhanced batch analyzer first
             from recent_form_analyzer import RecentFormAnalyzer
+
             form_analyzer = RecentFormAnalyzer(days_back=7, batch_size=10, max_workers=3)
             use_batch = True
         except:
             # Fallback to regular analyzer
             try:
                 from real_recent_form import RealRecentFormAnalyzer
+
                 form_analyzer = RealRecentFormAnalyzer(days_back=7)
                 use_batch = False
             except:
@@ -2911,16 +3081,17 @@ class BulletproofDFSCore:
                 form_results = form_analyzer.analyze_players_batch(
                     players_to_analyze,
                     use_cache=True,
-                    progress_callback=lambda x: print(f"   Progress: {x}%")
+                    progress_callback=lambda x: print(f"   Progress: {x}%"),
                 )
 
                 # Apply results
                 applied_count = form_analyzer._apply_batch_results_to_players(
-                    players_to_analyze,
-                    form_results
+                    players_to_analyze, form_results
                 )
 
-                print(f"   ✅ Form analysis complete: {applied_count}/{len(players_to_analyze)} players updated")
+                print(
+                    f"   ✅ Form analysis complete: {applied_count}/{len(players_to_analyze)} players updated"
+                )
 
             except Exception as e:
                 print(f"   ❌ Batch form analysis failed: {e}")
@@ -2931,10 +3102,13 @@ class BulletproofDFSCore:
             form_analyzer.enrich_players_with_form(players_to_analyze)
 
         # Count results
-        adjusted_count = sum(1 for p in players_to_analyze
-                             if hasattr(p, 'form_rating') and p.form_rating != 1.0)
+        adjusted_count = sum(
+            1 for p in players_to_analyze if hasattr(p, "form_rating") and p.form_rating != 1.0
+        )
 
-        print(f"   ✅ Form analysis complete: {adjusted_count}/{len(players_to_analyze)} players have form data")
+        print(
+            f"   ✅ Form analysis complete: {adjusted_count}/{len(players_to_analyze)} players have form data"
+        )
 
     def debug_dff_eligibility(self):
         """Debug why DFF players aren't being used"""
@@ -2942,10 +3116,12 @@ class BulletproofDFSCore:
 
         # Check different player categories
         all_players = len(self.players)
-        dff_enriched = sum(1 for p in self.players if hasattr(p, 'dff_data') and p.dff_data)
+        dff_enriched = sum(1 for p in self.players if hasattr(p, "dff_data") and p.dff_data)
         confirmed = sum(1 for p in self.players if p.is_confirmed)
         manual = sum(1 for p in self.players if p.is_manual_selected)
-        eligible = sum(1 for p in self.players if p.is_eligible_for_selection(self.optimization_mode))
+        eligible = sum(
+            1 for p in self.players if p.is_eligible_for_selection(self.optimization_mode)
+        )
 
         print(f"Total players: {all_players}")
         print(f"DFF enriched: {dff_enriched}")
@@ -2954,7 +3130,7 @@ class BulletproofDFSCore:
         print(f"Eligible for optimization: {eligible}")
 
         # Sample some DFF players to see why they're not eligible
-        dff_players = [p for p in self.players if hasattr(p, 'dff_data') and p.dff_data][:5]
+        dff_players = [p for p in self.players if hasattr(p, "dff_data") and p.dff_data][:5]
 
         print("\nSample DFF players:")
         for player in dff_players:
@@ -2968,7 +3144,7 @@ class BulletproofDFSCore:
 
             # Check why not eligible
             if not player.is_eligible_for_selection(self.optimization_mode):
-                if self.optimization_mode == 'bulletproof' and not player.is_confirmed:
+                if self.optimization_mode == "bulletproof" and not player.is_confirmed:
                     print(f"  ❌ Not eligible: Not confirmed (bulletproof mode)")
                 elif player.enhanced_score <= 0:
                     print(f"  ❌ Not eligible: No projection")
@@ -2981,34 +3157,41 @@ class BulletproofDFSCore:
         eligible = self.get_eligible_players_by_mode()
         multi_pos_players = [p for p in eligible if len(p.positions) > 1]
 
-        print(f"Found {len(multi_pos_players)} multi-position players out of {len(eligible)} eligible")
+        print(
+            f"Found {len(multi_pos_players)} multi-position players out of {len(eligible)} eligible"
+        )
 
         if multi_pos_players:
             print("\nMulti-position players:")
             for player in multi_pos_players[:10]:  # Show first 10
                 print(
-                    f"   {player.name} ({player.team}) - Positions: {'/'.join(player.positions)} - ${player.salary:,}")
-                if hasattr(player, 'assigned_position'):
+                    f"   {player.name} ({player.team}) - Positions: {'/'.join(player.positions)} - ${player.salary:,}"
+                )
+                if hasattr(player, "assigned_position"):
                     print(f"      → Assigned as: {player.assigned_position}")
 
         # Check if any were used in a flex position
-        lineup = self.last_optimized_lineup if hasattr(self, 'last_optimized_lineup') else []
+        lineup = self.last_optimized_lineup if hasattr(self, "last_optimized_lineup") else []
         flex_used = 0
         for player in lineup:
-            if hasattr(player, 'assigned_position') and player.assigned_position != player.primary_position:
+            if (
+                hasattr(player, "assigned_position")
+                and player.assigned_position != player.primary_position
+            ):
                 flex_used += 1
                 print(
-                    f"\n💪 FLEX USAGE: {player.name} - Primary: {player.primary_position}, Used as: {player.assigned_position}")
+                    f"\n💪 FLEX USAGE: {player.name} - Primary: {player.primary_position}, Used as: {player.assigned_position}"
+                )
 
         if flex_used == 0:
             print("\n⚠️ No flex positions were utilized in the last lineup")
 
-
-
     def _apply_comprehensive_statistical_analysis(self, players):
         """Apply comprehensive statistical analysis with PRIORITY 1 improvements"""
         print(f"📊 ENHANCED Statistical Analysis: {len(players)} players")
-        print("🎯 PRIORITY 1 FEATURES: Variable Confidence + Enhanced Statcast + Position Weighting + Recent Form")
+        print(
+            "🎯 PRIORITY 1 FEATURES: Variable Confidence + Enhanced Statcast + Position Weighting + Recent Form"
+        )
 
         if not players:
             return
@@ -3016,19 +3199,23 @@ class BulletproofDFSCore:
         if ENHANCED_STATS_AVAILABLE:
             # Use enhanced statistical analysis engine
             adjusted_count = apply_enhanced_statistical_analysis(players, verbose=True)
-            print(f"✅ Enhanced Analysis: {adjusted_count} players optimized with Priority 1 improvements")
+            print(
+                f"✅ Enhanced Analysis: {adjusted_count} players optimized with Priority 1 improvements"
+            )
 
             # Apply recent form adjustments if available
-            if hasattr(self, 'form_analyzer'):
+            if hasattr(self, "form_analyzer"):
                 form_adjusted = 0
                 for player in players:
-                    if hasattr(player, '_recent_performance') and player._recent_performance:
+                    if hasattr(player, "_recent_performance") and player._recent_performance:
                         adjustment = self.form_analyzer.apply_form_adjustments(player)
                         if adjustment != 1.0:
                             form_adjusted += 1
 
                 if form_adjusted > 0:
-                    print(f"📈 Recent Form: {form_adjusted} players adjusted based on hot/cold streaks")
+                    print(
+                        f"📈 Recent Form: {form_adjusted} players adjusted based on hot/cold streaks"
+                    )
         else:
             # Fallback to basic analysis
             print("⚠️ Using basic analysis - enhanced engine not found")
@@ -3046,25 +3233,35 @@ class BulletproofDFSCore:
             total_adjustment = 0.0
 
             # DFF Analysis
-            if hasattr(player, 'dff_data') and player.dff_data and player.dff_data.get('ppg_projection', 0) > 0:
-                dff_projection = player.dff_data['ppg_projection']
+            if (
+                hasattr(player, "dff_data")
+                and player.dff_data
+                and player.dff_data.get("ppg_projection", 0) > 0
+            ):
+                dff_projection = player.dff_data["ppg_projection"]
                 if dff_projection > player.projection:
-                    dff_adjustment = min((dff_projection - player.projection) / player.projection * 0.3,
-                                         0.10) * CONFIDENCE_THRESHOLD
+                    dff_adjustment = (
+                        min((dff_projection - player.projection) / player.projection * 0.3, 0.10)
+                        * CONFIDENCE_THRESHOLD
+                    )
                     total_adjustment += dff_adjustment
 
             # Vegas Environment Analysis
-            if hasattr(player, 'vegas_data') and player.vegas_data:
-                team_total = player.vegas_data.get('team_total', 4.5)
+            if hasattr(player, "vegas_data") and player.vegas_data:
+                team_total = player.vegas_data.get("team_total", 4.5)
 
-                if player.primary_position == 'P':
-                    opp_total = player.vegas_data.get('opponent_total', 4.5)
+                if player.primary_position == "P":
+                    opp_total = player.vegas_data.get("opponent_total", 4.5)
                     if opp_total < 4.0:
-                        vegas_adjustment = min((4.5 - opp_total) / 4.5 * 0.4, 0.08) * CONFIDENCE_THRESHOLD
+                        vegas_adjustment = (
+                            min((4.5 - opp_total) / 4.5 * 0.4, 0.08) * CONFIDENCE_THRESHOLD
+                        )
                         total_adjustment += vegas_adjustment
                 else:
                     if team_total > 5.0:
-                        vegas_adjustment = min((team_total - 4.5) / 4.5 * 0.5, 0.08) * CONFIDENCE_THRESHOLD
+                        vegas_adjustment = (
+                            min((team_total - 4.5) / 4.5 * 0.5, 0.08) * CONFIDENCE_THRESHOLD
+                        )
                         total_adjustment += vegas_adjustment
 
             # Apply cap
@@ -3087,13 +3284,14 @@ class BulletproofDFSCore:
         """Clean optimization - NO bonuses for confirmed/manual"""
 
         # Check if we should use ceiling mode
-        settings = getattr(self, 'optimization_settings', {})
-        contest_type = settings.get('contest_type', 'cash')
-        lineup_count = settings.get('lineup_count', 1)
+        settings = getattr(self, "optimization_settings", {})
+        contest_type = settings.get("contest_type", "cash")
+        lineup_count = settings.get("lineup_count", 1)
 
         # If multiple lineups or GPP preset, use ceiling optimization
-        if ((lineup_count > 1 and contest_type == 'gpp') or
-                (hasattr(self, 'use_ceiling_mode') and self.use_ceiling_mode)):
+        if (lineup_count > 1 and contest_type == "gpp") or (
+            hasattr(self, "use_ceiling_mode") and self.use_ceiling_mode
+        ):
             print("\n🎯 GPP MODE DETECTED - Using Ceiling Optimization")
             return self.optimize_lineup_with_ceiling()
 
@@ -3109,11 +3307,11 @@ class BulletproofDFSCore:
             salary_cap=self.salary_cap,
             min_salary_usage=0.95,
             use_correlation=True,
-            max_hitters_vs_pitcher=4  # Your fix applied!
+            max_hitters_vs_pitcher=4,  # Your fix applied!
         )
 
-        if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
-            config.position_requirements = {'CPT': 1, 'UTIL': 5}
+        if hasattr(self, "contest_type") and self.contest_type == "showdown":
+            config.position_requirements = {"CPT": 1, "UTIL": 5}
 
         optimizer = UnifiedMILPOptimizer(config)
 
@@ -3124,23 +3322,23 @@ class BulletproofDFSCore:
                 up = p
             else:
                 up = UnifiedPlayer(
-                    id=str(getattr(p, 'id', p.name)),
+                    id=str(getattr(p, "id", p.name)),
                     name=p.name,
                     team=p.team,
                     salary=p.salary,
                     primary_position=p.primary_position,
                     positions=p.positions.copy(),
-                    base_projection=getattr(p, 'projection', 0)
+                    base_projection=getattr(p, "projection", 0),
                 )
 
                 # Copy status (NO BONUSES)
-                up.is_confirmed = getattr(p, 'is_confirmed', False)
-                up.is_manual_selected = getattr(p, 'is_manual_selected', False)
+                up.is_confirmed = getattr(p, "is_confirmed", False)
+                up.is_manual_selected = getattr(p, "is_manual_selected", False)
 
                 # Copy data
-                if hasattr(p, 'dff_data') and p.dff_data is not None:
+                if hasattr(p, "dff_data") and p.dff_data is not None:
                     up.apply_dff_data(p.dff_data)
-                if hasattr(p, 'dff_l5_avg'):
+                if hasattr(p, "dff_l5_avg"):
                     up.dff_l5_avg = p.dff_l5_avg
 
             # Calculate enhanced score
@@ -3152,21 +3350,19 @@ class BulletproofDFSCore:
 
         # Get strategy
         strategy_map = {
-            'bulletproof': 'confirmed_plus_manual',
-            'all': 'all_players',
-            'manual_only': 'manual_only',
-            'confirmed_only': 'confirmed_plus_manual'
+            "bulletproof": "confirmed_plus_manual",
+            "all": "all_players",
+            "manual_only": "manual_only",
+            "confirmed_only": "confirmed_plus_manual",
         }
-        strategy = strategy_map.get(self.optimization_mode, 'balanced')
+        strategy = strategy_map.get(self.optimization_mode, "balanced")
 
         # Get manual selections
-        manual_text = getattr(self, 'manual_selections_text', '')
+        manual_text = getattr(self, "manual_selections_text", "")
 
         # Optimize!
         lineup, score = optimizer.optimize_lineup(
-            unified_players,
-            strategy=strategy,
-            manual_selections=manual_text
+            unified_players, strategy=strategy, manual_selections=manual_text
         )
 
         if lineup:
@@ -3177,12 +3373,13 @@ class BulletproofDFSCore:
             print("\n📋 LINEUP:")
             print("-" * 60)
             for i, player in enumerate(lineup, 1):
-                pos = getattr(player, 'assigned_position', player.primary_position)
+                pos = getattr(player, "assigned_position", player.primary_position)
                 conf = "✓" if player.is_confirmed else " "
                 manual = "M" if player.is_manual_selected else " "
 
                 print(
-                    f"{i:2d}. {pos:4s} {conf}{manual} {player.name:20s} {player.team:3s} ${player.salary:6,} → {player.enhanced_score:6.1f}")
+                    f"{i:2d}. {pos:4s} {conf}{manual} {player.name:20s} {player.team:3s} ${player.salary:6,} → {player.enhanced_score:6.1f}"
+                )
             print("-" * 60)
 
             return lineup, score
@@ -3214,28 +3411,28 @@ class BulletproofDFSCore:
                 up = p
             else:
                 up = UnifiedPlayer(
-                    id=str(getattr(p, 'id', p.name)),
+                    id=str(getattr(p, "id", p.name)),
                     name=p.name,
                     team=p.team,
                     salary=p.salary,
                     primary_position=p.primary_position,
                     positions=p.positions.copy(),
-                    base_projection=getattr(p, 'projection', p.enhanced_score)
+                    base_projection=getattr(p, "projection", p.enhanced_score),
                 )
 
                 # Copy all data
-                up.is_confirmed = getattr(p, 'is_confirmed', False)
-                up.is_manual_selected = getattr(p, 'is_manual_selected', False)
+                up.is_confirmed = getattr(p, "is_confirmed", False)
+                up.is_manual_selected = getattr(p, "is_manual_selected", False)
                 up.enhanced_score = p.enhanced_score
 
                 # Copy data attributes
-                if hasattr(p, '_vegas_data'):
+                if hasattr(p, "_vegas_data"):
                     up._vegas_data = p._vegas_data
-                if hasattr(p, 'statcast_data'):
+                if hasattr(p, "statcast_data"):
                     up.statcast_data = p.statcast_data
-                if hasattr(p, 'recent_scores'):
+                if hasattr(p, "recent_scores"):
                     up.recent_scores = p.recent_scores
-                if hasattr(p, 'dff_l5_avg'):
+                if hasattr(p, "dff_l5_avg"):
                     up.dff_l5_avg = p.dff_l5_avg
 
             unified_players.append(up)
@@ -3246,7 +3443,7 @@ class BulletproofDFSCore:
             ceiling = player.enhanced_score
 
             # Boost for high variance (using recent scores if available)
-            if hasattr(player, 'recent_scores') and len(player.recent_scores) >= 3:
+            if hasattr(player, "recent_scores") and len(player.recent_scores) >= 3:
                 std_dev = np.std(player.recent_scores)
                 avg = np.mean(player.recent_scores)
                 if avg > 0:
@@ -3257,25 +3454,25 @@ class BulletproofDFSCore:
                         ceiling *= 1.08
 
             # Boost for good Vegas environment
-            if hasattr(player, '_vegas_data') and player._vegas_data:
-                implied_total = player._vegas_data.get('implied_total', 0)
+            if hasattr(player, "_vegas_data") and player._vegas_data:
+                implied_total = player._vegas_data.get("implied_total", 0)
                 if implied_total > 5.5:
                     ceiling *= 1.12
                 elif implied_total > 5.0:
                     ceiling *= 1.06
 
             # Boost for power hitters (Statcast)
-            if hasattr(player, 'statcast_data') and player.statcast_data:
-                barrel_rate = player.statcast_data.get('barrel_rate', 0)
+            if hasattr(player, "statcast_data") and player.statcast_data:
+                barrel_rate = player.statcast_data.get("barrel_rate", 0)
                 if barrel_rate > 12:  # Elite
                     ceiling *= 1.10
                 elif barrel_rate > 8:
                     ceiling *= 1.05
 
             # Position-based volatility boost
-            if player.primary_position in ['OF', 'SS', '3B']:
+            if player.primary_position in ["OF", "SS", "3B"]:
                 ceiling *= 1.03
-            elif player.primary_position == 'P':
+            elif player.primary_position == "P":
                 # Pitchers have high ceiling potential
                 ceiling *= 1.08
 
@@ -3283,18 +3480,19 @@ class BulletproofDFSCore:
             player.ceiling_score = ceiling
 
         print(
-            f"📊 Ceiling Score Range: {min(p.ceiling_score for p in unified_players):.1f} - {max(p.ceiling_score for p in unified_players):.1f}")
+            f"📊 Ceiling Score Range: {min(p.ceiling_score for p in unified_players):.1f} - {max(p.ceiling_score for p in unified_players):.1f}"
+        )
 
         # Configure optimizer for GPPs
         config = OptimizationConfig(
             salary_cap=self.salary_cap,
             min_salary_usage=0.93,  # Lower for GPPs
             use_correlation=True,
-            max_hitters_vs_pitcher=4  # Allow bigger stacks
+            max_hitters_vs_pitcher=4,  # Allow bigger stacks
         )
 
-        if hasattr(self, 'contest_type') and self.contest_type == 'showdown':
-            config.position_requirements = {'CPT': 1, 'UTIL': 5}
+        if hasattr(self, "contest_type") and self.contest_type == "showdown":
+            config.position_requirements = {"CPT": 1, "UTIL": 5}
 
         optimizer = UnifiedMILPOptimizer(config)
 
@@ -3306,21 +3504,19 @@ class BulletproofDFSCore:
 
         # Get strategy
         strategy_map = {
-            'bulletproof': 'high_ceiling',  # Use ceiling strategy for GPP
-            'all': 'all_players',
-            'manual_only': 'manual_only',
-            'confirmed_only': 'high_ceiling'
+            "bulletproof": "high_ceiling",  # Use ceiling strategy for GPP
+            "all": "all_players",
+            "manual_only": "manual_only",
+            "confirmed_only": "high_ceiling",
         }
-        strategy = strategy_map.get(self.optimization_mode, 'high_ceiling')
+        strategy = strategy_map.get(self.optimization_mode, "high_ceiling")
 
         # Get manual selections
-        manual_text = getattr(self, 'manual_selections_text', '')
+        manual_text = getattr(self, "manual_selections_text", "")
 
         # Optimize using ceiling scores
         lineup, ceiling_score = optimizer.optimize_lineup(
-            unified_players,
-            strategy=strategy,
-            manual_selections=manual_text
+            unified_players, strategy=strategy, manual_selections=manual_text
         )
 
         # Restore original scores and calculate actual projected score
@@ -3339,8 +3535,11 @@ class BulletproofDFSCore:
             print(f"📈 Upside Factor: {(ceiling_score / actual_score - 1) * 100:.1f}%")
 
             # Show high-variance players in lineup
-            high_variance = [p for p in lineup if
-                             hasattr(p, 'ceiling_score') and p.ceiling_score / p.enhanced_score > 1.1]
+            high_variance = [
+                p
+                for p in lineup
+                if hasattr(p, "ceiling_score") and p.ceiling_score / p.enhanced_score > 1.1
+            ]
             if high_variance:
                 print(f"\n💎 High Ceiling Players ({len(high_variance)}):")
                 for p in high_variance:
@@ -3350,19 +3549,20 @@ class BulletproofDFSCore:
             print("\n📋 LINEUP:")
             print("-" * 60)
             for i, player in enumerate(lineup, 1):
-                pos = getattr(player, 'assigned_position', player.primary_position)
+                pos = getattr(player, "assigned_position", player.primary_position)
                 conf = "✓" if player.is_confirmed else " "
 
                 # Show ceiling score in parentheses
                 print(
-                    f"{i:2d}. {pos:4s} {conf} {player.name:20s} {player.team:3s} ${player.salary:6,} → {player.enhanced_score:5.1f} ({player.ceiling_score:5.1f})")
+                    f"{i:2d}. {pos:4s} {conf} {player.name:20s} {player.team:3s} ${player.salary:6,} → {player.enhanced_score:5.1f} ({player.ceiling_score:5.1f})"
+                )
             print("-" * 60)
         else:
             print("❌ No valid lineup found")
 
         return lineup, actual_score
 
-    def optimize_showdown_lineup_fixed(self, players: List) -> 'OptimizationResult':
+    def optimize_showdown_lineup_fixed(self, players: List) -> "OptimizationResult":
         """Showdown optimization using MILP only"""
         print("\n🎰 SHOWDOWN LINEUP OPTIMIZATION (MILP ONLY)")
         print("=" * 60)
@@ -3376,7 +3576,7 @@ class BulletproofDFSCore:
         # Show player breakdown
         position_types = {}
         for player in players:
-            if hasattr(player, 'original_positions'):
+            if hasattr(player, "original_positions"):
                 for pos in player.original_positions:
                     position_types[pos] = position_types.get(pos, 0) + 1
 
@@ -3385,6 +3585,7 @@ class BulletproofDFSCore:
         # Use MILP optimizer
         try:
             from optimal_lineup_optimizer import OptimalLineupOptimizer
+
             optimizer = OptimalLineupOptimizer(salary_cap=self.salary_cap)
             result = optimizer.optimize_showdown_lineup(players)
 
@@ -3392,12 +3593,15 @@ class BulletproofDFSCore:
                 print("✅ MILP optimization successful")
                 return result
             else:
-                print(f"❌ MILP optimization failed: {result.optimization_status if result else 'No result'}")
+                print(
+                    f"❌ MILP optimization failed: {result.optimization_status if result else 'No result'}"
+                )
                 return result if result else self._create_failed_result("MILP optimization failed")
 
         except Exception as e:
             print(f"❌ MILP optimization error: {e}")
             import traceback
+
             traceback.print_exc()
             return self._create_failed_result(f"MILP error: {str(e)}")
 
@@ -3423,12 +3627,9 @@ class BulletproofDFSCore:
 
         print(f"   Found {len(constraint_groups)} players with multiple versions")
 
-        return {
-            'person_groups': person_groups,
-            'constraint_groups': constraint_groups
-        }
+        return {"person_groups": person_groups, "constraint_groups": constraint_groups}
 
-    def _person_aware_showdown_milp(self, players: List, constraints: Dict) -> 'OptimizationResult':
+    def _person_aware_showdown_milp(self, players: List, constraints: Dict) -> "OptimizationResult":
         """MILP optimization that respects person constraints"""
         if not MILP_AVAILABLE:
             raise Exception("PuLP not available")
@@ -3440,7 +3641,7 @@ class BulletproofDFSCore:
         # Decision variables
         x = {}
         for i in range(len(players)):
-            x[i] = pulp.LpVariable(f"x_{i}", cat='Binary')
+            x[i] = pulp.LpVariable(f"x_{i}", cat="Binary")
 
         # Objective: maximize points
         prob += pulp.lpSum([x[i] * players[i].enhanced_score for i in range(len(players))])
@@ -3451,7 +3652,7 @@ class BulletproofDFSCore:
         # Constraint 2: Exactly 1 captain
         captain_indices = []
         for i, player in enumerate(players):
-            if 'CPT' in player.positions:
+            if "CPT" in player.positions:
                 captain_indices.append(i)
 
         prob += pulp.lpSum([x[i] for i in captain_indices]) == 1
@@ -3459,17 +3660,19 @@ class BulletproofDFSCore:
         # Constraint 3: Exactly 5 utility players
         util_indices = []
         for i, player in enumerate(players):
-            if 'UTIL' in player.positions and 'CPT' not in player.positions:
+            if "UTIL" in player.positions and "CPT" not in player.positions:
                 util_indices.append(i)
 
         prob += pulp.lpSum([x[i] for i in util_indices]) == 5
 
         # Constraint 4: Each person can only be selected once
-        for person_indices in constraints['constraint_groups']:
+        for person_indices in constraints["constraint_groups"]:
             prob += pulp.lpSum([x[i] for i in person_indices]) <= 1
 
         # Constraint 5: Salary cap
-        prob += pulp.lpSum([x[i] * players[i].salary for i in range(len(players))]) <= self.salary_cap
+        prob += (
+            pulp.lpSum([x[i] * players[i].salary for i in range(len(players))]) <= self.salary_cap
+        )
 
         # Solve
         solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=15)
@@ -3480,12 +3683,14 @@ class BulletproofDFSCore:
         else:
             raise Exception(f"MILP failed with status: {pulp.LpStatus[status]}")
 
-    def _extract_person_aware_solution(self, players: List, x: Dict, constraints: Dict) -> 'OptimizationResult':
+    def _extract_person_aware_solution(
+        self, players: List, x: Dict, constraints: Dict
+    ) -> "OptimizationResult":
         """Extract solution ensuring no person appears twice"""
         selected_players = []
         total_salary = 0
         total_score = 0
-        positions_filled = {'CPT': 0, 'UTIL': 0}
+        positions_filled = {"CPT": 0, "UTIL": 0}
 
         selected_indices = []
         for i, player in enumerate(players):
@@ -3495,13 +3700,13 @@ class BulletproofDFSCore:
                 total_salary += player.salary
                 total_score += player.enhanced_score
 
-                if 'CPT' in player.positions:
-                    positions_filled['CPT'] += 1
-                    player.assigned_position = 'CPT'
+                if "CPT" in player.positions:
+                    positions_filled["CPT"] += 1
+                    player.assigned_position = "CPT"
                     print(f"✅ Captain: {player.name} ({player.team}) - ${player.salary:,}")
                 else:
-                    positions_filled['UTIL'] += 1
-                    player.assigned_position = 'UTIL'
+                    positions_filled["UTIL"] += 1
+                    player.assigned_position = "UTIL"
                     print(f"✅ Utility: {player.name} ({player.team}) - ${player.salary:,}")
 
         # Validation: Check for person duplicates
@@ -3515,9 +3720,13 @@ class BulletproofDFSCore:
                     print(f"   Duplicate person: {name}")
 
             from optimal_lineup_optimizer import OptimizationResult
+
             return OptimizationResult(
-                lineup=[], total_score=0, total_salary=0,
-                positions_filled={}, optimization_status="Person duplicate detected"
+                lineup=[],
+                total_score=0,
+                total_salary=0,
+                positions_filled={},
+                optimization_status="Person duplicate detected",
             )
 
         # Show team distribution
@@ -3529,23 +3738,26 @@ class BulletproofDFSCore:
         # Final validation
         if len(selected_players) != 6:
             print(f"❌ Wrong lineup size: {len(selected_players)}")
-        elif positions_filled['CPT'] != 1:
+        elif positions_filled["CPT"] != 1:
             print(f"❌ Wrong captain count: {positions_filled['CPT']}")
-        elif positions_filled['UTIL'] != 5:
+        elif positions_filled["UTIL"] != 5:
             print(f"❌ Wrong utility count: {positions_filled['UTIL']}")
         else:
             print(f"✅ Lineup validation passed")
 
         from optimal_lineup_optimizer import OptimizationResult
+
         return OptimizationResult(
             lineup=selected_players,
             total_score=total_score,
             total_salary=total_salary,
             positions_filled=positions_filled,
-            optimization_status="Optimal"
+            optimization_status="Optimal",
         )
 
-    def _person_aware_greedy_fallback(self, players: List, constraints: Dict) -> 'OptimizationResult':
+    def _person_aware_greedy_fallback(
+        self, players: List, constraints: Dict
+    ) -> "OptimizationResult":
         """Greedy fallback that respects person constraints"""
         print("🔄 Using person-aware greedy fallback...")
 
@@ -3571,8 +3783,10 @@ class BulletproofDFSCore:
                     best_options.append((idx, player, value))
 
         # Sort by value
-        best_options.sort(key=lambda x: x[2] if len(x) > 2 else x[1].enhanced_score / (x[1].salary / 1000),
-                          reverse=True)
+        best_options.sort(
+            key=lambda x: x[2] if len(x) > 2 else x[1].enhanced_score / (x[1].salary / 1000),
+            reverse=True,
+        )
 
         best_lineup = None
         best_score = 0
@@ -3586,6 +3800,7 @@ class BulletproofDFSCore:
 
             # Shuffle for variety
             import random
+
             random.shuffle(best_options)
 
             for option in best_options:
@@ -3607,13 +3822,15 @@ class BulletproofDFSCore:
 
                 # Check position requirements
                 can_add = False
-                if 'CPT' in player.positions and not captain_selected:
+                if "CPT" in player.positions and not captain_selected:
                     can_add = True
                     captain_selected = True
-                    player.assigned_position = 'CPT'
-                elif 'UTIL' in player.positions and 'CPT' not in player.positions and len(lineup) < 6:
+                    player.assigned_position = "CPT"
+                elif (
+                    "UTIL" in player.positions and "CPT" not in player.positions and len(lineup) < 6
+                ):
                     can_add = True
-                    player.assigned_position = 'UTIL'
+                    player.assigned_position = "UTIL"
 
                 if can_add:
                     lineup.append(player)
@@ -3635,34 +3852,49 @@ class BulletproofDFSCore:
             total_salary = sum(p.salary for p in best_lineup)
 
             from optimal_lineup_optimizer import OptimizationResult
+
             return OptimizationResult(
-                lineup=best_lineup, total_score=best_score, total_salary=total_salary,
-                positions_filled={'CPT': 1, 'UTIL': 5}, optimization_status="Greedy"
+                lineup=best_lineup,
+                total_score=best_score,
+                total_salary=total_salary,
+                positions_filled={"CPT": 1, "UTIL": 5},
+                optimization_status="Greedy",
             )
         else:
             from optimal_lineup_optimizer import OptimizationResult
+
             return OptimizationResult(
-                lineup=[], total_score=0, total_salary=0,
-                positions_filled={}, optimization_status="Greedy failed"
+                lineup=[],
+                total_score=0,
+                total_salary=0,
+                positions_filled={},
+                optimization_status="Greedy failed",
             )
 
     def _create_failed_result(self, reason: str):
         """Create a failed optimization result"""
         from optimal_lineup_optimizer import OptimizationResult
+
         return OptimizationResult(
-            lineup=[], total_score=0, total_salary=0,
-            positions_filled={}, optimization_status=reason
+            lineup=[],
+            total_score=0,
+            total_salary=0,
+            positions_filled={},
+            optimization_status=reason,
         )
 
     # ========================================================================
     # CONTEST-SPECIFIC OPTIMIZATION
     # ========================================================================
 
-    def generate_contest_lineups(self, count: int = 20,
-                                 contest_type: str = 'gpp',
-                                 min_salary_pct: float = 0.95,
-                                 diversity_factor: float = 0.7,
-                                 max_exposure: float = 0.6) -> List[Dict]:
+    def generate_contest_lineups(
+        self,
+        count: int = 20,
+        contest_type: str = "gpp",
+        min_salary_pct: float = 0.95,
+        diversity_factor: float = 0.7,
+        max_exposure: float = 0.6,
+    ) -> List[Dict]:
         """Generate multiple lineups for specific contest type with PROPER diversity"""
         print(f"\n🎰 GENERATING {count} {contest_type.upper()} LINEUPS")
         print("=" * 60)
@@ -3678,10 +3910,10 @@ class BulletproofDFSCore:
         player_usage = {}
 
         # Contest-specific strategy adjustments
-        if contest_type == 'cash':
+        if contest_type == "cash":
             # For cash games, we want HIGH FLOOR players
             eligible = self._sort_by_floor(eligible)
-        elif contest_type == 'gpp':
+        elif contest_type == "gpp":
             # For GPPs, we want HIGH CEILING players
             eligible = self._sort_by_ceiling(eligible)
 
@@ -3694,15 +3926,11 @@ class BulletproofDFSCore:
 
             # Create diversity-adjusted player pool
             adjusted_players = self._apply_diversity_penalties(
-                eligible,
-                player_usage,
-                successful,
-                max_exposure,
-                diversity_factor
+                eligible, player_usage, successful, max_exposure, diversity_factor
             )
 
             # Optimize with adjusted players
-            if self.contest_type == 'showdown':
+            if self.contest_type == "showdown":
                 result = self.optimize_showdown_lineup_fixed(adjusted_players)
             else:
                 # Create temporary optimizer that uses diversity scores
@@ -3711,7 +3939,9 @@ class BulletproofDFSCore:
                 # CRITICAL: Tell optimizer to use diversity scores
                 optimizer.use_diversity_scoring = True
 
-                result = optimizer.optimize_classic_lineup(adjusted_players, use_confirmations=False)
+                result = optimizer.optimize_classic_lineup(
+                    adjusted_players, use_confirmations=False
+                )
 
             # Validate lineup
             if result and result.lineup and len(result.lineup) > 0:
@@ -3723,13 +3953,13 @@ class BulletproofDFSCore:
                     original_lineup.append(orig_player)
 
                 lineup_data = {
-                    'lineup_id': successful + 1,
-                    'lineup': original_lineup,  # Store original players
-                    'total_score': result.total_score,
-                    'total_salary': result.total_salary,
-                    'contest_type': contest_type,
-                    'diversity_penalty': getattr(result, 'avg_diversity_penalty', 1.0),
-                    'unique_players': len(set(p.id for p in original_lineup))
+                    "lineup_id": successful + 1,
+                    "lineup": original_lineup,  # Store original players
+                    "total_score": result.total_score,
+                    "total_salary": result.total_salary,
+                    "contest_type": contest_type,
+                    "diversity_penalty": getattr(result, "avg_diversity_penalty", 1.0),
+                    "unique_players": len(set(p.id for p in original_lineup)),
                 }
 
                 generated_lineups.append(lineup_data)
@@ -3744,7 +3974,7 @@ class BulletproofDFSCore:
                     print(f"   Generated {successful}/{count} lineups...")
 
         # Sort by score
-        generated_lineups.sort(key=lambda x: x['total_score'], reverse=True)
+        generated_lineups.sort(key=lambda x: x["total_score"], reverse=True)
 
         self._print_generation_summary(generated_lineups, player_usage)
 
@@ -3757,20 +3987,22 @@ class BulletproofDFSCore:
             floor_score = player.enhanced_score
 
             # Recent consistency matters for floor
-            if hasattr(player, '_recent_performance') and player._recent_performance:
-                consistency = player._recent_performance.get('consistency_score', 0.5)
-                floor_score *= (0.8 + consistency * 0.2)  # 80-100% based on consistency
+            if hasattr(player, "_recent_performance") and player._recent_performance:
+                consistency = player._recent_performance.get("consistency_score", 0.5)
+                floor_score *= 0.8 + consistency * 0.2  # 80-100% based on consistency
 
             # Lower variance positions have higher floor
-            if player.primary_position in ['1B', '2B', 'C']:  # Consistent positions
+            if player.primary_position in ["1B", "2B", "C"]:  # Consistent positions
                 floor_score *= 1.05
-            elif player.primary_position in ['SS', '3B']:
+            elif player.primary_position in ["SS", "3B"]:
                 floor_score *= 1.02
 
             player._floor_score = floor_score
 
         # Sort by floor score descending
-        return sorted(players, key=lambda x: getattr(x, '_floor_score', x.enhanced_score), reverse=True)
+        return sorted(
+            players, key=lambda x: getattr(x, "_floor_score", x.enhanced_score), reverse=True
+        )
 
     def _sort_by_ceiling(self, players: List) -> List:
         """Sort players by ceiling (upside) for GPPs"""
@@ -3779,9 +4011,9 @@ class BulletproofDFSCore:
             ceiling_score = player.enhanced_score
 
             # Power metrics increase ceiling
-            if hasattr(player, 'statcast_data') and player.statcast_data:
-                hard_hit = player.statcast_data.get('Hard_Hit', 0)
-                barrel = player.statcast_data.get('Barrel', 0)
+            if hasattr(player, "statcast_data") and player.statcast_data:
+                hard_hit = player.statcast_data.get("Hard_Hit", 0)
+                barrel = player.statcast_data.get("Barrel", 0)
 
                 if hard_hit > 40:  # Elite hard hit rate
                     ceiling_score *= 1.15
@@ -3792,27 +4024,29 @@ class BulletproofDFSCore:
                     ceiling_score *= 1.10
 
             # Vegas environment affects ceiling
-            if hasattr(player, 'vegas_data') and player.vegas_data:
-                team_total = player.vegas_data.get('team_total', 4.5)
+            if hasattr(player, "vegas_data") and player.vegas_data:
+                team_total = player.vegas_data.get("team_total", 4.5)
                 if team_total > 5.5:  # High scoring game
                     ceiling_score *= 1.12
                 elif team_total > 5.0:
                     ceiling_score *= 1.06
 
             # High variance positions
-            if player.primary_position in ['OF', 'SS', '3B']:
+            if player.primary_position in ["OF", "SS", "3B"]:
                 ceiling_score *= 1.05
 
             player._ceiling_score = ceiling_score
 
         # Sort by ceiling score descending
-        return sorted(players, key=lambda x: getattr(x, '_ceiling_score', x.enhanced_score), reverse=True)
+        return sorted(
+            players, key=lambda x: getattr(x, "_ceiling_score", x.enhanced_score), reverse=True
+        )
 
     def _calculate_lineup_ceiling(self, lineup: List) -> float:
         """Calculate lineup ceiling"""
         ceiling = 0
         for player in lineup:
-            player_ceiling = getattr(player, '_ceiling_score', player.enhanced_score * 1.25)
+            player_ceiling = getattr(player, "_ceiling_score", player.enhanced_score * 1.25)
             ceiling += player_ceiling
         return ceiling
 
@@ -3820,7 +4054,7 @@ class BulletproofDFSCore:
         """Calculate lineup floor"""
         floor = 0
         for player in lineup:
-            player_floor = getattr(player, '_floor_score', player.enhanced_score * 0.75)
+            player_floor = getattr(player, "_floor_score", player.enhanced_score * 0.75)
             floor += player_floor
         return floor
 
@@ -3844,17 +4078,21 @@ class BulletproofDFSCore:
         print("=" * 50)
 
         # Score stats
-        scores = [l['total_score'] for l in lineups]
-        print(f"Projected scores: {min(scores):.1f} - {max(scores):.1f} (avg: {sum(scores) / len(scores):.1f})")
+        scores = [l["total_score"] for l in lineups]
+        print(
+            f"Projected scores: {min(scores):.1f} - {max(scores):.1f} (avg: {sum(scores) / len(scores):.1f})"
+        )
 
         # Salary stats
-        salaries = [l['total_salary'] for l in lineups]
-        print(f"Salary usage: ${min(salaries):,} - ${max(salaries):,} (avg: ${int(sum(salaries) / len(salaries)):,})")
+        salaries = [l["total_salary"] for l in lineups]
+        print(
+            f"Salary usage: ${min(salaries):,} - ${max(salaries):,} (avg: ${int(sum(salaries) / len(salaries)):,})"
+        )
 
         # Ceiling/Floor
-        if 'ceiling' in lineups[0]:
-            ceilings = [l['ceiling'] for l in lineups]
-            floors = [l['floor'] for l in lineups]
+        if "ceiling" in lineups[0]:
+            ceilings = [l["ceiling"] for l in lineups]
+            floors = [l["floor"] for l in lineups]
             print(f"Ceiling range: {min(ceilings):.1f} - {max(ceilings):.1f}")
             print(f"Floor range: {min(floors):.1f} - {max(floors):.1f}")
 
@@ -3867,7 +4105,7 @@ class BulletproofDFSCore:
             # Find player name
             player_name = "Unknown"
             for lineup in lineups:
-                for player in lineup['lineup']:
+                for player in lineup["lineup"]:
                     if player.id == player_id:
                         player_name = player.name
                         break
@@ -3882,7 +4120,7 @@ class BulletproofDFSCore:
         # Stacking summary
         all_stacks = []
         for lineup in lineups:
-            all_stacks.extend(lineup.get('stacks', []))
+            all_stacks.extend(lineup.get("stacks", []))
 
         if all_stacks:
             print(f"\n🏈 Stacking Summary:")
@@ -3894,11 +4132,13 @@ class BulletproofDFSCore:
             for stack, count in sorted(stack_counts.items(), key=lambda x: x[1], reverse=True)[:5]:
                 print(f"   {stack}: {count} lineups")
 
-    def export_lineups_for_upload(self, lineups: List[Dict], filename: str = "dfs_lineups_upload.csv"):
+    def export_lineups_for_upload(
+        self, lineups: List[Dict], filename: str = "dfs_lineups_upload.csv"
+    ):
         """Export lineups in DraftKings upload format"""
         import csv
 
-        with open(filename, 'w', newline='') as f:
+        with open(filename, "w", newline="") as f:
             writer = csv.writer(f)
 
             # DraftKings upload format
@@ -3907,14 +4147,14 @@ class BulletproofDFSCore:
 
                 # Group players by position for proper order
                 position_map = {}
-                for player in lineup_data['lineup']:
-                    pos = getattr(player, 'assigned_position', player.primary_position)
+                for player in lineup_data["lineup"]:
+                    pos = getattr(player, "assigned_position", player.primary_position)
                     if pos not in position_map:
                         position_map[pos] = []
                     position_map[pos].append(player.name)
 
                 # Write in DraftKings position order
-                for pos in ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']:
+                for pos in ["P", "P", "C", "1B", "2B", "3B", "SS", "OF", "OF", "OF"]:
                     if pos in position_map and position_map[pos]:
                         row.append(position_map[pos].pop(0))
                     else:
@@ -3935,9 +4175,9 @@ class BulletproofDFSCore:
         name2 = name2.lower().strip()
 
         # Remove common suffixes
-        for suffix in [' jr', ' jr.', ' sr', ' sr.', ' iii', ' ii', ' iv', ' v']:
-            name1 = name1.replace(suffix, '')
-            name2 = name2.replace(suffix, '')
+        for suffix in [" jr", " jr.", " sr", " sr.", " iii", " ii", " iv", " v"]:
+            name1 = name1.replace(suffix, "")
+            name2 = name2.replace(suffix, "")
 
         # Exact match
         if name1 == name2:
@@ -3963,52 +4203,89 @@ class BulletproofDFSCore:
 
         # Fuzzy match
         from difflib import SequenceMatcher
+
         return SequenceMatcher(None, name1, name2).ratio()
 
     def _are_nicknames(self, name1: str, name2: str) -> bool:
         """Check if two names are common nicknames"""
         nicknames = {
             # Common nicknames
-            'mike': 'michael', 'michael': 'mike',
-            'chris': 'christopher', 'christopher': 'chris',
-            'dave': 'david', 'david': 'dave',
-            'rob': 'robert', 'robert': 'rob', 'bob': 'robert',
-            'matt': 'matthew', 'matthew': 'matt',
-            'joe': 'joseph', 'joseph': 'joe',
-            'alex': 'alexander', 'alexander': 'alex',
-            'will': 'william', 'william': 'will',
-            'jake': 'jacob', 'jacob': 'jake',
-            'josh': 'joshua', 'joshua': 'josh',
-            'jon': 'jonathan', 'jonathan': 'jon',
-            'nick': 'nicholas', 'nicholas': 'nick',
-            'tony': 'anthony', 'anthony': 'tony',
-            'andy': 'andrew', 'andrew': 'andy',
-            'dan': 'daniel', 'daniel': 'dan',
-            'jim': 'james', 'james': 'jim',
-            'ed': 'edward', 'edward': 'ed',
-            'tom': 'thomas', 'thomas': 'tom',
-            'ben': 'benjamin', 'benjamin': 'ben',
-            'ken': 'kenneth', 'kenneth': 'ken',
-            'steve': 'stephen', 'stephen': 'steve',
-            'rick': 'richard', 'richard': 'rick',
-            'charlie': 'charles', 'charles': 'charlie',
-            'ted': 'theodore', 'theodore': 'ted',
-            'frank': 'francis', 'francis': 'frank',
-            'sam': 'samuel', 'samuel': 'sam',
-            'tim': 'timothy', 'timothy': 'tim',
-            'pat': 'patrick', 'patrick': 'pat',
-            'pete': 'peter', 'peter': 'pete',
-
+            "mike": "michael",
+            "michael": "mike",
+            "chris": "christopher",
+            "christopher": "chris",
+            "dave": "david",
+            "david": "dave",
+            "rob": "robert",
+            "robert": "rob",
+            "bob": "robert",
+            "matt": "matthew",
+            "matthew": "matt",
+            "joe": "joseph",
+            "joseph": "joe",
+            "alexander": "alex",
+            "will": "william",
+            "william": "will",
+            "jake": "jacob",
+            "jacob": "jake",
+            "josh": "joshua",
+            "joshua": "josh",
+            "jon": "jonathan",
+            "jonathan": "jon",
+            "nick": "nicholas",
+            "nicholas": "nick",
+            "tony": "anthony",
+            "anthony": "tony",
+            "andy": "andrew",
+            "andrew": "andy",
+            "dan": "daniel",
+            "daniel": "dan",
+            "jim": "james",
+            "james": "jim",
+            "ed": "edward",
+            "edward": "ed",
+            "tom": "thomas",
+            "thomas": "tom",
+            "ben": "benjamin",
+            "benjamin": "ben",
+            "ken": "kenneth",
+            "kenneth": "ken",
+            "steve": "stephen",
+            "stephen": "steve",
+            "rick": "richard",
+            "richard": "rick",
+            "charlie": "charles",
+            "charles": "charlie",
+            "ted": "theodore",
+            "theodore": "ted",
+            "frank": "francis",
+            "francis": "frank",
+            "sam": "samuel",
+            "samuel": "sam",
+            "tim": "timothy",
+            "timothy": "tim",
+            "pat": "patrick",
+            "patrick": "pat",
+            "pete": "peter",
+            "peter": "pete",
             # Spanish/Latin nicknames common in baseball
-            'alex': 'alejandro', 'alejandro': 'alex',
-            'manny': 'manuel', 'manuel': 'manny',
-            'rafa': 'rafael', 'rafael': 'rafa',
-            'miggy': 'miguel', 'miguel': 'miggy',
-            'vlad': 'vladimir', 'vladimir': 'vlad',
-
+            "alex": "alejandro",
+            "alejandro": "alex",
+            "manny": "manuel",
+            "manuel": "manny",
+            "rafa": "rafael",
+            "rafael": "rafa",
+            "miggy": "miguel",
+            "miguel": "miggy",
+            "vlad": "vladimir",
+            "vladimir": "vlad",
             # Baseball-specific common nicknames
-            'aj': 'aaron', 'cj': 'christopher', 'dj': 'david',
-            'tj': 'thomas', 'jp': 'john', 'jd': 'james'
+            "aj": "aaron",
+            "cj": "christopher",
+            "dj": "david",
+            "tj": "thomas",
+            "jp": "john",
+            "jd": "james",
         }
 
         name1_lower = name1.lower().strip()
@@ -4024,7 +4301,7 @@ class BulletproofDFSCore:
                 return True
 
         # Handle initials
-        if len(name1_lower) == 2 and '.' not in name1_lower and len(name2_lower) > 2:
+        if len(name1_lower) == 2 and "." not in name1_lower and len(name2_lower) > 2:
             if name1_lower[0] == name2_lower[0]:
                 return True
 
@@ -4033,23 +4310,24 @@ class BulletproofDFSCore:
     def _copy_player(self, player):
         """Create a deep copy of player"""
         import copy
+
         return copy.deepcopy(player)
 
     def clean_player_name_for_matching(self, name: str) -> str:
         """Clean player name for better matching"""
         if not name:
-            return ''
+            return ""
 
         # Remove common suffixes
         name = str(name).strip()
-        for suffix in [' Jr.', ' Jr', ' Sr.', ' Sr', ' III', ' II', ' IV', ' V']:
-            name = name.replace(suffix, '')
+        for suffix in [" Jr.", " Jr", " Sr.", " Sr", " III", " II", " IV", " V"]:
+            name = name.replace(suffix, "")
 
         # Remove periods from initials
-        name = name.replace('.', '')
+        name = name.replace(".", "")
 
         # Normalize spaces
-        name = ' '.join(name.split())
+        name = " ".join(name.split())
 
         return name
 
@@ -4057,7 +4335,7 @@ class BulletproofDFSCore:
     # DFS UPGRADE METHODS
     # ========================================================================
 
-    def get_cached_data(self, key: str, fetch_func, category: str = 'default'):
+    def get_cached_data(self, key: str, fetch_func, category: str = "default"):
         """Use smart caching for any data fetch"""
         if UPGRADES_AVAILABLE:
             return smart_cache.get_or_fetch(key, fetch_func, category)
@@ -4074,16 +4352,14 @@ class BulletproofDFSCore:
 
         optimizer = MultiLineupOptimizer(self)
         lineups = optimizer.generate_gpp_lineups(
-            num_lineups=count,
-            max_exposure=0.5,
-            min_salary=49000
+            num_lineups=count, max_exposure=0.5, min_salary=49000
         )
 
         # Show summary
         optimizer.print_summary()
 
         # Export for upload
-        upload_file = optimizer.export_for_upload('draftkings')
+        upload_file = optimizer.export_for_upload("draftkings")
         if upload_file:
             print(f"\n📁 Upload file: {upload_file}")
 
@@ -4097,8 +4373,8 @@ class BulletproofDFSCore:
         contest_id = tracker.log_contest(lineup, contest_info)
 
         # Also save to database if available
-        if hasattr(self, 'game_date'):
-            contest_info['date'] = self.game_date
+        if hasattr(self, "game_date"):
+            contest_info["date"] = self.game_date
 
         return contest_id
 
@@ -4130,18 +4406,22 @@ class BulletproofDFSCore:
 
         print("LOWEST 20 PROJECTIONS (likely includes pitchers):")
         for i, player in enumerate(all_sorted[:20]):
-            orig_pos = getattr(player, 'original_position', 'UNKNOWN')
-            print(f"{i + 1:2d}. {player.name:<20} ({player.team}) - "
-                  f"${player.salary:>6,} - {player.projection:>5.1f} pts - "
-                  f"Orig: {orig_pos}")
+            orig_pos = getattr(player, "original_position", "UNKNOWN")
+            print(
+                f"{i + 1:2d}. {player.name:<20} ({player.team}) - "
+                f"${player.salary:>6,} - {player.projection:>5.1f} pts - "
+                f"Orig: {orig_pos}"
+            )
 
         print("\n" + "-" * 80)
         print("HIGHEST 10 PROJECTIONS (definitely hitters):")
         for i, player in enumerate(all_sorted[-10:]):
-            orig_pos = getattr(player, 'original_position', 'UNKNOWN')
-            print(f"{i + 1:2d}. {player.name:<20} ({player.team}) - "
-                  f"${player.salary:>6,} - {player.projection:>5.1f} pts - "
-                  f"Orig: {orig_pos}")
+            orig_pos = getattr(player, "original_position", "UNKNOWN")
+            print(
+                f"{i + 1:2d}. {player.name:<20} ({player.team}) - "
+                f"${player.salary:>6,} - {player.projection:>5.1f} pts - "
+                f"Orig: {orig_pos}"
+            )
 
         # Find projection gap
         print("\n📊 PROJECTION ANALYSIS:")
@@ -4185,19 +4465,23 @@ class BulletproofDFSCore:
             print(f"\n{team} ({len(players)} players):")
 
             # Sort by salary to see variety
-            players.sort(key=lambda x: x.salary, reverse=True)
+            players.sort(key=lambda x: (x.salary if x.salary is not None else 0), reverse=True)
 
             for p in players:
-                orig_pos = getattr(p, 'original_position', 'UNKNOWN')
-                sources = ', '.join(p.confirmation_sources) if p.confirmation_sources else 'No sources'
-                print(f"   {p.name:<20} ${p.salary:>6,} - Orig: {orig_pos:<4} - Sources: [{sources}]")
+                orig_pos = getattr(p, "original_position", "UNKNOWN")
+                sources = (
+                    ", ".join(p.confirmation_sources) if p.confirmation_sources else "No sources"
+                )
+                print(
+                    f"   {p.name:<20} ${p.salary:>6,} - Orig: {orig_pos:<4} - Sources: [{sources}]"
+                )
 
         # Check for pitchers specifically
         print("\n⚾ PITCHER CHECK:")
         pitchers_found = 0
         for player in eligible:
-            orig_pos = getattr(player, 'original_position', 'UNKNOWN')
-            if orig_pos == 'P':
+            orig_pos = getattr(player, "original_position", "UNKNOWN")
+            if orig_pos == "P":
                 pitchers_found += 1
                 print(f"   Found pitcher: {player.name} ({player.team})")
 
@@ -4205,7 +4489,11 @@ class BulletproofDFSCore:
             print("   ❌ NO PITCHERS FOUND IN ELIGIBLE POOL!")
 
             # Check if there are pitchers in the full player list
-            all_pitchers = [p for p in self.players if getattr(p, 'original_position', p.primary_position) == 'P']
+            all_pitchers = [
+                p
+                for p in self.players
+                if getattr(p, "original_position", p.primary_position) == "P"
+            ]
             print(f"\n   Total pitchers in CSV: {len(all_pitchers)}")
             if all_pitchers:
                 print("   Sample pitchers (not eligible):")
@@ -4238,7 +4526,7 @@ class BulletproofDFSCore:
         if confirmed:
             print(f"\n✅ CONFIRMED ONLY ({len(confirmed)} players):")
             for p in confirmed:
-                sources = ', '.join(p.confirmation_sources)
+                sources = ", ".join(p.confirmation_sources)
                 print(f"   {p.name} ({p.team}) {p.primary_position} - Sources: [{sources}]")
 
         if manual:
@@ -4249,7 +4537,7 @@ class BulletproofDFSCore:
         if both:
             print(f"\n🌟 CONFIRMED + MANUAL ({len(both)} players):")
             for p in both:
-                sources = ', '.join(p.confirmation_sources)
+                sources = ", ".join(p.confirmation_sources)
                 print(f"   {p.name} ({p.team}) {p.primary_position} - Sources: [{sources}]")
 
         print(f"\n❌ NOT ELIGIBLE ({len(none)} players) - First 20:")
@@ -4270,10 +4558,14 @@ class BulletproofDFSCore:
         print(f"Eligible for optimization: {eligible_players}")
 
         # Check enrichment status
-        with_dff = sum(1 for p in self.players if hasattr(p, 'dff_data') and p.dff_data)
-        with_vegas = sum(1 for p in self.players if hasattr(p, 'vegas_data') and p.vegas_data)
-        with_statcast = sum(1 for p in self.players if hasattr(p, 'statcast_data') and p.statcast_data)
-        with_form = sum(1 for p in self.players if hasattr(p, 'form_rating') and p.form_rating != 1.0)
+        with_dff = sum(1 for p in self.players if hasattr(p, "dff_data") and p.dff_data)
+        with_vegas = sum(1 for p in self.players if hasattr(p, "vegas_data") and p.vegas_data)
+        with_statcast = sum(
+            1 for p in self.players if hasattr(p, "statcast_data") and p.statcast_data
+        )
+        with_form = sum(
+            1 for p in self.players if hasattr(p, "form_rating") and p.form_rating != 1.0
+        )
 
         print(f"\nEnrichment Coverage (out of {confirmed_players} confirmed):")
         print(f"  DFF data: {with_dff}")
@@ -4295,7 +4587,7 @@ class BulletproofDFSCore:
         utils = []
 
         for player in lineup:
-            if player.assigned_position == 'CPT':
+            if player.assigned_position == "CPT":
                 captain = player
             else:
                 utils.append(player)
@@ -4312,7 +4604,9 @@ class BulletproofDFSCore:
         # Display utilities
         print(f"\n⚡ UTILITY PLAYERS:")
         for i, player in enumerate(utils, 1):
-            print(f"   {i}. {player.name} ({player.team}) - ${player.salary:,} → {player.enhanced_score:.1f} pts")
+            print(
+                f"   {i}. {player.name} ({player.team}) - ${player.salary:,} → {player.enhanced_score:.1f} pts"
+            )
 
         # Recalculate totals to be sure
         actual_salary = 0
@@ -4342,27 +4636,27 @@ class BulletproofDFSCore:
     def fix_known_player_positions(self):
         """Manually fix positions for known players who are incorrectly parsed"""
         position_fixes = {
-            'freddie freeman': ['1B', '3B'],
-            'mookie betts': ['2B', 'SS', 'OF'],
-            'gleyber torres': ['2B'],
-            'jose altuve': ['2B'],
-            'nolan arenado': ['3B'],
-            'manny machado': ['3B', 'SS'],
-            'trea turner': ['SS', '2B'],
-            'marcus semien': ['2B', 'SS'],
-            'jazz chisholm jr': ['2B', 'OF'],
-            'jazz chisholm': ['2B', 'OF'],
-            'vladimir guerrero jr': ['1B'],
-            'vladimir guerrero': ['1B'],
-            'pete alonso': ['1B'],
-            'paul goldschmidt': ['1B'],
-            'matt olson': ['1B'],
-            'rafael devers': ['3B'],
-            'austin riley': ['3B'],
-            'anthony rendon': ['3B'],
-            'alex bregman': ['3B'],
-            'jose ramirez': ['3B'],
-            'matt chapman': ['3B']
+            "freddie freeman": ["1B", "3B"],
+            "mookie betts": ["2B", "SS", "OF"],
+            "gleyber torres": ["2B"],
+            "jose altuve": ["2B"],
+            "nolan arenado": ["3B"],
+            "manny machado": ["3B", "SS"],
+            "trea turner": ["SS", "2B"],
+            "marcus semien": ["2B", "SS"],
+            "jazz chisholm jr": ["2B", "OF"],
+            "jazz chisholm": ["2B", "OF"],
+            "vladimir guerrero jr": ["1B"],
+            "vladimir guerrero": ["1B"],
+            "pete alonso": ["1B"],
+            "paul goldschmidt": ["1B"],
+            "matt olson": ["1B"],
+            "rafael devers": ["3B"],
+            "austin riley": ["3B"],
+            "anthony rendon": ["3B"],
+            "alex bregman": ["3B"],
+            "jose ramirez": ["3B"],
+            "matt chapman": ["3B"],
         }
 
         fixed_count = 0
@@ -4374,7 +4668,7 @@ class BulletproofDFSCore:
             for fix_name, correct_positions in position_fixes.items():
                 if fix_name in player_name_lower or player_name_lower in fix_name:
                     # Only fix if currently just UTIL
-                    if player.positions == ['UTIL']:
+                    if player.positions == ["UTIL"]:
                         old_positions = player.positions.copy()
                         player.positions = correct_positions
                         player.primary_position = correct_positions[0]
@@ -4397,7 +4691,7 @@ class BulletproofDFSCore:
         total_score = 0
 
         for player in lineup:
-            if player.assigned_position == 'CPT':
+            if player.assigned_position == "CPT":
                 multiplier = 1.5
                 salary_used = int(player.salary * multiplier)
                 points = player.enhanced_score * multiplier
@@ -4416,10 +4710,6 @@ class BulletproofDFSCore:
         print(f"  Salary: ${total_salary:,}")
         print(f"  Score: {total_score:.2f}")
 
-
-
-
-
     def debug_contest_type_detection(self):
         """Debug why contest type detection is failing"""
         print("\n🔍 CONTEST TYPE DEBUG")
@@ -4435,17 +4725,17 @@ class BulletproofDFSCore:
 
         print(f"\n📊 Position Analysis (first 10 players):")
         for i, player in enumerate(self.players[:10]):
-            positions = getattr(player, 'positions', [])
-            primary_pos = getattr(player, 'primary_position', 'Unknown')
+            positions = getattr(player, "positions", [])
+            primary_pos = getattr(player, "primary_position", "Unknown")
 
             print(f"   {i + 1}. {player.name}:")
             print(f"      Primary: {primary_pos}")
             print(f"      All positions: {positions}")
 
             # Count position types
-            if 'CPT' in positions or 'UTIL' in positions:
+            if "CPT" in positions or "UTIL" in positions:
                 showdown_count += 1
-            if any(pos in positions for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']):
+            if any(pos in positions for pos in ["P", "C", "1B", "2B", "3B", "SS", "OF"]):
                 classic_count += 1
 
             for pos in positions:
@@ -4468,10 +4758,10 @@ class BulletproofDFSCore:
             print(f"   Force with: core.contest_type = 'classic'")
 
         return {
-            'showdown_count': showdown_count,
-            'classic_count': classic_count,
-            'position_counts': position_counts,
-            'recommended_type': 'showdown' if showdown_count > classic_count else 'classic'
+            "showdown_count": showdown_count,
+            "classic_count": classic_count,
+            "position_counts": position_counts,
+            "recommended_type": "showdown" if showdown_count > classic_count else "classic",
         }
 
     def debug_showdown_player_pool(self):
@@ -4484,7 +4774,7 @@ class BulletproofDFSCore:
         # Group by original position
         by_original_pos = {}
         for player in eligible:
-            orig_pos = getattr(player, 'original_position', 'UNKNOWN')
+            orig_pos = getattr(player, "original_position", "UNKNOWN")
             if orig_pos not in by_original_pos:
                 by_original_pos[orig_pos] = []
             by_original_pos[orig_pos].append(player)
@@ -4506,7 +4796,7 @@ class BulletproofDFSCore:
         total_score = 0
 
         for player in lineup:
-            if player.assigned_position == 'CPT':
+            if player.assigned_position == "CPT":
                 multiplier = 1.5
                 salary_used = int(player.salary * multiplier)
                 points = player.enhanced_score * multiplier
@@ -4528,12 +4818,11 @@ class BulletproofDFSCore:
     def show_util_players(self):
         """Show what UTIL players actually are"""
         print("\n🔍 UTIL PLAYER ANALYSIS")
-        util_players = [p for p in self.players if 'UTIL' in p.positions]
+        util_players = [p for p in self.players if "UTIL" in p.positions]
 
         print(f"Found {len(util_players)} UTIL players:")
         for p in util_players[:10]:  # Show first 10
             print(f"  {p.name} ({p.team}) - Positions: {'/'.join(p.positions)} - ${p.salary:,}")
-
 
     def debug_position_coverage(self):
         """Debug which positions are missing and find potential players"""
@@ -4544,7 +4833,7 @@ class BulletproofDFSCore:
         eligible = self.get_eligible_players_by_mode()
 
         # Required positions for classic
-        required = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+        required = {"P": 2, "C": 1, "1B": 1, "2B": 1, "3B": 1, "SS": 1, "OF": 3}
 
         # Count available by position
         available = {}
@@ -4561,15 +4850,17 @@ class BulletproofDFSCore:
         # Find players who COULD play missing positions
         print("\n🔍 Players who COULD fill missing positions (not eligible):")
 
-        for pos in ['1B', '2B', '3B']:
+        for pos in ["1B", "2B", "3B"]:
             if available.get(pos, 0) < required[pos]:
                 print(f"\n{pos} candidates:")
-                candidates = [p for p in self.players if
-                              pos in p.positions and not p.is_eligible_for_selection(self.optimization_mode)]
+                candidates = [
+                    p
+                    for p in self.players
+                    if pos in p.positions
+                    and not p.is_eligible_for_selection(self.optimization_mode)
+                ]
                 for p in candidates[:5]:
                     print(f"   - {p.name} ({p.team}) - {'/'.join(p.positions)}")
-
-
 
     def debug_data_sources(self):
         """Debug which data sources are actually available"""
@@ -4577,11 +4868,16 @@ class BulletproofDFSCore:
         print("=" * 50)
 
         # Check each data source
-        print(f"Statcast Fetcher: {'✅ Available' if self.statcast_fetcher else '❌ Not initialized'}")
+        print(
+            f"Statcast Fetcher: {'✅ Available' if self.statcast_fetcher else '❌ Not initialized'}"
+        )
         print(f"Vegas Lines: {'✅ Available' if self.vegas_lines else '❌ Not initialized'}")
         print(
-            f"DFF Rankings: {'✅ Loaded' if hasattr(self, 'current_dff_file') and self.current_dff_file else '❌ Not loaded'}")
-        print(f"Confirmation System: {'✅ Available' if self.confirmation_system else '❌ Not initialized'}")
+            f"DFF Rankings: {'✅ Loaded' if hasattr(self, 'current_dff_file') and self.current_dff_file else '❌ Not loaded'}"
+        )
+        print(
+            f"Confirmation System: {'✅ Available' if self.confirmation_system else '❌ Not initialized'}"
+        )
         print(f"Form Analyzer: {'✅ Available' if self.form_analyzer else '❌ Not initialized'}")
 
         # Check if APIs are working
@@ -4593,10 +4889,10 @@ class BulletproofDFSCore:
                 print("Statcast API Test: ❌ Error")
 
 
-
 # ============================================================================
 # MODULE VERIFICATION
 # ============================================================================
+
 
 def verify_integration():
     """Verify all new modules are integrated correctly"""
@@ -4605,12 +4901,12 @@ def verify_integration():
 
     # Check imports
     modules = {
-        'Enhanced Stats Engine': ENHANCED_STATS_AVAILABLE,
-        'Vegas Lines': VEGAS_AVAILABLE,
-        'Smart Confirmations': CONFIRMED_AVAILABLE,
-        'Statcast Fetcher': STATCAST_AVAILABLE,
-        'Recent Form Analyzer': RECENT_FORM_AVAILABLE,
-        'Batting Order & Correlation': BATTING_CORRELATION_AVAILABLE
+        "Enhanced Stats Engine": ENHANCED_STATS_AVAILABLE,
+        "Vegas Lines": VEGAS_AVAILABLE,
+        "Smart Confirmations": CONFIRMED_AVAILABLE,
+        "Statcast Fetcher": STATCAST_AVAILABLE,
+        "Recent Form Analyzer": RECENT_FORM_AVAILABLE,
+        "Batting Order & Correlation": BATTING_CORRELATION_AVAILABLE,
     }
 
     print("📦 Module Status:")
@@ -4625,12 +4921,12 @@ def verify_integration():
 
         # Check if new methods exist
         methods_to_check = [
-            ('enrich_with_recent_form', 'Recent Form Method'),
-            ('enrich_with_batting_order', 'Batting Order Method'),
-            ('apply_lineup_correlations', 'Correlation Method'),
-            ('form_analyzer', 'Form Analyzer Instance'),
-            ('batting_enricher', 'Batting Enricher Instance'),
-            ('correlation_optimizer', 'Correlation Optimizer Instance')
+            ("enrich_with_recent_form", "Recent Form Method"),
+            ("enrich_with_batting_order", "Batting Order Method"),
+            ("apply_lineup_correlations", "Correlation Method"),
+            ("form_analyzer", "Form Analyzer Instance"),
+            ("batting_enricher", "Batting Enricher Instance"),
+            ("correlation_optimizer", "Correlation Optimizer Instance"),
         ]
 
         print("\n🔧 Method/Attribute Check:")
@@ -4643,13 +4939,13 @@ def verify_integration():
         print("\n📋 Integration Summary:")
         integrated_count = 0
 
-        if hasattr(core, 'form_analyzer') and core.form_analyzer is not None:
+        if hasattr(core, "form_analyzer") and core.form_analyzer is not None:
             print("   ✅ Recent Form Analyzer integrated")
             integrated_count += 1
         else:
             print("   ❌ Recent Form Analyzer NOT integrated")
 
-        if hasattr(core, 'batting_enricher') and hasattr(core, 'correlation_optimizer'):
+        if hasattr(core, "batting_enricher") and hasattr(core, "correlation_optimizer"):
             print("   ✅ Batting Order & Correlation integrated")
             integrated_count += 1
         else:
@@ -4660,6 +4956,7 @@ def verify_integration():
     except Exception as e:
         print(f"\n❌ Core initialization failed: {e}")
         import traceback
+
         traceback.print_exc()
 
     print("\n" + "=" * 60)

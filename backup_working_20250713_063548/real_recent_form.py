@@ -3,10 +3,11 @@
 Real Recent Form Analyzer - Uses actual game logs from Baseball Savant
 """
 
-from pybaseball import statcast_batter, playerid_lookup
-from datetime import datetime, timedelta
-import pandas as pd
 import time
+from datetime import datetime, timedelta
+
+import pandas as pd
+from pybaseball import playerid_lookup, statcast_batter
 
 
 class RealRecentFormAnalyzer:

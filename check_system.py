@@ -11,7 +11,7 @@ modules_to_check = [
     ("bulletproof_dfs_core", "BulletproofDFSCore"),
     ("unified_scoring_engine", "get_scoring_engine"),
     ("data_validator", "get_validator"),
-    ("performance_optimizer", "get_performance_optimizer")
+    ("performance_optimizer", "get_performance_optimizer"),
 ]
 
 import_status = {}
@@ -39,20 +39,21 @@ for module, status in import_status.items():
 print("\nCORE SYSTEM TEST:")
 try:
     from bulletproof_dfs_core import BulletproofDFSCore
+
     core = BulletproofDFSCore()
     print("  ✅ Core system initialized successfully")
-    
+
     # Check subsystems
-    if hasattr(core, 'scoring_engine') and core.scoring_engine:
+    if hasattr(core, "scoring_engine") and core.scoring_engine:
         print("  ✅ Scoring engine available")
     else:
         print("  ⚠️ Scoring engine not available")
-        
-    if hasattr(core, 'validator') and core.validator:
+
+    if hasattr(core, "validator") and core.validator:
         print("  ✅ Validator available")
     else:
         print("  ⚠️ Validator not available")
-        
+
 except Exception as e:
     print(f"  ❌ Core initialization failed: {e}")
 

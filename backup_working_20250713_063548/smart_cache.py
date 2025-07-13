@@ -3,11 +3,12 @@ Smart Cache System for DFS
 Reduces API calls by 90% through intelligent caching
 """
 
+import hashlib
 import json
 import os
-import hashlib
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
+
 
 class SmartCache:
     """Intelligent caching system for DFS API calls"""

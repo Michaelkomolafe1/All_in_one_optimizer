@@ -3,17 +3,17 @@
 FAST PARALLEL STATCAST FETCHER
 """
 
+import io
 import json
 import logging
+import os
+import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
-import os
-import sys
-import io
 
 # CRITICAL: Disable ALL output before importing pybaseball
 os.environ['PYBASEBALL_NO_PROGRESS'] = '1'

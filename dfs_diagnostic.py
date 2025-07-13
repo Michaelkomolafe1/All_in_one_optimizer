@@ -35,18 +35,20 @@ def run_diagnostic(csv_file, dff_file=None):
         print(f"      Base score: {player.original_projection:.1f}")
         print(f"      Enhanced: {player.enhanced_score:.1f}")
 
-        if hasattr(player, 'recent_form') and player.recent_form:
-            print(f"      Recent form: {player.recent_form['status']} ({player.recent_form['multiplier']:.2f}x)")
+        if hasattr(player, "recent_form") and player.recent_form:
+            print(
+                f"      Recent form: {player.recent_form['status']} ({player.recent_form['multiplier']:.2f}x)"
+            )
         else:
             print(f"      Recent form: None")
 
-        if hasattr(player, 'batting_order'):
+        if hasattr(player, "batting_order"):
             print(f"      Batting order: {player.batting_order}")
 
-        if hasattr(player, 'park_factors'):
+        if hasattr(player, "park_factors"):
             print(f"      Park factor: {player.park_factors.get('factor', 1.0):.2f}x")
 
 
 if __name__ == "__main__":
     # Run with your files
-    run_diagnostic('your_dk_file.csv', 'your_dff_file.csv')
+    run_diagnostic("your_dk_file.csv", "your_dff_file.csv")

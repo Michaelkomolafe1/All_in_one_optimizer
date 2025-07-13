@@ -5,9 +5,8 @@ UNIFIED PLAYER MODEL - FIXED VERSION
 Fixed calculation methods to prevent multiplicative stacking
 """
 
-from typing import Dict, List, Optional, Union, Any
-from datetime import datetime
 import copy
+from typing import Dict, List, Optional
 
 # For park factors if not available elsewhere
 PARK_FACTORS = {
@@ -187,7 +186,7 @@ class UnifiedPlayer:
             # Add weighted adjustments
             for name, mult, weight in adjustments:
                 # Add the adjustment (mult - 1) * weight * base_score
-                adjustment = (mult - 1.0) * weight * base_score
+                (mult - 1.0) * weight * base_score
                 final_score += base_score * (mult - 1.0) * weight
 
                 # Store for transparency

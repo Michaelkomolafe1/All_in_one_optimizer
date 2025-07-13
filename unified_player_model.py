@@ -7,9 +7,8 @@ Fixed calculation methods to prevent multiplicative stacking
 
 from __future__ import annotations  # MUST BE FIRST IMPORT!
 
-from typing import Dict, List, Optional, Union, Any
-from datetime import datetime
 import copy
+from typing import Dict, List, Optional
 
 from unified_scoring_engine import get_scoring_engine
 
@@ -18,20 +17,42 @@ PARK_FACTORS = {
     # Extreme hitter-friendly
     "COL": 1.20,  # Coors Field
     # Hitter-friendly
-    "CIN": 1.12, "TEX": 1.10, "PHI": 1.08, "MIL": 1.06,
-    "BAL": 1.05, "HOU": 1.04, "TOR": 1.03, "BOS": 1.03,
+    "CIN": 1.12,
+    "TEX": 1.10,
+    "PHI": 1.08,
+    "MIL": 1.06,
+    "BAL": 1.05,
+    "HOU": 1.04,
+    "TOR": 1.03,
+    "BOS": 1.03,
     # Slight hitter-friendly
-    "NYY": 1.02, "CHC": 1.01,
+    "NYY": 1.02,
+    "CHC": 1.01,
     # Neutral
-    "ARI": 1.00, "ATL": 1.00, "MIN": 0.99,
+    "ARI": 1.00,
+    "ATL": 1.00,
+    "MIN": 0.99,
     # Slight pitcher-friendly
-    "WSH": 0.98, "NYM": 0.97, "LAA": 0.96, "STL": 0.95,
+    "WSH": 0.98,
+    "NYM": 0.97,
+    "LAA": 0.96,
+    "STL": 0.95,
     # Pitcher-friendly
-    "CLE": 0.94, "TB": 0.93, "KC": 0.92, "DET": 0.91, "SEA": 0.90,
+    "CLE": 0.94,
+    "TB": 0.93,
+    "KC": 0.92,
+    "DET": 0.91,
+    "SEA": 0.90,
     # Extreme pitcher-friendly
-    "OAK": 0.89, "SF": 0.88, "SD": 0.87, "MIA": 0.86, "PIT": 0.85,
+    "OAK": 0.89,
+    "SF": 0.88,
+    "SD": 0.87,
+    "MIA": 0.86,
+    "PIT": 0.85,
     # Additional teams
-    "LAD": 0.98, "CHW": 0.96, "CWS": 0.96,
+    "LAD": 0.98,
+    "CHW": 0.96,
+    "CWS": 0.96,
 }
 
 
@@ -41,9 +62,16 @@ class UnifiedPlayer:
     FIXED: Proper weighted calculations, no multiplicative stacking
     """
 
-    def __init__(self, id: str, name: str, team: str, salary: int,
-                 primary_position: str, positions: List[str],
-                 base_projection: float = 0.0):
+    def __init__(
+        self,
+        id: str,
+        name: str,
+        team: str,
+        salary: int,
+        primary_position: str,
+        positions: List[str],
+        base_projection: float = 0.0,
+    ):
         """Initialize player with basic attributes"""
         # Core attributes
         self.id = id
@@ -86,13 +114,13 @@ class UnifiedPlayer:
         self.calculate_data_quality()
         self.calculate_enhanced_score()
 
-    def is_eligible_for_selection(self, mode: str = 'normal') -> bool:
+    def is_eligible_for_selection(self, mode: str = "normal") -> bool:
         """Check if player is eligible based on mode"""
-        if mode == 'bulletproof':
+        if mode == "bulletproof":
             return self.is_confirmed and self.enhanced_score > 0
-        elif mode == 'confirmed_only':
+        elif mode == "confirmed_only":
             return self.is_confirmed
-        elif mode == 'all':
+        elif mode == "all":
             return self.enhanced_score > 0
         else:  # normal
             return self.enhanced_score > 0
@@ -127,14 +155,11 @@ class UnifiedPlayer:
         self.enhanced_score = engine.calculate_score(self)
 
         # Set data quality based on available components
-        if hasattr(self, '_score_audit'):
-            self.data_quality_score = len(self._score_audit.get('components', {})) / 5.0
+        if hasattr(self, "_score_audit"):
+            self.data_quality_score = len(self._score_audit.get("components", {})) / 5.0
 
         # Mark as calculated
         self._score_calculated = True
-
-
-
 
     def _calculate_recent_performance(self) -> Optional[float]:
         """
@@ -142,8 +167,8 @@ class UnifiedPlayer:
         Returns None if no real data available
         """
         # Priority 1: Recent performance from form analyzer
-        if self._recent_performance and 'form_score' in self._recent_performance:
-            return self._recent_performance['form_score']
+        if self._recent_performance and "form_score" in self._recent_performance:
+            return self._recent_performance["form_score"]
 
         # Priority 2: DFF L5 average
         if self.dff_l5_avg and self.dff_l5_avg > 0 and self.base_projection > 0:
@@ -186,8 +211,8 @@ class UnifiedPlayer:
 
         # Get implied team total
         implied_total = None
-        if self._vegas_data and 'implied_total' in self._vegas_data:
-            implied_total = self._vegas_data['implied_total']
+        if self._vegas_data and "implied_total" in self._vegas_data:
+            implied_total = self._vegas_data["implied_total"]
         elif self.implied_team_score:
             implied_total = self.implied_team_score
 
@@ -195,12 +220,12 @@ class UnifiedPlayer:
             return None
 
         # Calculate multiplier based on position
-        if self.primary_position == 'P':
+        if self.primary_position == "P":
             # For pitchers: opponent's implied total matters
             opp_total = None
 
-            if self._vegas_data and 'opponent_total' in self._vegas_data:
-                opp_total = self._vegas_data['opponent_total']
+            if self._vegas_data and "opponent_total" in self._vegas_data:
+                opp_total = self._vegas_data["opponent_total"]
             elif self.over_under and self.implied_team_score:
                 opp_total = self.over_under - self.implied_team_score
 
@@ -263,7 +288,7 @@ class UnifiedPlayer:
         # Group by team
         team_groups = {}
         for player in players:
-            if player.team and player.primary_position != 'P':
+            if player.team and player.primary_position != "P":
                 if player.team not in team_groups:
                     team_groups[player.team] = []
                 team_groups[player.team].append(player)
@@ -272,8 +297,9 @@ class UnifiedPlayer:
         for team, team_players in team_groups.items():
             if len(team_players) >= 3:
                 # Check for consecutive batting orders
-                with_order = [p for p in team_players
-                              if hasattr(p, 'batting_order') and p.batting_order]
+                with_order = [
+                    p for p in team_players if hasattr(p, "batting_order") and p.batting_order
+                ]
 
                 if len(with_order) >= 2:
                     with_order.sort(key=lambda p: p.batting_order)
@@ -294,11 +320,11 @@ class UnifiedPlayer:
         base_score = player.enhanced_score
 
         # Apply pre-calculated stack bonuses
-        if hasattr(player, '_stack_bonus'):
+        if hasattr(player, "_stack_bonus"):
             return base_score * (1 + player._stack_bonus)
 
         # Apply diversity penalty if exists
-        if hasattr(player, '_diversity_penalty'):
+        if hasattr(player, "_diversity_penalty"):
             return base_score * player._diversity_penalty
 
         return base_score
@@ -315,12 +341,10 @@ class UnifiedPlayer:
         adjustments = 0
         total_factor = 1.0
 
-
-
-        if self.primary_position == 'P':
+        if self.primary_position == "P":
             # Pitcher metrics (small adjustments only)
-            if 'k_rate' in self._statcast_data:
-                k_rate = self._statcast_data['k_rate']
+            if "k_rate" in self._statcast_data:
+                k_rate = self._statcast_data["k_rate"]
                 if k_rate > 28:
                     total_factor *= 1.03  # 3% boost for elite K rate
                     adjustments += 1
@@ -328,8 +352,8 @@ class UnifiedPlayer:
                     total_factor *= 0.97  # 3% penalty for low K rate
                     adjustments += 1
 
-            if 'whip' in self._statcast_data:
-                whip = self._statcast_data['whip']
+            if "whip" in self._statcast_data:
+                whip = self._statcast_data["whip"]
                 if whip < 1.00:
                     total_factor *= 1.02  # 2% boost for elite WHIP
                     adjustments += 1
@@ -338,8 +362,8 @@ class UnifiedPlayer:
                     adjustments += 1
         else:
             # Hitter metrics (small adjustments only)
-            if 'barrel_rate' in self._statcast_data:
-                barrel = self._statcast_data['barrel_rate']
+            if "barrel_rate" in self._statcast_data:
+                barrel = self._statcast_data["barrel_rate"]
                 if barrel > 12:
                     total_factor *= 1.03  # 3% boost for elite barrels
                     adjustments += 1
@@ -347,8 +371,8 @@ class UnifiedPlayer:
                     total_factor *= 0.97  # 3% penalty for poor barrels
                     adjustments += 1
 
-            if 'hard_hit_rate' in self._statcast_data:
-                hard_hit = self._statcast_data['hard_hit_rate']
+            if "hard_hit_rate" in self._statcast_data:
+                hard_hit = self._statcast_data["hard_hit_rate"]
                 if hard_hit > 45:
                     total_factor *= 1.02  # 2% boost
                     adjustments += 1
@@ -371,8 +395,8 @@ class UnifiedPlayer:
             return None
 
         # Use provided park factors
-        if 'factor' in self._park_factors:
-            return self._park_factors['factor']
+        if "factor" in self._park_factors:
+            return self._park_factors["factor"]
 
         return None
 
@@ -383,12 +407,12 @@ class UnifiedPlayer:
         if dff_data is None:
             return
 
-        if 'projection' in dff_data:
-            self.dff_projection = dff_data['projection']
-        if 'l5_avg' in dff_data:
-            self.dff_l5_avg = dff_data['l5_avg']
-        if 'consistency' in dff_data:
-            self.dff_consistency = dff_data['consistency']
+        if "projection" in dff_data:
+            self.dff_projection = dff_data["projection"]
+        if "l5_avg" in dff_data:
+            self.dff_l5_avg = dff_data["l5_avg"]
+        if "consistency" in dff_data:
+            self.dff_consistency = dff_data["consistency"]
 
         # Recalculate scores
         self.calculate_data_quality()
@@ -399,12 +423,12 @@ class UnifiedPlayer:
         self._vegas_data = vegas_data
 
         # Extract key fields
-        if 'implied_total' in vegas_data:
-            self.implied_team_score = vegas_data['implied_total']
-        if 'game_total' in vegas_data:
-            self.over_under = vegas_data['game_total']
-        if 'moneyline' in vegas_data:
-            self.moneyline = vegas_data['moneyline']
+        if "implied_total" in vegas_data:
+            self.implied_team_score = vegas_data["implied_total"]
+        if "game_total" in vegas_data:
+            self.over_under = vegas_data["game_total"]
+        if "moneyline" in vegas_data:
+            self.moneyline = vegas_data["moneyline"]
 
         # Recalculate score
         self.calculate_enhanced_score()
@@ -421,9 +445,10 @@ class UnifiedPlayer:
         self._recent_performance = form_data
 
         # Extract game scores if available
-        if 'recent_games' in form_data:
-            self.recent_scores = [g.get('fantasy_points', 0)
-                                  for g in form_data['recent_games'][-5:]]
+        if "recent_games" in form_data:
+            self.recent_scores = [
+                g.get("fantasy_points", 0) for g in form_data["recent_games"][-5:]
+            ]
 
         # Recalculate score
         self.calculate_enhanced_score()
@@ -471,23 +496,30 @@ class UnifiedPlayer:
 
         parts = [f"Base ({self._score_components.get('base', 'none')}): {self.base_projection:.1f}"]
 
-        if 'recent_form_mult' in self._score_components:
+        if "recent_form_mult" in self._score_components:
             parts.append(
-                f"Recent: {self._score_components['recent_form_mult']:.2f}x ({self._score_components['recent_form_weight']:.0%})")
-        if 'vegas_mult' in self._score_components:
+                f"Recent: {self._score_components['recent_form_mult']:.2f}x ({self._score_components['recent_form_weight']:.0%})"
+            )
+        if "vegas_mult" in self._score_components:
             parts.append(
-                f"Vegas: {self._score_components['vegas_mult']:.2f}x ({self._score_components['vegas_weight']:.0%})")
-        if 'matchup_mult' in self._score_components:
+                f"Vegas: {self._score_components['vegas_mult']:.2f}x ({self._score_components['vegas_weight']:.0%})"
+            )
+        if "matchup_mult" in self._score_components:
             parts.append(
-                f"Matchup: {self._score_components['matchup_mult']:.2f}x ({self._score_components['matchup_weight']:.0%})")
-        if 'park_mult' in self._score_components:
+                f"Matchup: {self._score_components['matchup_mult']:.2f}x ({self._score_components['matchup_weight']:.0%})"
+            )
+        if "park_mult" in self._score_components:
             parts.append(
-                f"Park: {self._score_components['park_mult']:.2f}x ({self._score_components['park_weight']:.0%})")
-        if 'batting_order_mult' in self._score_components:
+                f"Park: {self._score_components['park_mult']:.2f}x ({self._score_components['park_weight']:.0%})"
+            )
+        if "batting_order_mult" in self._score_components:
             parts.append(
-                f"Order: {self._score_components['batting_order_mult']:.2f}x ({self._score_components['batting_order_weight']:.0%})")
+                f"Order: {self._score_components['batting_order_mult']:.2f}x ({self._score_components['batting_order_weight']:.0%})"
+            )
 
-        parts.append(f"Final: {self.enhanced_score:.1f} ({self._score_components.get('final_multiplier', 1.0):.2f}x)")
+        parts.append(
+            f"Final: {self.enhanced_score:.1f} ({self._score_components.get('final_multiplier', 1.0):.2f}x)"
+        )
 
         return " | ".join(parts)
 
@@ -502,9 +534,11 @@ class UnifiedPlayer:
         return False
 
     def __repr__(self):
-        return (f"UnifiedPlayer({self.name}, {self.primary_position}, "
-                f"${self.salary}, score={self.enhanced_score:.1f}, "
-                f"quality={self.data_quality_score:.2f})")
+        return (
+            f"UnifiedPlayer({self.name}, {self.primary_position}, "
+            f"${self.salary}, score={self.enhanced_score:.1f}, "
+            f"quality={self.data_quality_score:.2f})"
+        )
 
 
 # Example test
@@ -517,21 +551,13 @@ if __name__ == "__main__":
         salary=5500,
         primary_position="OF",
         positions=["OF"],
-        base_projection=12.5
+        base_projection=12.5,
     )
 
     # Apply some real data
-    player.apply_vegas_data({
-        'implied_total': 5.2,
-        'game_total': 9.5,
-        'opponent_total': 4.3
-    })
+    player.apply_vegas_data({"implied_total": 5.2, "game_total": 9.5, "opponent_total": 4.3})
 
-    player.apply_statcast_data({
-        'barrel_rate': 14.5,
-        'hard_hit_rate': 48.2,
-        'xba': .295
-    })
+    player.apply_statcast_data({"barrel_rate": 14.5, "hard_hit_rate": 48.2, "xba": 0.295})
 
     player.dff_l5_avg = 14.8
     player.batting_order = 3

@@ -5,13 +5,13 @@ Recent Form Analyzer - ENHANCED with batch processing
 Efficient batch processing for faster analysis
 """
 
-from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional, Any
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
-from pybaseball import statcast_batter, playerid_lookup
-import time
+from pybaseball import playerid_lookup, statcast_batter
 
 logger = logging.getLogger(__name__)
 

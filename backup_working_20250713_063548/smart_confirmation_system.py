@@ -6,13 +6,14 @@ Unified system for lineup and pitcher confirmations
 Uses data integration system for consistent team/name mapping
 """
 
-import requests
 import json
-from datetime import datetime
-from typing import Dict, List, Tuple, Optional, Set
-from unified_data_system import UnifiedDataSystem
 import logging
-import traceback
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+import requests
+
+from unified_data_system import UnifiedDataSystem
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ class SmartConfirmationSystem:
         print("=" * 50)
 
         # Try MLB Stats API - NO FALLBACK
-        mlb_data = self._fetch_mlb_confirmations()
+        self._fetch_mlb_confirmations()
 
         # Filter to only CSV teams
         self._filter_to_csv_teams()
@@ -328,7 +329,6 @@ class SmartConfirmationSystem:
         """Process game data from MLB API"""
         # Implementation similar to your existing code but using
         # the unified data system for team/name normalization
-        pass
 
     def is_player_confirmed(self, player_name: str, team: str = None) -> Tuple[bool, Optional[int]]:
         """Check if player is confirmed in actual lineup - FIXED VERSION"""
@@ -366,7 +366,7 @@ class SmartConfirmationSystem:
                 try:
                     if self.data_system.match_player_names(player_name, lineup_player.get('name', '')):
                         return True, lineup_player.get('order', 1)
-                except Exception as e:
+                except Exception:
                     # Skip this player if matching fails
                     continue
 

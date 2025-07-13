@@ -2,6 +2,7 @@
 """Minimal test to verify optimization is working"""
 
 import sys
+
 from bulletproof_dfs_core import BulletproofDFSCore
 
 
@@ -21,10 +22,13 @@ def quick_test():
 
     # Check what's available
     print("\nSystem status:")
-    print(f"  Scoring engine: {'✅' if hasattr(core, 'scoring_engine') and core.scoring_engine else '❌'}")
+    print(
+        f"  Scoring engine: {'✅' if hasattr(core, 'scoring_engine') and core.scoring_engine else '❌'}"
+    )
     print(f"  Validator: {'✅' if hasattr(core, 'validator') and core.validator else '❌'}")
     print(
-        f"  Performance optimizer: {'✅' if hasattr(core, 'performance_optimizer') and core.performance_optimizer else '❌'}")
+        f"  Performance optimizer: {'✅' if hasattr(core, 'performance_optimizer') and core.performance_optimizer else '❌'}"
+    )
 
     # Load CSV
     print(f"\nLoading {csv_file}...")
@@ -36,13 +40,14 @@ def quick_test():
 
     # Detect confirmed
     print("\nDetecting confirmed players...")
-    confirmed_count = core.detect_confirmed_players()
+    core.detect_confirmed_players()
     confirmed = [p for p in core.players if p.is_confirmed]
     print(f"✅ Found {len(confirmed)} confirmed players")
 
     # Generate lineup
     print("\nGenerating optimal lineup...")
     import time
+
     start = time.time()
 
     lineup, score = core.optimize_lineup_with_mode()
@@ -57,8 +62,10 @@ def quick_test():
 
         total_salary = 0
         for player in lineup:
-            pos = getattr(player, 'assigned_position', player.primary_position)
-            print(f"{pos:4s} {player.name:20s} {player.team:4s} ${player.salary:6d} {player.enhanced_score:6.1f}")
+            pos = getattr(player, "assigned_position", player.primary_position)
+            print(
+                f"{pos:4s} {player.name:20s} {player.team:4s} ${player.salary:6d} {player.enhanced_score:6.1f}"
+            )
             total_salary += player.salary
 
         print("-" * 60)
@@ -66,7 +73,7 @@ def quick_test():
         print(f"Salary used: {total_salary / 500:.1f}%")
 
         # Check for score audit
-        if hasattr(lineup[0], '_score_audit'):
+        if hasattr(lineup[0], "_score_audit"):
             print("\n📊 Score calculation working correctly (audit trail available)")
         else:
             print("\n⚠️ No score audit found - using basic scoring")
@@ -75,9 +82,11 @@ def quick_test():
         print("❌ No lineup generated")
 
     # Show cache stats if available
-    if hasattr(core, 'scoring_engine') and core.scoring_engine:
+    if hasattr(core, "scoring_engine") and core.scoring_engine:
         stats = core.scoring_engine.get_statistics()
-        print(f"\n📈 Performance: {stats['calculations']} calculations, {stats['cache_hit_rate']:.1%} cache hit rate")
+        print(
+            f"\n📈 Performance: {stats['calculations']} calculations, {stats['cache_hit_rate']:.1%} cache hit rate"
+        )
 
 
 if __name__ == "__main__":

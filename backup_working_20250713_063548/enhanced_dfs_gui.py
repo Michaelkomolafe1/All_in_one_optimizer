@@ -5,35 +5,52 @@ CLEAN DFS OPTIMIZER GUI - FIXED VERSION
 Fixed layout errors and improved stability
 """
 
-import sys
-import os
 import csv
-import json
-import traceback
-from datetime import datetime
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Any
+import os
+import sys
 import tempfile
+import traceback
 
 try:
-    from PyQt5.QtWidgets import (
-        QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-        QPushButton, QLabel, QTextEdit, QTableWidget, QTableWidgetItem,
-        QGroupBox, QComboBox, QSpinBox, QCheckBox, QRadioButton,
-        QSlider, QTabWidget, QDialog, QFileDialog, QMessageBox,
-        QListWidget, QFrame, QSplitter, QStatusBar, QProgressBar,
-        QFormLayout, QGridLayout, QListWidgetItem, QHeaderView,
-        QAbstractItemView, QSizePolicy, QPlainTextEdit
-    )
     from PyQt5.QtCore import *
     from PyQt5.QtGui import *
+    from PyQt5.QtWidgets import (
+        QApplication,
+        QCheckBox,
+        QComboBox,
+        QDialog,
+        QFileDialog,
+        QFormLayout,
+        QFrame,
+        QGridLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QListWidget,
+        QMainWindow,
+        QMessageBox,
+        QPlainTextEdit,
+        QProgressBar,
+        QPushButton,
+        QRadioButton,
+        QSlider,
+        QSpinBox,
+        QSplitter,
+        QStatusBar,
+        QTableWidget,
+        QTableWidgetItem,
+        QTabWidget,
+        QTextEdit,
+        QVBoxLayout,
+        QWidget,
+    )
 except ImportError:
     print("❌ PyQt5 not installed. Install with: pip install PyQt5")
     sys.exit(1)
 
 # Try to import optimizer components
 try:
-    from bulletproof_dfs_core import BulletproofDFSCore, AdvancedPlayer
+    from bulletproof_dfs_core import AdvancedPlayer, BulletproofDFSCore
 
     CORE_AVAILABLE = True
 except ImportError:
@@ -51,7 +68,7 @@ except ImportError:
 
     # Import progress tracker
     try:
-        from progress_tracker import ProgressTracker, MultiStageProgress
+        pass
 
         PROGRESS_AVAILABLE = True
     except ImportError:

@@ -2,6 +2,7 @@
 """Minimal test to verify optimization is working"""
 
 import sys
+
 from bulletproof_dfs_core import BulletproofDFSCore
 
 
@@ -36,7 +37,7 @@ def quick_test():
 
     # Detect confirmed
     print("\nDetecting confirmed players...")
-    confirmed_count = core.detect_confirmed_players()
+    core.detect_confirmed_players()
     confirmed = [p for p in core.players if p.is_confirmed]
     print(f"✅ Found {len(confirmed)} confirmed players")
 

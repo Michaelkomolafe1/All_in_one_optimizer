@@ -10,16 +10,17 @@ ENHANCED STATISTICAL ANALYSIS ENGINE - PURE DATA-DRIVEN APPROACH
 
 import os
 import re
-import numpy as np
-import pandas as pd
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+import numpy as np
+import pandas as pd
 
 # Try to import scipy for better statistical functions
 try:
-    from scipy import stats
+    pass
 
     SCIPY_AVAILABLE = True
 except ImportError:
@@ -435,7 +436,7 @@ class DFFRankingsProcessor:
                     else:
                         no_matches.append(dff_name)
 
-                except Exception as e:
+                except Exception:
                     continue
 
             # Show unmatched players

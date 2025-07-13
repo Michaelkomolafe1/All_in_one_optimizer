@@ -5,14 +5,13 @@ UNIFIED MILP OPTIMIZER - FIXED COMPLETE VERSION
 Clean implementation with all optimizations included
 """
 
-import pulp
-from typing import List, Dict, Optional, Tuple, Set, Any
-from dataclasses import dataclass, field
-import logging
-import numpy as np
-from datetime import datetime
-import json
 import copy
+import json
+import logging
+from dataclasses import dataclass
+from typing import Dict, List, Tuple
+
+import pulp
 
 # Import unified player model
 from unified_player_model import UnifiedPlayer
@@ -20,8 +19,8 @@ from unified_player_model import UnifiedPlayer
 # Import new optimization modules
 
 try:
-    from unified_scoring_engine import get_scoring_engine
     from performance_optimizer import get_performance_optimizer
+    from unified_scoring_engine import get_scoring_engine
 
     OPTIMIZATION_MODULES_AVAILABLE = True
 except ImportError:
@@ -135,7 +134,6 @@ class UnifiedMILPOptimizer:
     def _initialize_data_sources(self):
         """Initialize connections to real data sources"""
         # This is a placeholder - implement based on your data sources
-        pass
 
     def get_optimization_score(self, player: UnifiedPlayer) -> float:
         """
@@ -226,7 +224,7 @@ class UnifiedMILPOptimizer:
                 print(f"ℹ️ Skipping {already_enriched}/{len(players)} already enriched players")
 
             # Determine how many players to analyze for form
-            form_limit = getattr(self, 'max_form_analysis_players', None)
+            getattr(self, 'max_form_analysis_players', None)
 
             # Sort players by base projection for prioritization
             sorted_players = sorted(players, key=lambda p: getattr(p, 'base_projection', 0), reverse=True)
@@ -340,7 +338,6 @@ class UnifiedMILPOptimizer:
             ]) == player_vars[i]
 
         # 6. Max players per team (handle None batting_order)
-        team_counts = {}
         for team in set(p.team for p in players):
             team_players = [i for i, p in enumerate(players) if p.team == team]
             if team_players:
@@ -468,13 +465,13 @@ class StrategyFilter:
 
             for player in players:
                 # Must have real performance data
-                ceiling_score = 0
+                pass
 
                 # Check recent form
                 if hasattr(player, '_recent_performance') and player._recent_performance:
                     form = player._recent_performance.get('form_score', 1.0)
                     if form > 1.15:  # Hot streak
-                        ceiling_score = player.enhanced_score * 1.2
+                        player.enhanced_score * 1.2
                         ceiling_players.append(player)
                         continue
 
@@ -482,7 +479,7 @@ class StrategyFilter:
                 if hasattr(player, 'statcast_data') and player.statcast_data:
                     data = player.statcast_data
                     if data.get('barrel_rate', 0) > 10 or data.get('hard_hit_rate', 0) > 45:
-                        ceiling_score = player.enhanced_score * 1.15
+                        player.enhanced_score * 1.15
                         ceiling_players.append(player)
 
             # Sort by ceiling potential

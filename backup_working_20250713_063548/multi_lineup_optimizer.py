@@ -3,12 +3,9 @@ Multi-Lineup Optimizer for DFS
 Generate 20-150 unique lineups with exposure and ownership controls
 """
 
-import copy
 import random
-from typing import List, Tuple, Dict, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import json
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
 
 class MultiLineupOptimizer:

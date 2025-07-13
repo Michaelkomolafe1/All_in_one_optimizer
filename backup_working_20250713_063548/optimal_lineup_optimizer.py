@@ -7,12 +7,11 @@ OPTIMAL LINEUP OPTIMIZER - FIXED VERSION
 ✅ No more 3 pitchers or duplicate positions!
 """
 
-import pulp
-import numpy as np
-import copy
-from typing import List, Dict, Optional, Tuple, Any
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+from typing import Dict, List
+
+import pulp
 
 logger = logging.getLogger(__name__)
 

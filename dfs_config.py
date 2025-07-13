@@ -7,22 +7,19 @@ Centralized configuration for all DFS optimizer settings
 
 import json
 import os
-from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 class DFSConfig:
     """Configuration manager for DFS optimizer"""
 
-
-
-    def __init__(self, config_file: str = 'dfs_config.json'):
+    def __init__(self, config_file: str = "dfs_config.json"):
         self.config_file = config_file
         self.config = self._load_config()
 
     def get_form_analysis_limit(self):
         """Get player limit for form analysis - None means no limit"""
-        limit = self.config.get('optimization', {}).get('max_form_analysis_players', None)
+        limit = self.config.get("optimization", {}).get("max_form_analysis_players", None)
         if limit is None:
             print("📊 Form analysis will process ALL players (no limit set)")
         else:
@@ -38,62 +35,50 @@ class DFSConfig:
                 "batch_size": 25,
                 "cache_enabled": True,
                 "salary_cap": 50000,
-                "min_salary_usage": 0.95  # Use at least 95% of salary cap
+                "min_salary_usage": 0.95,  # Use at least 95% of salary cap
             },
             "data_sources": {
-                "statcast": {
-                    "enabled": True,
-                    "priority": 1,
-                    "cache_hours": 6,
-                    "batch_size": 20
-                },
+                "statcast": {"enabled": True, "priority": 1, "cache_hours": 6, "batch_size": 20},
                 "vegas": {
                     "enabled": True,
                     "priority": 2,
                     "cache_hours": 1,
-                    "min_total_deviation": 1.0  # Only apply if game total differs by 1+ run
+                    "min_total_deviation": 1.0,  # Only apply if game total differs by 1+ run
                 },
                 "recent_form": {
                     "enabled": True,
                     "priority": 3,
                     "days_back": 7,
                     "min_games": 3,
-                    "cache_hours": 6
+                    "cache_hours": 6,
                 },
-                "dff": {
-                    "enabled": True,
-                    "priority": 4,
-                    "auto_detect": True
-                },
-                "batting_order": {
-                    "enabled": True,
-                    "priority": 5
-                }
+                "dff": {"enabled": True, "priority": 4, "auto_detect": True},
+                "batting_order": {"enabled": True, "priority": 5},
             },
             "api_limits": {
                 "pybaseball_delay": 0.5,
                 "max_retries": 3,
                 "timeout": 30,
-                "rate_limit_per_minute": 60
+                "rate_limit_per_minute": 60,
             },
             "player_filtering": {
                 "min_salary": 2000,
                 "exclude_injured": True,
                 "require_confirmation": True,
-                "min_games_played": 5
+                "min_games_played": 5,
             },
             "output": {
                 "show_progress": True,
                 "verbose_logging": False,
                 "export_format": "csv",
-                "save_lineups": True
-            }
+                "save_lineups": True,
+            },
         }
 
         # Try to load user config
         if os.path.exists(self.config_file):
             try:
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file, "r") as f:
                     user_config = json.load(f)
                     # Merge with defaults
                     return self._deep_merge(defaults, user_config)
@@ -117,7 +102,7 @@ class DFSConfig:
     def _save_config(self, config: Dict):
         """Save configuration to file"""
         try:
-            with open(self.config_file, 'w') as f:
+            with open(self.config_file, "w") as f:
                 json.dump(config, f, indent=2)
             print(f"✅ Configuration saved to {self.config_file}")
         except Exception as e:
@@ -125,7 +110,7 @@ class DFSConfig:
 
     def get(self, key_path: str, default: Any = None) -> Any:
         """Get config value using dot notation (e.g., 'optimization.batch_size')"""
-        keys = key_path.split('.')
+        keys = key_path.split(".")
         value = self.config
 
         for key in keys:
@@ -138,7 +123,7 @@ class DFSConfig:
 
     def set(self, key_path: str, value: Any):
         """Set config value using dot notation"""
-        keys = key_path.split('.')
+        keys = key_path.split(".")
         config = self.config
 
         # Navigate to the parent of the target key

@@ -5,11 +5,11 @@ UNIFIED DATA INTEGRATION SYSTEM
 Handles all data sources with consistent team/name mapping
 """
 
+import logging
 import re
 import unicodedata
-from typing import Dict, List, Optional, Tuple, Set
 from difflib import SequenceMatcher
-import logging
+from typing import List, Set
 
 logger = logging.getLogger(__name__)
 
@@ -21,36 +21,36 @@ class UnifiedDataSystem:
         # Master team mapping - single source of truth
         self.TEAM_MAPPINGS = {
             # Primary mappings (DraftKings standard)
-            'ARI': ['Arizona Diamondbacks', 'Arizona', 'Diamondbacks', 'D-backs', 'AZ'],
-            'ATL': ['Atlanta Braves', 'Atlanta', 'Braves'],
-            'BAL': ['Baltimore Orioles', 'Baltimore', 'Orioles', 'O\'s'],
-            'BOS': ['Boston Red Sox', 'Boston', 'Red Sox', 'Sox'],
-            'CHC': ['Chicago Cubs', 'Cubs', 'Chicago Cubs', 'CHI Cubs'],
-            'CWS': ['Chicago White Sox', 'White Sox', 'Chicago White Sox', 'CHI White Sox', 'CHW'],
-            'CIN': ['Cincinnati Reds', 'Cincinnati', 'Reds'],
-            'CLE': ['Cleveland Guardians', 'Cleveland', 'Guardians', 'Indians'],
-            'COL': ['Colorado Rockies', 'Colorado', 'Rockies'],
-            'DET': ['Detroit Tigers', 'Detroit', 'Tigers'],
-            'HOU': ['Houston Astros', 'Houston', 'Astros', 'Stros'],
-            'KC': ['Kansas City Royals', 'Kansas City', 'Royals', 'KCR'],
-            'LAA': ['Los Angeles Angels', 'LA Angels', 'Angels', 'Anaheim'],
-            'LAD': ['Los Angeles Dodgers', 'LA Dodgers', 'Dodgers'],
-            'MIA': ['Miami Marlins', 'Miami', 'Marlins', 'Florida'],
-            'MIL': ['Milwaukee Brewers', 'Milwaukee', 'Brewers', 'Brew Crew'],
-            'MIN': ['Minnesota Twins', 'Minnesota', 'Twins'],
-            'NYM': ['New York Mets', 'NY Mets', 'Mets'],
-            'NYY': ['New York Yankees', 'NY Yankees', 'Yankees', 'Yanks'],
-            'OAK': ['Oakland Athletics', 'Oakland', 'Athletics', 'A\'s'],
-            'PHI': ['Philadelphia Phillies', 'Philadelphia', 'Phillies', 'Phils'],
-            'PIT': ['Pittsburgh Pirates', 'Pittsburgh', 'Pirates', 'Bucs'],
-            'SD': ['San Diego Padres', 'San Diego', 'Padres', 'SDP'],
-            'SF': ['San Francisco Giants', 'San Francisco', 'Giants', 'SFG'],
-            'SEA': ['Seattle Mariners', 'Seattle', 'Mariners', 'M\'s'],
-            'STL': ['St. Louis Cardinals', 'St Louis', 'Cardinals', 'Cards'],
-            'TB': ['Tampa Bay Rays', 'Tampa Bay', 'Rays', 'TBR', 'TAM'],
-            'TEX': ['Texas Rangers', 'Texas', 'Rangers'],
-            'TOR': ['Toronto Blue Jays', 'Toronto', 'Blue Jays', 'Jays'],
-            'WSH': ['Washington Nationals', 'Washington', 'Nationals', 'Nats', 'WAS']
+            "ARI": ["Arizona Diamondbacks", "Arizona", "Diamondbacks", "D-backs", "AZ"],
+            "ATL": ["Atlanta Braves", "Atlanta", "Braves"],
+            "BAL": ["Baltimore Orioles", "Baltimore", "Orioles", "O's"],
+            "BOS": ["Boston Red Sox", "Boston", "Red Sox", "Sox"],
+            "CHC": ["Chicago Cubs", "Cubs", "Chicago Cubs", "CHI Cubs"],
+            "CWS": ["Chicago White Sox", "White Sox", "Chicago White Sox", "CHI White Sox", "CHW"],
+            "CIN": ["Cincinnati Reds", "Cincinnati", "Reds"],
+            "CLE": ["Cleveland Guardians", "Cleveland", "Guardians", "Indians"],
+            "COL": ["Colorado Rockies", "Colorado", "Rockies"],
+            "DET": ["Detroit Tigers", "Detroit", "Tigers"],
+            "HOU": ["Houston Astros", "Houston", "Astros", "Stros"],
+            "KC": ["Kansas City Royals", "Kansas City", "Royals", "KCR"],
+            "LAA": ["Los Angeles Angels", "LA Angels", "Angels", "Anaheim"],
+            "LAD": ["Los Angeles Dodgers", "LA Dodgers", "Dodgers"],
+            "MIA": ["Miami Marlins", "Miami", "Marlins", "Florida"],
+            "MIL": ["Milwaukee Brewers", "Milwaukee", "Brewers", "Brew Crew"],
+            "MIN": ["Minnesota Twins", "Minnesota", "Twins"],
+            "NYM": ["New York Mets", "NY Mets", "Mets"],
+            "NYY": ["New York Yankees", "NY Yankees", "Yankees", "Yanks"],
+            "OAK": ["Oakland Athletics", "Oakland", "Athletics", "A's"],
+            "PHI": ["Philadelphia Phillies", "Philadelphia", "Phillies", "Phils"],
+            "PIT": ["Pittsburgh Pirates", "Pittsburgh", "Pirates", "Bucs"],
+            "SD": ["San Diego Padres", "San Diego", "Padres", "SDP"],
+            "SF": ["San Francisco Giants", "San Francisco", "Giants", "SFG"],
+            "SEA": ["Seattle Mariners", "Seattle", "Mariners", "M's"],
+            "STL": ["St. Louis Cardinals", "St Louis", "Cardinals", "Cards"],
+            "TB": ["Tampa Bay Rays", "Tampa Bay", "Rays", "TBR", "TAM"],
+            "TEX": ["Texas Rangers", "Texas", "Rangers"],
+            "TOR": ["Toronto Blue Jays", "Toronto", "Blue Jays", "Jays"],
+            "WSH": ["Washington Nationals", "Washington", "Nationals", "Nats", "WAS"],
         }
 
         # Reverse mapping for quick lookups
@@ -62,44 +62,91 @@ class UnifiedDataSystem:
 
         # MLB API team ID mappings
         self.MLB_ID_MAPPINGS = {
-            '109': 'ARI', '144': 'ATL', '110': 'BAL', '111': 'BOS',
-            '112': 'CHC', '145': 'CWS', '113': 'CIN', '114': 'CLE',
-            '115': 'COL', '116': 'DET', '117': 'HOU', '118': 'KC',
-            '108': 'LAA', '119': 'LAD', '146': 'MIA', '158': 'MIL',
-            '142': 'MIN', '121': 'NYM', '147': 'NYY', '133': 'OAK',
-            '143': 'PHI', '134': 'PIT', '135': 'SD', '137': 'SF',
-            '136': 'SEA', '138': 'STL', '139': 'TB', '140': 'TEX',
-            '141': 'TOR', '120': 'WSH'
+            "109": "ARI",
+            "144": "ATL",
+            "110": "BAL",
+            "111": "BOS",
+            "112": "CHC",
+            "145": "CWS",
+            "113": "CIN",
+            "114": "CLE",
+            "115": "COL",
+            "116": "DET",
+            "117": "HOU",
+            "118": "KC",
+            "108": "LAA",
+            "119": "LAD",
+            "146": "MIA",
+            "158": "MIL",
+            "142": "MIN",
+            "121": "NYM",
+            "147": "NYY",
+            "133": "OAK",
+            "143": "PHI",
+            "134": "PIT",
+            "135": "SD",
+            "137": "SF",
+            "136": "SEA",
+            "138": "STL",
+            "139": "TB",
+            "140": "TEX",
+            "141": "TOR",
+            "120": "WSH",
         }
 
         # Common nickname mappings
         self.NICKNAME_MAPPINGS = {
             # First name nicknames
-            'bobby': 'robert', 'bob': 'robert', 'rob': 'robert',
-            'mike': 'michael', 'mick': 'michael', 'mickey': 'michael',
-            'dave': 'david', 'tony': 'anthony', 'ant': 'anthony',
-            'chris': 'christopher', 'matt': 'matthew', 'matty': 'matthew',
-            'joe': 'joseph', 'joey': 'joseph', 'josh': 'joshua',
-            'alex': 'alexander', 'andy': 'andrew', 'drew': 'andrew',
-            'danny': 'daniel', 'dan': 'daniel', 'tommy': 'thomas',
-            'tom': 'thomas', 'jimmy': 'james', 'jim': 'james',
-            'johnny': 'john', 'jon': 'jonathan', 'jake': 'jacob',
-            'nick': 'nicholas', 'nicky': 'nicholas', 'will': 'william',
-            'bill': 'william', 'billy': 'william', 'ken': 'kenneth',
-            'kenny': 'kenneth', 'ted': 'theodore', 'teddy': 'theodore',
-            'ricky': 'richard', 'rick': 'richard', 'dick': 'richard',
-
+            "bobby": "robert",
+            "bob": "robert",
+            "rob": "robert",
+            "mike": "michael",
+            "mick": "michael",
+            "mickey": "michael",
+            "dave": "david",
+            "tony": "anthony",
+            "ant": "anthony",
+            "chris": "christopher",
+            "matt": "matthew",
+            "matty": "matthew",
+            "joe": "joseph",
+            "joey": "joseph",
+            "josh": "joshua",
+            "alex": "alexander",
+            "andy": "andrew",
+            "drew": "andrew",
+            "danny": "daniel",
+            "dan": "daniel",
+            "tommy": "thomas",
+            "tom": "thomas",
+            "jimmy": "james",
+            "jim": "james",
+            "johnny": "john",
+            "jon": "jonathan",
+            "jake": "jacob",
+            "nick": "nicholas",
+            "nicky": "nicholas",
+            "will": "william",
+            "bill": "william",
+            "billy": "william",
+            "ken": "kenneth",
+            "kenny": "kenneth",
+            "ted": "theodore",
+            "teddy": "theodore",
+            "ricky": "richard",
+            "rick": "richard",
+            "dick": "richard",
             # Common baseball nicknames
-            'aj': ['aaron', 'anthony', 'andrew'],
-            'cj': ['charles', 'christopher', 'carl'],
-            'dj': ['daniel', 'david', 'derek'],
-            'tj': ['thomas', 'timothy', 'tyler'],
-            'jj': ['joseph', 'james', 'john'],
-            'jp': ['john', 'james', 'joseph'],
-            'jd': ['john', 'james', 'joseph'],
-
+            "aj": ["aaron", "anthony", "andrew"],
+            "cj": ["charles", "christopher", "carl"],
+            "dj": ["daniel", "david", "derek"],
+            "tj": ["thomas", "timothy", "tyler"],
+            "jj": ["joseph", "james", "john"],
+            "jp": ["john", "james", "joseph"],
+            "jd": ["john", "james", "joseph"],
             # Spanish nicknames
-            'junior': 'jr', 'hijo': 'jr'
+            "junior": "jr",
+            "hijo": "jr",
         }
 
     def normalize_team(self, team_input: str) -> str:
@@ -113,7 +160,7 @@ class UnifiedDataSystem:
             Standard team abbreviation (e.g., 'NYY')
         """
         if not team_input:
-            return ''
+            return ""
 
         team_input = str(team_input).strip()
 
@@ -145,21 +192,21 @@ class UnifiedDataSystem:
             Cleaned name
         """
         if not name:
-            return ''
+            return ""
 
         # Convert to lowercase and strip
         name = str(name).lower().strip()
 
         # Remove suffixes and punctuation
-        name = re.sub(r'\b(jr\.?|sr\.?|iii?|iv|v)\b', '', name)
-        name = re.sub(r'[^\w\s-]', ' ', name)
+        name = re.sub(r"\b(jr\.?|sr\.?|iii?|iv|v)\b", "", name)
+        name = re.sub(r"[^\w\s-]", " ", name)
 
         # Remove accents
-        name = unicodedata.normalize('NFD', name)
-        name = ''.join(c for c in name if unicodedata.category(c) != 'Mn')
+        name = unicodedata.normalize("NFD", name)
+        name = "".join(c for c in name if unicodedata.category(c) != "Mn")
 
         # Clean up whitespace
-        name = ' '.join(name.split())
+        name = " ".join(name.split())
 
         return name
 
@@ -242,10 +289,10 @@ class UnifiedDataSystem:
         teams = set()
 
         for player in players:
-            if hasattr(player, 'team'):
+            if hasattr(player, "team"):
                 team = self.normalize_team(player.team)
             elif isinstance(player, dict):
-                team = self.normalize_team(player.get('team', ''))
+                team = self.normalize_team(player.get("team", ""))
             elif isinstance(player, (list, tuple)) and len(player) > 3:
                 team = self.normalize_team(player[3])
             else:

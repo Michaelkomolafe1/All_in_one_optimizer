@@ -6,27 +6,16 @@ Complete working version with enhanced pitcher detection,
 proper error handling, and optimized data pipeline.
 """
 
+
 # Standard library imports
 import os
-import sys
 import re
-import csv
-import json
-import time
-import copy
-import random
-import tempfile
 import warnings
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from enum import Enum
-from difflib import SequenceMatcher
+from typing import Any, Dict, List, Tuple
 
 # Third-party imports
-import numpy as np
 import pandas as pd
 
 # Suppress warnings
@@ -38,11 +27,10 @@ warnings.filterwarnings('ignore')
 
 # DFS Upgrade Modules
 try:
-    from unified_player_model import UnifiedPlayer
-    from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
-    from smart_cache import smart_cache
     from multi_lineup_optimizer import MultiLineupOptimizer
     from performance_tracker import tracker
+    from smart_cache import smart_cache
+    from unified_player_model import UnifiedPlayer
 
     UPGRADES_AVAILABLE = True
     print("✅ DFS upgrades loaded")
@@ -53,9 +41,9 @@ except ImportError as e:
 # Utils imports
 try:
     from utils.cache_manager import cache
+    from utils.config import config
     from utils.profiler import profiler
     from utils.validator import DataValidator
-    from utils.config import config
 except ImportError as e:
     print(f"⚠️ Utils not available: {e}")
     cache = None
@@ -65,8 +53,8 @@ except ImportError as e:
 
 # Core system imports
 try:
-    from unified_data_system import UnifiedDataSystem
     from optimal_lineup_optimizer import OptimalLineupOptimizer, OptimizationResult
+    from unified_data_system import UnifiedDataSystem
 except ImportError as e:
     print(f"⚠️ Core systems not available: {e}")
     UnifiedDataSystem = None
@@ -88,7 +76,7 @@ except ImportError:
 
 # Optimization library
 try:
-    import pulp
+    pass
 
     MILP_AVAILABLE = True
     print("✅ PuLP available - MILP optimization enabled")
@@ -142,7 +130,7 @@ except ImportError:
             return False
 
 try:
-    from simple_statcast_fetcher import SimpleStatcastFetcher, FastStatcastFetcher
+    from simple_statcast_fetcher import SimpleStatcastFetcher
 
     STATCAST_AVAILABLE = True
     print("✅ Statcast fetcher imported")
@@ -165,7 +153,7 @@ except ImportError:
             return False
 
 try:
-    from recent_form_analyzer import RecentFormAnalyzer
+    pass
 
     RECENT_FORM_AVAILABLE = True
     print("✅ Recent Form Analyzer imported")
@@ -175,9 +163,7 @@ except ImportError:
 
 try:
     from batting_order_correlation_system import (
-        BattingOrderEnricher,
-        CorrelationOptimizer,
-        integrate_batting_order_correlation
+        integrate_batting_order_correlation,
     )
 
     BATTING_CORRELATION_AVAILABLE = True
@@ -552,7 +538,7 @@ class BulletproofDFSCore:
 
     def optimize_lineup_clean(self) -> Tuple[List[UnifiedPlayer], float]:
         """New clean optimization method - NO BONUSES"""
-        from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
+        from unified_milp_optimizer import OptimizationConfig, UnifiedMILPOptimizer
 
         print(f"\n🎯 CLEAN LINEUP OPTIMIZATION - {self.optimization_mode.upper()}")
         print("=" * 80)
@@ -1052,8 +1038,8 @@ class BulletproofDFSCore:
         # Recent Form Analyzer
         if RECENT_FORM_AVAILABLE:
             try:
-                from utils.cache_manager import cache
                 from recent_form_analyzer import RecentFormAnalyzer
+                from utils.cache_manager import cache
                 self.form_analyzer = RecentFormAnalyzer(cache_manager=cache)
                 print("✅ Recent Form Analyzer initialized")
             except Exception as e:
@@ -2288,7 +2274,7 @@ class BulletproofDFSCore:
             return self.optimize_lineup_with_ceiling()
 
         # Otherwise use normal optimization
-        from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
+        from unified_milp_optimizer import OptimizationConfig, UnifiedMILPOptimizer
         from unified_player_model import UnifiedPlayer
 
         print(f"\n🎯 CLEAN LINEUP OPTIMIZATION - {self.optimization_mode.upper()}")
@@ -2382,9 +2368,10 @@ class BulletproofDFSCore:
 
     def optimize_lineup_with_ceiling(self) -> Tuple[List[UnifiedPlayer], float]:
         """Optimize for ceiling (GPP mode) - prioritizes upside"""
-        from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
-        from unified_player_model import UnifiedPlayer
         import numpy as np
+
+        from unified_milp_optimizer import OptimizationConfig, UnifiedMILPOptimizer
+        from unified_player_model import UnifiedPlayer
 
         print("\n🚀 CEILING OPTIMIZATION MODE (GPP)")
         print("=" * 60)

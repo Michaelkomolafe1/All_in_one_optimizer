@@ -54,5 +54,14 @@
     "verbose_logging": false,
     "export_format": "csv",
     "save_lineups": true
+  },
+  "scoring_weights": {
+    "base_projection": 0.2,
+    "dff_projection": 0.25,
+    "recent_form": 0.15,
+    "vegas": 0.1,
+    "statcast": 0.15,
+    "park_factors": 0.05,
+    "confirmed_status": 0.1
   }
 }

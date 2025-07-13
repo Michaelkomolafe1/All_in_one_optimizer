@@ -118,7 +118,7 @@ def test_all_fixes():
     # Test 4: MILP Optimizer
     print("\n4️⃣ Testing MILP Optimizer...")
     try:
-        from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
+        from unified_milp_optimizer import OptimizationConfig, UnifiedMILPOptimizer
 
         config = OptimizationConfig()
         optimizer = UnifiedMILPOptimizer(config)

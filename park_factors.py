@@ -6,9 +6,9 @@ Provides park factor data for all MLB stadiums
 """
 
 import json
-import os
-from typing import Dict, Optional, Any
 import logging
+import os
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,6 @@ class ParkFactors:
     PARK_FACTORS = {
         # Extreme hitter-friendly
         "COL": {"factor": 1.20, "name": "Coors Field", "runs": 1.39, "hr": 1.37},
-
         # Hitter-friendly
         "CIN": {"factor": 1.12, "name": "Great American Ball Park", "runs": 1.18, "hr": 1.34},
         "TEX": {"factor": 1.10, "name": "Globe Life Field", "runs": 1.08, "hr": 1.15},
@@ -33,16 +32,13 @@ class ParkFactors:
         "HOU": {"factor": 1.04, "name": "Minute Maid Park", "runs": 1.01, "hr": 1.10},
         "TOR": {"factor": 1.03, "name": "Rogers Centre", "runs": 1.02, "hr": 1.08},
         "BOS": {"factor": 1.03, "name": "Fenway Park", "runs": 1.04, "hr": 0.88},
-
         # Slight hitter-friendly
         "NYY": {"factor": 1.02, "name": "Yankee Stadium", "runs": 1.01, "hr": 1.15},
         "CHC": {"factor": 1.01, "name": "Wrigley Field", "runs": 1.00, "hr": 1.02},
-
         # Neutral
         "ARI": {"factor": 1.00, "name": "Chase Field", "runs": 1.00, "hr": 1.01},
         "ATL": {"factor": 1.00, "name": "Truist Park", "runs": 0.98, "hr": 1.02},
         "MIN": {"factor": 0.99, "name": "Target Field", "runs": 0.98, "hr": 0.95},
-
         # Slight pitcher-friendly
         "WSH": {"factor": 0.98, "name": "Nationals Park", "runs": 0.96, "hr": 0.92},
         "NYM": {"factor": 0.97, "name": "Citi Field", "runs": 0.95, "hr": 0.88},
@@ -51,20 +47,18 @@ class ParkFactors:
         "LAD": {"factor": 0.98, "name": "Dodger Stadium", "runs": 0.95, "hr": 0.92},
         "CHW": {"factor": 0.96, "name": "Guaranteed Rate Field", "runs": 0.94, "hr": 0.98},
         "CWS": {"factor": 0.96, "name": "Guaranteed Rate Field", "runs": 0.94, "hr": 0.98},  # Alias
-
         # Pitcher-friendly
         "CLE": {"factor": 0.94, "name": "Progressive Field", "runs": 0.92, "hr": 0.88},
         "TB": {"factor": 0.93, "name": "Tropicana Field", "runs": 0.91, "hr": 0.85},
         "KC": {"factor": 0.92, "name": "Kauffman Stadium", "runs": 0.91, "hr": 0.82},
         "DET": {"factor": 0.91, "name": "Comerica Park", "runs": 0.90, "hr": 0.78},
         "SEA": {"factor": 0.90, "name": "T-Mobile Park", "runs": 0.89, "hr": 0.80},
-
         # Extreme pitcher-friendly
         "OAK": {"factor": 0.89, "name": "Oakland Coliseum", "runs": 0.87, "hr": 0.75},
         "SF": {"factor": 0.88, "name": "Oracle Park", "runs": 0.87, "hr": 0.72},
         "SD": {"factor": 0.87, "name": "Petco Park", "runs": 0.86, "hr": 0.70},
         "MIA": {"factor": 0.86, "name": "loanDepot park", "runs": 0.85, "hr": 0.68},
-        "PIT": {"factor": 0.85, "name": "PNC Park", "runs": 0.88, "hr": 0.73}
+        "PIT": {"factor": 0.85, "name": "PNC Park", "runs": 0.88, "hr": 0.73},
     }
 
     def __init__(self, custom_factors_file: Optional[str] = None):
@@ -79,7 +73,7 @@ class ParkFactors:
         # Load custom factors if provided
         if custom_factors_file and os.path.exists(custom_factors_file):
             try:
-                with open(custom_factors_file, 'r') as f:
+                with open(custom_factors_file, "r") as f:
                     custom_factors = json.load(f)
                 self.factors.update(custom_factors)
                 logger.info(f"Loaded custom park factors from {custom_factors_file}")
@@ -97,7 +91,7 @@ class ParkFactors:
             Park factor (1.0 = neutral)
         """
         if team_code in self.factors:
-            return self.factors[team_code]['factor']
+            return self.factors[team_code]["factor"]
 
         logger.warning(f"No park factor found for {team_code}, using neutral (1.0)")
         return 1.0
@@ -127,7 +121,7 @@ class ParkFactors:
         enriched = 0
 
         for player in players:
-            if hasattr(player, 'team') and player.team:
+            if hasattr(player, "team") and player.team:
                 park_data = self.get_detailed_factors(player.team)
 
                 if park_data:
@@ -135,17 +129,21 @@ class ParkFactors:
                     player._park_factors = park_data
 
                     # Also set the simple factor for backward compatibility
-                    player.park_factor = park_data['factor']
+                    player.park_factor = park_data["factor"]
 
                     enriched += 1
 
                     # Log extreme parks
-                    if park_data['factor'] >= 1.10:
-                        logger.info(f"{player.name} plays in hitter-friendly {park_data['name']} "
-                                    f"(factor: {park_data['factor']})")
-                    elif park_data['factor'] <= 0.90:
-                        logger.info(f"{player.name} plays in pitcher-friendly {park_data['name']} "
-                                    f"(factor: {park_data['factor']})")
+                    if park_data["factor"] >= 1.10:
+                        logger.info(
+                            f"{player.name} plays in hitter-friendly {park_data['name']} "
+                            f"(factor: {park_data['factor']})"
+                        )
+                    elif park_data["factor"] <= 0.90:
+                        logger.info(
+                            f"{player.name} plays in pitcher-friendly {park_data['name']} "
+                            f"(factor: {park_data['factor']})"
+                        )
 
         return enriched
 
@@ -161,14 +159,14 @@ class ParkFactors:
         """
         # Search by stadium name
         for team_code, data in self.factors.items():
-            if 'name' in data and data['name'].lower() in venue_name.lower():
-                return data['factor']
+            if "name" in data and data["name"].lower() in venue_name.lower():
+                return data["factor"]
 
         # Try to extract team from venue name
         venue_lower = venue_name.lower()
         for team_code, data in self.factors.items():
             if team_code.lower() in venue_lower:
-                return data['factor']
+                return data["factor"]
 
         return 1.0  # Default neutral
 
@@ -178,22 +176,18 @@ class ParkFactors:
         print("=" * 60)
 
         # Sort by factor
-        sorted_parks = sorted(
-            self.factors.items(),
-            key=lambda x: x[1]['factor'],
-            reverse=True
-        )
+        sorted_parks = sorted(self.factors.items(), key=lambda x: x[1]["factor"], reverse=True)
 
         print("\n🔥 Hitter-Friendly Parks:")
         print("-" * 40)
         for team, data in sorted_parks:
-            if data['factor'] >= 1.05:
+            if data["factor"] >= 1.05:
                 print(f"{team:4} {data['name']:25} {data['factor']:.2f}")
 
         print("\n❄️ Pitcher-Friendly Parks:")
         print("-" * 40)
         for team, data in sorted_parks:
-            if data['factor'] <= 0.95:
+            if data["factor"] <= 0.95:
                 print(f"{team:4} {data['name']:25} {data['factor']:.2f}")
 
 
@@ -227,7 +221,7 @@ def integrate_park_factors(core_instance):
     # Add enrichment method
     def enrich_with_park_factors(self):
         """Enrich players with park factor data"""
-        if hasattr(self, 'park_factors'):
+        if hasattr(self, "park_factors"):
             enriched = self.park_factors.enrich_players(self.players)
             print(f"🏟️ Park factors applied to {enriched} players")
             return enriched
@@ -235,9 +229,9 @@ def integrate_park_factors(core_instance):
 
     # Bind method
     import types
+
     core_instance.enrich_with_park_factors = types.MethodType(
-        enrich_with_park_factors,
-        core_instance
+        enrich_with_park_factors, core_instance
     )
 
     print("✅ Park Factors integrated")

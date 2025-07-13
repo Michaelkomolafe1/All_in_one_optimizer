@@ -8,9 +8,10 @@ consistent, validated, and efficient implementation.
 
 import json
 import logging
-from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 
 # Set up logging

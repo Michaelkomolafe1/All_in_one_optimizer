@@ -7,8 +7,7 @@ Centralized configuration for all DFS optimizer settings
 
 import json
 import os
-from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 class DFSConfig:

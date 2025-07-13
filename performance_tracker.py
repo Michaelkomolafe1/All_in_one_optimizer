@@ -4,15 +4,14 @@ Track results, analyze accuracy, improve over time
 """
 
 import sqlite3
-import json
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple
-import os
+from typing import Dict, List, Optional
+
 
 class PerformanceTracker:
     """Track and analyze DFS performance"""
 
-    def __init__(self, db_path: str = 'dfs_performance.db'):
+    def __init__(self, db_path: str = "dfs_performance.db"):
         self.db_path = db_path
         self.conn = None
         self._init_database()
@@ -34,7 +33,8 @@ class PerformanceTracker:
 
         try:
             # Contest results table
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS contest_results (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     date TEXT NOT NULL,
@@ -50,10 +50,12 @@ class PerformanceTracker:
                     notes TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+            """
+            )
 
             # Lineup players table
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS lineup_players (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     contest_id INTEGER,
@@ -66,10 +68,12 @@ class PerformanceTracker:
                     ownership REAL,
                     FOREIGN KEY (contest_id) REFERENCES contest_results(id)
                 )
-            """)
+            """
+            )
 
             # Player accuracy table
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS player_accuracy (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     date TEXT,
@@ -79,63 +83,70 @@ class PerformanceTracker:
                     difference REAL,
                     percentage_error REAL
                 )
-            """)
+            """
+            )
 
             self.conn.commit()
 
         except Exception as e:
             print(f"Table creation error: {e}")
 
-    def log_contest(self, lineup: List, contest_info: Dict, 
-                   result_info: Optional[Dict] = None) -> Optional[int]:
+    def log_contest(
+        self, lineup: List, contest_info: Dict, result_info: Optional[Dict] = None
+    ) -> Optional[int]:
         """Log a contest entry and optionally its results"""
         if not self.conn:
             return None
 
         try:
             # Calculate projected score
-            projected_score = sum(getattr(p, 'enhanced_score', p.base_score) 
-                                for p in lineup)
+            projected_score = sum(getattr(p, "enhanced_score", p.base_score) for p in lineup)
 
             # Insert contest
             cursor = self.conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO contest_results 
                 (date, contest_id, contest_type, entry_fee, strategy, 
                  projected_score, actual_score, finish_position, 
                  total_entries, prize_won)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                contest_info.get('date', datetime.now().strftime('%Y-%m-%d')),
-                contest_info.get('id', ''),
-                contest_info.get('type', 'gpp'),
-                contest_info.get('entry_fee', 0),
-                contest_info.get('strategy', 'balanced'),
-                projected_score,
-                result_info.get('actual_score') if result_info else None,
-                result_info.get('position') if result_info else None,
-                result_info.get('entries') if result_info else None,
-                result_info.get('prize', 0) if result_info else 0
-            ))
+            """,
+                (
+                    contest_info.get("date", datetime.now().strftime("%Y-%m-%d")),
+                    contest_info.get("id", ""),
+                    contest_info.get("type", "gpp"),
+                    contest_info.get("entry_fee", 0),
+                    contest_info.get("strategy", "balanced"),
+                    projected_score,
+                    result_info.get("actual_score") if result_info else None,
+                    result_info.get("position") if result_info else None,
+                    result_info.get("entries") if result_info else None,
+                    result_info.get("prize", 0) if result_info else 0,
+                ),
+            )
 
             contest_id = cursor.lastrowid
 
             # Insert players
             for player in lineup:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO lineup_players
                     (contest_id, player_name, position, team, salary,
                      projected_points, ownership)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    contest_id,
-                    player.name,
-                    player.primary_position,
-                    player.team,
-                    player.salary,
-                    getattr(player, 'enhanced_score', player.base_score),
-                    getattr(player, 'ownership', 0)
-                ))
+                """,
+                    (
+                        contest_id,
+                        player.name,
+                        player.primary_position,
+                        player.team,
+                        player.salary,
+                        getattr(player, "enhanced_score", player.base_score),
+                        getattr(player, "ownership", 0),
+                    ),
+                )
 
             self.conn.commit()
             print(f"📊 Logged contest #{contest_id}")
@@ -152,18 +163,21 @@ class PerformanceTracker:
             return False
 
         try:
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 UPDATE contest_results
                 SET actual_score = ?, finish_position = ?, 
                     total_entries = ?, prize_won = ?
                 WHERE id = ?
-            """, (
-                results.get('actual_score'),
-                results.get('position'),
-                results.get('entries'),
-                results.get('prize', 0),
-                contest_id
-            ))
+            """,
+                (
+                    results.get("actual_score"),
+                    results.get("position"),
+                    results.get("entries"),
+                    results.get("prize", 0),
+                    contest_id,
+                ),
+            )
 
             self.conn.commit()
             return True
@@ -179,7 +193,8 @@ class PerformanceTracker:
 
         try:
             cursor = self.conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT 
                     COUNT(*) as contests,
                     SUM(entry_fee) as total_invested,
@@ -189,22 +204,24 @@ class PerformanceTracker:
                 FROM contest_results
                 WHERE date >= date('now', '-{} days')
                 AND actual_score IS NOT NULL
-            """.format(days))
+            """.format(
+                    days
+                )
+            )
 
             row = cursor.fetchone()
-            if row and row['total_invested'] and row['total_invested'] > 0:
-                roi = ((row['total_won'] - row['total_invested']) / 
-                       row['total_invested'] * 100)
+            if row and row["total_invested"] and row["total_invested"] > 0:
+                roi = (row["total_won"] - row["total_invested"]) / row["total_invested"] * 100
             else:
                 roi = 0
 
             return {
-                'contests': row['contests'] if row else 0,
-                'invested': row['total_invested'] if row else 0,
-                'won': row['total_won'] if row else 0,
-                'roi': roi,
-                'cash_rate': row['cash_rate'] if row else 0,
-                'avg_score': row['avg_score'] if row else 0
+                "contests": row["contests"] if row else 0,
+                "invested": row["total_invested"] if row else 0,
+                "won": row["total_won"] if row else 0,
+                "roi": roi,
+                "cash_rate": row["cash_rate"] if row else 0,
+                "avg_score": row["avg_score"] if row else 0,
             }
 
         except Exception as e:
@@ -218,7 +235,8 @@ class PerformanceTracker:
 
         try:
             cursor = self.conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT 
                     AVG(ABS(projected_score - actual_score)) as avg_error,
                     AVG((actual_score - projected_score) / projected_score * 100) as avg_pct_error,
@@ -226,7 +244,8 @@ class PerformanceTracker:
                 FROM contest_results
                 WHERE actual_score IS NOT NULL
                 AND projected_score > 0
-            """)
+            """
+            )
 
             row = cursor.fetchone()
             return dict(row) if row else {}
@@ -242,12 +261,15 @@ class PerformanceTracker:
 
         try:
             cursor = self.conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT * FROM contest_results
                 WHERE actual_score IS NOT NULL
                 ORDER BY actual_score DESC
                 LIMIT ?
-            """, (limit,))
+            """,
+                (limit,),
+            )
 
             return [dict(row) for row in cursor.fetchall()]
 
@@ -272,11 +294,12 @@ class PerformanceTracker:
 
         # Projection Accuracy
         proj_data = self.analyze_projections()
-        if proj_data and proj_data.get('sample_size', 0) > 0:
+        if proj_data and proj_data.get("sample_size", 0) > 0:
             print(f"\nProjection Accuracy:")
             print(f"  Average Error: {proj_data['avg_error']:.2f} points")
             print(f"  Average % Error: {proj_data['avg_pct_error']:.1f}%")
             print(f"  Sample Size: {proj_data['sample_size']} contests")
+
 
 # Create global instance
 tracker = PerformanceTracker()

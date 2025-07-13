@@ -5,14 +5,15 @@ Vegas Lines Module - FIXED to use multipliers instead of fixed boosts
 Integrates with UnifiedScoringEngine for consistent scoring
 """
 
-import os
 import json
+import logging
+import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry  # Fixed import
-import logging
 
 # Set up logging
 logger = logging.getLogger(__name__)

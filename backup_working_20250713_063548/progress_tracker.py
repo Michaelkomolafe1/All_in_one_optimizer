@@ -5,8 +5,8 @@ Progress Tracking System for DFS Optimizer
 Provides visual progress feedback for long-running operations
 """
 
-import time
 import sys
+import time
 from typing import Optional
 
 

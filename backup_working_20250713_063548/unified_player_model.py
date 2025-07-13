@@ -7,9 +7,8 @@ Fixed calculation methods to prevent multiplicative stacking
 
 from __future__ import annotations  # MUST BE FIRST IMPORT!
 
-from typing import Dict, List, Optional, Union, Any
-from datetime import datetime
 import copy
+from typing import Dict, List, Optional
 
 from unified_scoring_engine import get_scoring_engine
 

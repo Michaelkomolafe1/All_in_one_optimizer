@@ -5,11 +5,11 @@ UNIFIED DATA INTEGRATION SYSTEM
 Handles all data sources with consistent team/name mapping
 """
 
+import logging
 import re
 import unicodedata
-from typing import Dict, List, Optional, Tuple, Set
 from difflib import SequenceMatcher
-import logging
+from typing import List, Set
 
 logger = logging.getLogger(__name__)
 

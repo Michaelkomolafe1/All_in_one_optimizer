@@ -3,21 +3,21 @@
 FAST PARALLEL STATCAST FETCHER
 """
 
+import io
 import json
 import logging
+import os
+import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
-import os
-import sys
-import io
 
 # CRITICAL: Disable ALL output before importing pybaseball
-os.environ['PYBASEBALL_NO_PROGRESS'] = '1'
-os.environ['PYBASEBALL_CACHE'] = '1'
+os.environ["PYBASEBALL_NO_PROGRESS"] = "1"
+os.environ["PYBASEBALL_CACHE"] = "1"
 
 
 # Suppress all output during pybaseball operations
@@ -44,11 +44,9 @@ try:
         # Monkey patch to suppress "Gathering player lookup table" message
         original_playerid_lookup = pybaseball.playerid_lookup
 
-
         def silent_playerid_lookup(*args, **kwargs):
             with SuppressOutput():
                 return original_playerid_lookup(*args, **kwargs)
-
 
         pybaseball.playerid_lookup = silent_playerid_lookup
 
@@ -76,31 +74,29 @@ class FastStatcastFetcher:
         self.cache_dir = Path("data/statcast_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        self.season_start = '2024-04-01'
-        self.season_end = '2024-09-30'
+        self.season_start = "2024-04-01"
+        self.season_end = "2024-09-30"
         self.max_workers = max_workers
 
         # Initialize player cache
         self.player_id_cache = {}
         self.load_player_cache()  # This is what was missing!
 
-        self.stats = {
-            'successful_fetches': 0,
-            'failed_fetches': 0,
-            'cache_hits': 0
-        }
+        self.stats = {"successful_fetches": 0, "failed_fetches": 0, "cache_hits": 0}
         self.lock = threading.Lock()
 
         # Log initialization
-        logger.info(f"FastStatcastFetcher initialized with {len(self.player_id_cache)} cached player IDs")
+        logger.info(
+            f"FastStatcastFetcher initialized with {len(self.player_id_cache)} cached player IDs"
+        )
 
     def get_pitcher_stats(self, player_name: str) -> Optional[Dict]:
         """Get pitcher stats - required method"""
-        return self.fetch_player_data(player_name, 'P')
+        return self.fetch_player_data(player_name, "P")
 
     def get_hitter_stats(self, player_name: str) -> Optional[Dict]:
         """Get hitter stats - required method"""
-        return self.fetch_player_data(player_name, 'H')
+        return self.fetch_player_data(player_name, "H")
 
     def fetch_player_data(self, player_name: str, position: str) -> Optional[Dict]:
         """Main method to fetch player data"""
@@ -113,14 +109,14 @@ class FastStatcastFetcher:
 
         if cache_file.exists():
             try:
-                with open(cache_file, 'r') as f:
+                with open(cache_file, "r") as f:
                     cached_data = json.load(f)
 
                 # Check if cache is recent (within 24 hours)
-                cache_time = datetime.fromisoformat(cached_data.get('last_updated', '2020-01-01'))
+                cache_time = datetime.fromisoformat(cached_data.get("last_updated", "2020-01-01"))
                 if (datetime.now() - cache_time).total_seconds() < 86400:
                     with self.lock:
-                        self.stats['cache_hits'] += 1
+                        self.stats["cache_hits"] += 1
                     return cached_data
             except:
                 pass
@@ -133,50 +129,50 @@ class FastStatcastFetcher:
         try:
             # Use pybaseball with suppression
             with SuppressOutput():
-                if position == 'P':
+                if position == "P":
                     data = pybaseball.statcast_pitcher(
-                        start_dt=self.season_start,
-                        end_dt=self.season_end,
-                        player_id=player_id
+                        start_dt=self.season_start, end_dt=self.season_end, player_id=player_id
                     )
                 else:
                     data = pybaseball.statcast_batter(
-                        start_dt=self.season_start,
-                        end_dt=self.season_end,
-                        player_id=player_id
+                        start_dt=self.season_start, end_dt=self.season_end, player_id=player_id
                     )
 
             if data is None or len(data) == 0:
                 return None
 
             # Process data into metrics
-            if position == 'P':
+            if position == "P":
                 metrics = {
-                    'xwOBA': self._safe_get_value(data, 'estimated_woba_using_speedangle', 0.315),
-                    'Hard_Hit': self._safe_get_percentage(data, 'launch_speed', lambda x: x >= 95, 35.0),
-                    'K': 22.0,
-                    'Whiff': 25.0,
-                    'Barrel_Against': 7.5,
-                    'data_source': 'Baseball Savant',
-                    'player_name': player_name,
-                    'last_updated': datetime.now().isoformat()
+                    "xwOBA": self._safe_get_value(data, "estimated_woba_using_speedangle", 0.315),
+                    "Hard_Hit": self._safe_get_percentage(
+                        data, "launch_speed", lambda x: x >= 95, 35.0
+                    ),
+                    "K": 22.0,
+                    "Whiff": 25.0,
+                    "Barrel_Against": 7.5,
+                    "data_source": "Baseball Savant",
+                    "player_name": player_name,
+                    "last_updated": datetime.now().isoformat(),
                 }
             else:
                 metrics = {
-                    'xwOBA': self._safe_get_value(data, 'estimated_woba_using_speedangle', 0.320),
-                    'Hard_Hit': self._safe_get_percentage(data, 'launch_speed', lambda x: x >= 95, 37.0),
-                    'Barrel': 8.5,
-                    'avg_exit_velocity': self._safe_get_value(data, 'launch_speed', 88.5),
-                    'K': 23.0,
-                    'BB': 8.5,
-                    'data_source': 'Baseball Savant',
-                    'player_name': player_name,
-                    'last_updated': datetime.now().isoformat()
+                    "xwOBA": self._safe_get_value(data, "estimated_woba_using_speedangle", 0.320),
+                    "Hard_Hit": self._safe_get_percentage(
+                        data, "launch_speed", lambda x: x >= 95, 37.0
+                    ),
+                    "Barrel": 8.5,
+                    "avg_exit_velocity": self._safe_get_value(data, "launch_speed", 88.5),
+                    "K": 23.0,
+                    "BB": 8.5,
+                    "data_source": "Baseball Savant",
+                    "player_name": player_name,
+                    "last_updated": datetime.now().isoformat(),
                 }
 
             # Cache the result
             try:
-                with open(cache_file, 'w') as f:
+                with open(cache_file, "w") as f:
                     json.dump(metrics, f)
             except:
                 pass
@@ -192,9 +188,13 @@ class FastStatcastFetcher:
 
         if not PYBASEBALL_AVAILABLE:
             print("⚠️ PyBaseball not available - using fallback data for all players")
-            return {p.name: self._create_fallback_data(p.name, p.primary_position) for p in players_list}
+            return {
+                p.name: self._create_fallback_data(p.name, p.primary_position) for p in players_list
+            }
 
-        print(f"⚡ PARALLEL STATCAST: Processing {len(players_list)} players with {self.max_workers} workers")
+        print(
+            f"⚡ PARALLEL STATCAST: Processing {len(players_list)} players with {self.max_workers} workers"
+        )
 
         results = {}
         start_time = time.time()
@@ -202,7 +202,7 @@ class FastStatcastFetcher:
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all tasks
             future_to_player = {
-                executor.submit(self._fetch_single_player_safe, player): player 
+                executor.submit(self._fetch_single_player_safe, player): player
                 for player in players_list
             }
 
@@ -215,13 +215,12 @@ class FastStatcastFetcher:
                     if data:
                         results[player.name] = data
                         with self.lock:
-                            self.stats['successful_fetches'] += 1
+                            self.stats["successful_fetches"] += 1
                     else:
                         # No fallback - real data only
                         results[player.name] = None
                         with self.lock:
-                            self.stats['failed_fetches'] += 1
-
+                            self.stats["failed_fetches"] += 1
 
                 except Exception as e:
 
@@ -229,12 +228,14 @@ class FastStatcastFetcher:
 
                     results[player.name] = None
                     with self.lock:
-                        self.stats['failed_fetches'] += 1
+                        self.stats["failed_fetches"] += 1
 
         elapsed = time.time() - start_time
-        success_rate = (self.stats['successful_fetches'] / max(1, len(players_list))) * 100
+        success_rate = (self.stats["successful_fetches"] / max(1, len(players_list))) * 100
 
-        print(f"⚡ PARALLEL COMPLETE: {len(results)} players in {elapsed:.1f}s ({success_rate:.1f}% success)")
+        print(
+            f"⚡ PARALLEL COMPLETE: {len(results)} players in {elapsed:.1f}s ({success_rate:.1f}% success)"
+        )
 
         return results
 
@@ -251,7 +252,7 @@ class FastStatcastFetcher:
         """Fetch data for a single player with caching"""
 
         if not PYBASEBALL_AVAILABLE:
-            position_type = 'pitcher' if position == 'P' else 'batter'
+            position_type = "pitcher" if position == "P" else "batter"
             return None  # PATCHED: No fallback data(player_name, position_type)
 
         # Check cache first
@@ -260,14 +261,14 @@ class FastStatcastFetcher:
 
         if cache_file.exists():
             try:
-                with open(cache_file, 'r') as f:
+                with open(cache_file, "r") as f:
                     cached_data = json.load(f)
 
                 # Check if cache is recent (within 24 hours)
-                cache_time = datetime.fromisoformat(cached_data.get('last_updated', '2020-01-01'))
+                cache_time = datetime.fromisoformat(cached_data.get("last_updated", "2020-01-01"))
                 if (datetime.now() - cache_time).total_seconds() < 86400:  # 24 hours
                     with self.lock:
-                        self.stats['cache_hits'] += 1
+                        self.stats["cache_hits"] += 1
                     return cached_data
             except:
                 pass
@@ -275,15 +276,13 @@ class FastStatcastFetcher:
         # Fetch fresh data
         player_id = self.get_player_id(player_name)
         if not player_id:
-            position_type = 'pitcher' if position == 'P' else 'batter'
+            position_type = "pitcher" if position == "P" else "batter"
             return None  # PATCHED: No fallback data(player_name, position_type)
 
         try:
-            if position == 'P':
+            if position == "P":
                 data = pybaseball.statcast_pitcher(
-                    start_dt=self.season_start,
-                    end_dt=self.season_end,
-                    player_id=player_id
+                    start_dt=self.season_start, end_dt=self.season_end, player_id=player_id
                 )
 
                 if data is None or len(data) == 0:
@@ -294,21 +293,21 @@ class FastStatcastFetcher:
                     data = data.tail(1000)
 
                 metrics = {
-                    'xwOBA': self._safe_get_value(data, 'estimated_woba_using_speedangle', 0.315),
-                    'Hard_Hit': self._safe_get_percentage(data, 'launch_speed', lambda x: x >= 95, 35.0),
-                    'K': 22.0,
-                    'Whiff': 25.0,
-                    'Barrel_Against': 7.5,
-                    'data_source': 'Baseball Savant (Parallel)',
-                    'player_name': player_name,
-                    'last_updated': datetime.now().isoformat()
+                    "xwOBA": self._safe_get_value(data, "estimated_woba_using_speedangle", 0.315),
+                    "Hard_Hit": self._safe_get_percentage(
+                        data, "launch_speed", lambda x: x >= 95, 35.0
+                    ),
+                    "K": 22.0,
+                    "Whiff": 25.0,
+                    "Barrel_Against": 7.5,
+                    "data_source": "Baseball Savant (Parallel)",
+                    "player_name": player_name,
+                    "last_updated": datetime.now().isoformat(),
                 }
 
             else:  # Batter
                 data = pybaseball.statcast_batter(
-                    start_dt=self.season_start,
-                    end_dt=self.season_end,
-                    player_id=player_id
+                    start_dt=self.season_start, end_dt=self.season_end, player_id=player_id
                 )
 
                 if data is None or len(data) == 0:
@@ -318,20 +317,22 @@ class FastStatcastFetcher:
                     data = data.tail(1000)
 
                 metrics = {
-                    'xwOBA': self._safe_get_value(data, 'estimated_woba_using_speedangle', 0.320),
-                    'Hard_Hit': self._safe_get_percentage(data, 'launch_speed', lambda x: x >= 95, 37.0),
-                    'Barrel': 8.5,
-                    'avg_exit_velocity': self._safe_get_value(data, 'launch_speed', 88.5),
-                    'K': 23.0,
-                    'BB': 8.5,
-                    'data_source': 'Baseball Savant (Parallel)',
-                    'player_name': player_name,
-                    'last_updated': datetime.now().isoformat()
+                    "xwOBA": self._safe_get_value(data, "estimated_woba_using_speedangle", 0.320),
+                    "Hard_Hit": self._safe_get_percentage(
+                        data, "launch_speed", lambda x: x >= 95, 37.0
+                    ),
+                    "Barrel": 8.5,
+                    "avg_exit_velocity": self._safe_get_value(data, "launch_speed", 88.5),
+                    "K": 23.0,
+                    "BB": 8.5,
+                    "data_source": "Baseball Savant (Parallel)",
+                    "player_name": player_name,
+                    "last_updated": datetime.now().isoformat(),
                 }
 
             # Cache the result
             try:
-                with open(cache_file, 'w') as f:
+                with open(cache_file, "w") as f:
                     json.dump(metrics, f)
             except:
                 pass
@@ -340,7 +341,7 @@ class FastStatcastFetcher:
 
         except Exception as e:
             logger.debug(f"Statcast API failed for {player_name}: {e}")
-            position_type = 'pitcher' if position == 'P' else 'batter'
+            position_type = "pitcher" if position == "P" else "batter"
             return None  # PATCHED: No fallback data(player_name, position_type)
 
     def load_player_cache(self):
@@ -348,7 +349,7 @@ class FastStatcastFetcher:
         cache_file = self.cache_dir / "player_ids.json"
         if cache_file.exists():
             try:
-                with open(cache_file, 'r') as f:
+                with open(cache_file, "r") as f:
                     self.player_id_cache = json.load(f)
                     logger.info(f"Loaded {len(self.player_id_cache)} player IDs from cache")
             except Exception as e:
@@ -361,7 +362,7 @@ class FastStatcastFetcher:
         """Save player ID cache to disk"""
         cache_file = self.cache_dir / "player_ids.json"
         try:
-            with open(cache_file, 'w') as f:
+            with open(cache_file, "w") as f:
                 json.dump(self.player_id_cache, f)
                 logger.info(f"Saved {len(self.player_id_cache)} player IDs to cache")
         except Exception as e:
@@ -393,7 +394,7 @@ class FastStatcastFetcher:
                 lookup = pybaseball.playerid_lookup(last_name, first_name)
 
             if len(lookup) > 0:
-                player_id = int(lookup.iloc[0]['key_mlbam'])
+                player_id = int(lookup.iloc[0]["key_mlbam"])
                 # Cache the result
                 self.player_id_cache[cache_key] = player_id
                 self.save_player_cache()
@@ -449,7 +450,7 @@ class FastStatcastFetcher:
                 lookup = pybaseball.playerid_lookup(last_name, first_name)
 
             if len(lookup) > 0:
-                player_id = int(lookup.iloc[0]['key_mlbam'])
+                player_id = int(lookup.iloc[0]["key_mlbam"])
                 self.player_id_cache[cache_key] = player_id
                 self.save_player_cache()
                 return player_id
@@ -463,8 +464,7 @@ class FastStatcastFetcher:
         print(f"📋 Pre-caching player IDs for {len(players_list)} players...")
 
         uncached_players = [
-            p for p in players_list
-            if p.name.lower().strip() not in self.player_id_cache
+            p for p in players_list if p.name.lower().strip() not in self.player_id_cache
         ]
 
         if not uncached_players:
@@ -507,6 +507,7 @@ class FastStatcastFetcher:
 
     def get_stats(self) -> Dict:
         return self.stats.copy()
+
 
 # Compatibility alias
 SimpleStatcastFetcher = FastStatcastFetcher

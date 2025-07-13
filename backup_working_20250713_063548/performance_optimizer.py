@@ -5,17 +5,16 @@ PERFORMANCE OPTIMIZER - Efficient Data Processing for DFS Optimizer
 Handles caching, batch processing, and lazy evaluation to improve performance.
 """
 
-import time
-import json
 import hashlib
 import logging
-from typing import Dict, List, Any, Optional, Callable, Tuple
+import os
+import pickle
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import wraps, lru_cache
-import pickle
-import os
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -3,12 +3,9 @@ Multi-Lineup Optimizer for DFS
 Generate 20-150 unique lineups with exposure and ownership controls
 """
 
-import copy
 import random
-from typing import List, Tuple, Dict, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import json
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
 
 class MultiLineupOptimizer:
@@ -20,10 +17,9 @@ class MultiLineupOptimizer:
         self.lineup_hashes = set()
         self.player_exposure = {}
 
-    def generate_gpp_lineups(self,
-                             num_lineups: int = 20,
-                             max_exposure: float = 0.5,
-                             min_salary: int = 49000) -> List[Tuple]:
+    def generate_gpp_lineups(
+        self, num_lineups: int = 20, max_exposure: float = 0.5, min_salary: int = 49000
+    ) -> List[Tuple]:
         """Generate unique lineups with proper diversity control"""
         print(f"\n🚀 Generating {num_lineups} unique GPP lineups...")
         print(f"   Max exposure: {max_exposure * 100:.0f}%")
@@ -44,20 +40,17 @@ class MultiLineupOptimizer:
             # Get lineup using core's diversity method
             lineups = self.core.generate_contest_lineups(
                 count=1,  # One at a time for better diversity
-                contest_type='gpp',
+                contest_type="gpp",
                 max_exposure=max_exposure,
-                diversity_factor=0.7 + (successful / num_lineups) * 0.3  # Increase diversity over time
+                diversity_factor=0.7
+                + (successful / num_lineups) * 0.3,  # Increase diversity over time
             )
 
-            if lineups and self._is_unique_lineup(lineups[0]['lineup']):
-                lineup_data = (
-                    lineups[0]['lineup'],
-                    lineups[0]['total_score'],
-                    lineups[0]
-                )
+            if lineups and self._is_unique_lineup(lineups[0]["lineup"]):
+                lineup_data = (lineups[0]["lineup"], lineups[0]["total_score"], lineups[0])
 
                 self.generated_lineups.append(lineup_data)
-                self._update_exposure(lineups[0]['lineup'])
+                self._update_exposure(lineups[0]["lineup"])
                 successful += 1
 
                 if successful % 5 == 0:
@@ -82,11 +75,7 @@ class MultiLineupOptimizer:
         overexposed = []
 
         print("\n📊 Top Player Exposure:")
-        sorted_exposure = sorted(
-            self.player_exposure.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
+        sorted_exposure = sorted(self.player_exposure.items(), key=lambda x: x[1], reverse=True)
 
         for player_id, count in sorted_exposure[:10]:
             exposure = count / total_lineups
@@ -112,24 +101,28 @@ class MultiLineupOptimizer:
     def _get_strategy_distribution(self, num_lineups: int) -> List[str]:
         """Get strategy distribution for lineups"""
         if num_lineups <= 3:
-            return ['balanced'] * num_lineups
+            return ["balanced"] * num_lineups
         elif num_lineups <= 20:
             # 20 lineup distribution
-            return (['balanced'] * int(num_lineups * 0.4) +
-                    ['contrarian'] * int(num_lineups * 0.3) +
-                    ['stacks'] * int(num_lineups * 0.2) +
-                    ['value'] * int(num_lineups * 0.1))
+            return (
+                ["balanced"] * int(num_lineups * 0.4)
+                + ["contrarian"] * int(num_lineups * 0.3)
+                + ["stacks"] * int(num_lineups * 0.2)
+                + ["value"] * int(num_lineups * 0.1)
+            )
         else:
             # 150 lineup distribution
-            return (['balanced'] * int(num_lineups * 0.3) +
-                    ['contrarian'] * int(num_lineups * 0.25) +
-                    ['stacks'] * int(num_lineups * 0.25) +
-                    ['value'] * int(num_lineups * 0.1) +
-                    ['high_upside'] * int(num_lineups * 0.1))
+            return (
+                ["balanced"] * int(num_lineups * 0.3)
+                + ["contrarian"] * int(num_lineups * 0.25)
+                + ["stacks"] * int(num_lineups * 0.25)
+                + ["value"] * int(num_lineups * 0.1)
+                + ["high_upside"] * int(num_lineups * 0.1)
+            )
 
-    def _generate_single_lineup(self, strategy: str, current: int, 
-                               total: int, max_exp: float, 
-                               min_sal: int) -> Optional[Tuple]:
+    def _generate_single_lineup(
+        self, strategy: str, current: int, total: int, max_exp: float, min_sal: int
+    ) -> Optional[Tuple]:
         """Generate a single lineup with given strategy"""
 
         # Get eligible players
@@ -159,10 +152,10 @@ class MultiLineupOptimizer:
 
             # Calculate metadata
             metadata = {
-                'strategy': strategy,
-                'salary': total_salary,
-                'ownership': sum(getattr(p, 'ownership', 0) for p in lineup),
-                'num_stacks': self._count_stacks(lineup)
+                "strategy": strategy,
+                "salary": total_salary,
+                "ownership": sum(getattr(p, "ownership", 0) for p in lineup),
+                "num_stacks": self._count_stacks(lineup),
             }
 
             return (lineup, score, metadata)
@@ -173,8 +166,9 @@ class MultiLineupOptimizer:
                 if player.name in original_scores:
                     player.enhanced_score = original_scores[player.name]
 
-    def _apply_strategy_adjustments(self, players: List, strategy: str, 
-                                   current: int, total: int, max_exp: float):
+    def _apply_strategy_adjustments(
+        self, players: List, strategy: str, current: int, total: int, max_exp: float
+    ):
         """Apply strategy-specific score adjustments"""
 
         for player in players:
@@ -185,31 +179,31 @@ class MultiLineupOptimizer:
             exposure = self.player_exposure.get(player.name, 0) / max(current, 1)
             if exposure > max_exp:
                 penalty = min(0.5, (exposure - max_exp) * 2)
-                base_score *= (1 - penalty)
+                base_score *= 1 - penalty
 
             # Strategy adjustments
-            if strategy == 'contrarian':
+            if strategy == "contrarian":
                 # Boost low ownership
-                if hasattr(player, 'ownership'):
+                if hasattr(player, "ownership"):
                     if player.ownership < 10:
                         base_score *= 1.15
                     elif player.ownership > 25:
                         base_score *= 0.85
 
-            elif strategy == 'stacks':
+            elif strategy == "stacks":
                 # This would need team correlation logic
                 # For now, slight randomization
                 base_score *= random.uniform(0.95, 1.05)
 
-            elif strategy == 'value':
+            elif strategy == "value":
                 # Boost value plays
                 value = base_score / (player.salary / 1000)
                 if value > 3.0:  # Good value
                     base_score *= 1.1
 
-            elif strategy == 'high_upside':
+            elif strategy == "high_upside":
                 # Boost high ceiling players
-                if hasattr(player, 'ceiling') and player.ceiling > base_score * 1.5:
+                if hasattr(player, "ceiling") and player.ceiling > base_score * 1.5:
                     base_score *= 1.1
 
             # Apply adjusted score
@@ -236,28 +230,28 @@ class MultiLineupOptimizer:
         """Count team stacks in lineup"""
         team_counts = {}
         for player in lineup:
-            if player.primary_position != 'P':  # Don't count pitchers
+            if player.primary_position != "P":  # Don't count pitchers
                 team_counts[player.team] = team_counts.get(player.team, 0) + 1
 
         # Count teams with 3+ players as stacks
         return sum(1 for count in team_counts.values() if count >= 3)
 
-    def export_for_upload(self, site: str = 'draftkings') -> str:
+    def export_for_upload(self, site: str = "draftkings") -> str:
         """Export lineups for site upload"""
         if not self.generated_lineups:
             print("❌ No lineups to export")
             return ""
 
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 
-        if site.lower() == 'draftkings':
+        if site.lower() == "draftkings":
             filename = f"dk_upload_{timestamp}.csv"
 
-            with open(filename, 'w') as f:
+            with open(filename, "w") as f:
                 # DraftKings wants player IDs only
                 for lineup, score, meta in self.generated_lineups:
                     # Sort by DK position order
-                    positions = ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']
+                    positions = ["P", "P", "C", "1B", "2B", "3B", "SS", "OF", "OF", "OF"]
                     sorted_lineup = []
 
                     for pos in positions:
@@ -267,8 +261,8 @@ class MultiLineupOptimizer:
                                 break
 
                     # Write IDs
-                    ids = [str(getattr(p, 'id', '')) for p in sorted_lineup]
-                    f.write(','.join(ids) + '\n')
+                    ids = [str(getattr(p, "id", "")) for p in sorted_lineup]
+                    f.write(",".join(ids) + "\n")
 
             print(f"📁 Saved DraftKings upload file: {filename}")
             return filename
@@ -284,17 +278,12 @@ class MultiLineupOptimizer:
 
         exposure_report = {}
         for player, count in self.player_exposure.items():
-            exposure_report[player] = {
-                'count': count,
-                'percentage': (count / total_lineups) * 100
-            }
+            exposure_report[player] = {"count": count, "percentage": (count / total_lineups) * 100}
 
         # Sort by exposure
-        sorted_exposure = dict(sorted(
-            exposure_report.items(), 
-            key=lambda x: x[1]['percentage'], 
-            reverse=True
-        ))
+        sorted_exposure = dict(
+            sorted(exposure_report.items(), key=lambda x: x[1]["percentage"], reverse=True)
+        )
 
         return sorted_exposure
 
@@ -316,7 +305,7 @@ class MultiLineupOptimizer:
         # Strategy breakdown
         strategy_counts = {}
         for _, _, meta in self.generated_lineups:
-            strat = meta['strategy']
+            strat = meta["strategy"]
             strategy_counts[strat] = strategy_counts.get(strat, 0) + 1
 
         print(f"\nStrategy distribution:")

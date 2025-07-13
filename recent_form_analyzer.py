@@ -5,13 +5,13 @@ Recent Form Analyzer - ENHANCED with batch processing
 Efficient batch processing for faster analysis
 """
 
-from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional, Any
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
-from pybaseball import statcast_batter, playerid_lookup
-import time
+from pybaseball import playerid_lookup, statcast_batter
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,9 @@ class RecentFormAnalyzer:
     ENHANCED: Analyzes recent player form with efficient batch processing
     """
 
-    def __init__(self, cache_manager=None, days_back: int = 7,
-                 batch_size: int = 10, max_workers: int = 3):
+    def __init__(
+        self, cache_manager=None, days_back: int = 7, batch_size: int = 10, max_workers: int = 3
+    ):
         self.cache_manager = cache_manager
         self.days_back = days_back
         self.batch_size = batch_size
@@ -41,9 +42,12 @@ class RecentFormAnalyzer:
 
         logger.info(f"Form analyzer initialized: {days_back} days, batch size {batch_size}")
 
-    def analyze_players_batch(self, players: List[Any],
-                              use_cache: bool = True,
-                              progress_callback: Optional[callable] = None) -> Dict[str, Any]:
+    def analyze_players_batch(
+        self,
+        players: List[Any],
+        use_cache: bool = True,
+        progress_callback: Optional[callable] = None,
+    ) -> Dict[str, Any]:
         """
         ENHANCED: Analyze multiple players in parallel batches
 
@@ -65,6 +69,7 @@ class RecentFormAnalyzer:
         # Try to import progress tracker
         try:
             from progress_tracker import ProgressTracker
+
             tracker = ProgressTracker(total_players, "Analyzing form (batch)", show_eta=True)
         except:
             tracker = None
@@ -75,7 +80,7 @@ class RecentFormAnalyzer:
             futures = []
 
             for i in range(0, total_players, self.batch_size):
-                batch = players[i:i + self.batch_size]
+                batch = players[i : i + self.batch_size]
                 future = executor.submit(self._process_batch, batch, use_cache)
                 futures.append((future, i))
 
@@ -154,14 +159,14 @@ class RecentFormAnalyzer:
                 return None
 
             first = parts[0]
-            last = ' '.join(parts[1:])
+            last = " ".join(parts[1:])
 
             # Lookup player
             results = playerid_lookup(last, first)
             if not results.empty:
                 # Get most recent player
-                results = results.sort_values('mlb_played_last', ascending=False)
-                player_id = int(results.iloc[0]['key_mlbam'])
+                results = results.sort_values("mlb_played_last", ascending=False)
+                player_id = int(results.iloc[0]["key_mlbam"])
                 self._player_id_cache[player_name] = player_id
                 return player_id
 
@@ -181,9 +186,9 @@ class RecentFormAnalyzer:
         try:
             # Fetch from Baseball Savant
             data = statcast_batter(
-                start_dt=self.start_date.strftime('%Y-%m-%d'),
-                end_dt=self.end_date.strftime('%Y-%m-%d'),
-                player_id=player_id
+                start_dt=self.start_date.strftime("%Y-%m-%d"),
+                end_dt=self.end_date.strftime("%Y-%m-%d"),
+                player_id=player_id,
             )
 
             self._game_data_cache[cache_key] = data
@@ -200,44 +205,55 @@ class RecentFormAnalyzer:
 
         try:
             # Basic counting stats
-            games = len(game_data['game_date'].unique()) if 'game_date' in game_data else 0
+            games = len(game_data["game_date"].unique()) if "game_date" in game_data else 0
 
             if games == 0:
                 return self._get_default_form_data()
 
             # Event counts
-            events = game_data['events'].value_counts() if 'events' in game_data else pd.Series()
+            events = game_data["events"].value_counts() if "events" in game_data else pd.Series()
 
             # Calculate hits
-            hits = sum([
-                events.get('single', 0),
-                events.get('double', 0),
-                events.get('triple', 0),
-                events.get('home_run', 0)
-            ])
+            hits = sum(
+                [
+                    events.get("single", 0),
+                    events.get("double", 0),
+                    events.get("triple", 0),
+                    events.get("home_run", 0),
+                ]
+            )
 
             # At bats
-            ab_events = ['single', 'double', 'triple', 'home_run', 'strikeout',
-                         'field_out', 'grounded_into_double_play', 'force_out',
-                         'fielders_choice', 'field_error']
+            ab_events = [
+                "single",
+                "double",
+                "triple",
+                "home_run",
+                "strikeout",
+                "field_out",
+                "grounded_into_double_play",
+                "force_out",
+                "fielders_choice",
+                "field_error",
+            ]
             at_bats = sum(events.get(event, 0) for event in ab_events)
 
             # Calculate averages
             batting_avg = hits / at_bats if at_bats > 0 else 0.250
 
             # Advanced metrics
-            walks = events.get('walk', 0)
+            walks = events.get("walk", 0)
 
             # OBP calculation
-            plate_appearances = at_bats + walks + events.get('hit_by_pitch', 0)
+            plate_appearances = at_bats + walks + events.get("hit_by_pitch", 0)
             obp = (hits + walks) / plate_appearances if plate_appearances > 0 else 0.300
 
             # SLG calculation
             total_bases = (
-                    events.get('single', 0) +
-                    2 * events.get('double', 0) +
-                    3 * events.get('triple', 0) +
-                    4 * events.get('home_run', 0)
+                events.get("single", 0)
+                + 2 * events.get("double", 0)
+                + 3 * events.get("triple", 0)
+                + 4 * events.get("home_run", 0)
             )
             slg = total_bases / at_bats if at_bats > 0 else 0.400
 
@@ -250,29 +266,30 @@ class RecentFormAnalyzer:
             trend = self._detect_trend(game_data)
 
             # Hot streak detection
-            hot_streak = batting_avg > 0.350 or events.get('home_run', 0) >= 2
+            hot_streak = batting_avg > 0.350 or events.get("home_run", 0) >= 2
 
             return {
-                'form_score': form_score,
-                'trend': trend,
-                'hot_streak': hot_streak,
-                'games_analyzed': games,
-                'recent_avg': batting_avg,
-                'recent_obp': obp,
-                'recent_slg': slg,
-                'recent_ops': obp + slg,
-                'hits': int(hits),
-                'homers': int(events.get('home_run', 0)),
-                'rbis': int(events.get('rbi', 0)) if 'rbi' in events else 0,
-                'last_updated': datetime.now().isoformat()
+                "form_score": form_score,
+                "trend": trend,
+                "hot_streak": hot_streak,
+                "games_analyzed": games,
+                "recent_avg": batting_avg,
+                "recent_obp": obp,
+                "recent_slg": slg,
+                "recent_ops": obp + slg,
+                "hits": int(hits),
+                "homers": int(events.get("home_run", 0)),
+                "rbis": int(events.get("rbi", 0)) if "rbi" in events else 0,
+                "last_updated": datetime.now().isoformat(),
             }
 
         except Exception as e:
             logger.error(f"Error calculating metrics: {e}")
             return self._get_default_form_data()
 
-    def _calculate_form_score(self, avg: float, ops: float, games: int,
-                              base_projection: float) -> float:
+    def _calculate_form_score(
+        self, avg: float, ops: float, games: int, base_projection: float
+    ) -> float:
         """Calculate form score multiplier"""
         if games < 3 or base_projection <= 0:
             return 1.0
@@ -302,11 +319,11 @@ class RecentFormAnalyzer:
     def _detect_trend(self, game_data: pd.DataFrame) -> str:
         """Detect performance trend"""
         if len(game_data) < 10:
-            return 'stable'
+            return "stable"
 
         try:
             # Sort by date
-            sorted_data = game_data.sort_values('game_date', ascending=False)
+            sorted_data = game_data.sort_values("game_date", ascending=False)
 
             # Split into halves
             mid_point = len(sorted_data) // 2
@@ -315,8 +332,8 @@ class RecentFormAnalyzer:
 
             # Calculate batting averages
             def calc_avg(data):
-                hits = len(data[data['events'].isin(['single', 'double', 'triple', 'home_run'])])
-                abs = len(data[data['events'].notna()])
+                hits = len(data[data["events"].isin(["single", "double", "triple", "home_run"])])
+                abs = len(data[data["events"].notna()])
                 return hits / abs if abs > 0 else 0
 
             recent_avg = calc_avg(recent_half)
@@ -324,17 +341,16 @@ class RecentFormAnalyzer:
 
             # Determine trend
             if recent_avg > older_avg * 1.20:
-                return 'hot'
+                return "hot"
             elif recent_avg < older_avg * 0.80:
-                return 'cold'
+                return "cold"
             else:
-                return 'stable'
+                return "stable"
 
         except Exception:
-            return 'stable'
+            return "stable"
 
-    def _apply_batch_results_to_players(self, players: List[Any],
-                                        results: Dict[str, Any]) -> int:
+    def _apply_batch_results_to_players(self, players: List[Any], results: Dict[str, Any]) -> int:
         """Apply batch results back to player objects"""
         applied = 0
 
@@ -344,13 +360,13 @@ class RecentFormAnalyzer:
 
                 # Apply to player
                 player._recent_performance = form_data
-                player.form_score = form_data['form_score']
-                player.hot_streak = form_data.get('hot_streak', False)
+                player.form_score = form_data["form_score"]
+                player.hot_streak = form_data.get("hot_streak", False)
 
                 # Description
-                if form_data['hot_streak']:
+                if form_data["hot_streak"]:
                     player.form_description = f"🔥 HOT: .{int(form_data['recent_avg'] * 1000)}"
-                elif form_data['form_score'] < 0.9:
+                elif form_data["form_score"] < 0.9:
                     player.form_description = f"❄️ COLD: .{int(form_data['recent_avg'] * 1000)}"
                 else:
                     player.form_description = f"AVG: .{int(form_data['recent_avg'] * 1000)}"
@@ -378,18 +394,18 @@ class RecentFormAnalyzer:
     def _get_default_form_data(self) -> Dict[str, Any]:
         """Get default form data when unavailable"""
         return {
-            'form_score': 1.0,
-            'trend': 'stable',
-            'hot_streak': False,
-            'games_analyzed': 0,
-            'recent_avg': 0.250,
-            'recent_obp': 0.320,
-            'recent_slg': 0.400,
-            'recent_ops': 0.720,
-            'hits': 0,
-            'homers': 0,
-            'rbis': 0,
-            'last_updated': datetime.now().isoformat()
+            "form_score": 1.0,
+            "trend": "stable",
+            "hot_streak": False,
+            "games_analyzed": 0,
+            "recent_avg": 0.250,
+            "recent_obp": 0.320,
+            "recent_slg": 0.400,
+            "recent_ops": 0.720,
+            "hits": 0,
+            "homers": 0,
+            "rbis": 0,
+            "last_updated": datetime.now().isoformat(),
         }
 
     # Keep original method for backward compatibility

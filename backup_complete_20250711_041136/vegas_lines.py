@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # vegas_lines.py - Enhanced version with better cache validation but no mock data
 
-import os
-import requests
 import json
-from datetime import datetime, timedelta
-import time
+import os
+from datetime import datetime
+
+import requests
 
 # Initialize module-level variable for verbosity
 VERBOSE_MODE = False
