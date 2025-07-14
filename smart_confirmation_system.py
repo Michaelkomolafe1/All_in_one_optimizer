@@ -259,6 +259,22 @@ class SmartConfirmationSystem:
             traceback.print_exc()
             return {}
 
+    def update_csv_players(self, players):
+        """Update CSV players for compatibility"""
+        try:
+            self.csv_players = players
+            # Handle both UnifiedPlayer objects and dictionaries
+            if players and hasattr(players[0], 'team'):
+                # UnifiedPlayer objects
+                self.csv_teams = set(p.team for p in players)
+            else:
+                # Dictionary objects
+                self.csv_teams = set(p.get('team', p.get('TeamAbbrev', 'UNK')) for p in players)
+            return True
+        except Exception as e:
+            print(f"Warning: Could not update CSV players: {e}")
+            return False
+
     def _enhanced_csv_analysis(self) -> Dict:
         """Enhanced analysis of CSV data for confirmations"""
         if not self.csv_players:

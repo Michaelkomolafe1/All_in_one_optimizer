@@ -381,351 +381,159 @@ class UnifiedMILPOptimizer:
             self.logger.error(f"MILP optimization failed: {e}")
             return [], 0
 
-    def optimize(self, players, strategy="balanced", manual_selections=None):
+    def _optimize_milp(self, players: List[UnifiedPlayer]) -> Tuple[List[UnifiedPlayer], float]:
         """
-        REAL STRATEGY IMPLEMENTATION - Each strategy produces different lineups
+        Pure MILP optimization with correlation constraints
         """
-        try:
-            from dataclasses import dataclass
-            import random
-
-            @dataclass
-            class OptimizationResult:
-                lineup: list
-                total_salary: int
-                projected_points: float
-                strategy: str
-                meta: dict = None
-
-            self.logger.info(f"🎯 Optimizing with strategy: {strategy.upper()}")
-
-            # Parse manual selections
-            manual_players = self.parse_manual_selections(manual_selections or "", players)
-            manual_names = [p.get('name', p.name if hasattr(p, 'name') else '') for p in manual_players]
-
-            # Convert players to consistent format
-            player_dicts = []
-            for player in players:
-                if hasattr(player, 'name'):  # UnifiedPlayer object
-                    player_dict = {
-                        'name': player.name,
-                        'position': player.primary_position,
-                        'team': player.team,
-                        'salary': player.salary,
-                        'projected_points': getattr(player, 'enhanced_score', player.base_projection),
-                        'ownership': getattr(player, 'ownership_projection', 10.0),  # Default 10%
-                        'ceiling': getattr(player, 'ceiling_score', player.base_projection * 1.3),
-                        'floor': getattr(player, 'enhanced_score', player.base_projection) * 0.7,
-                        'is_confirmed': getattr(player, 'is_confirmed', False),
-                        'recent_form': getattr(player, 'recent_form', 1.0),
-                        'vegas_total': getattr(player, 'implied_team_score', 4.5),
-                        'original_player': player
-                    }
-                else:  # Dictionary
-                    player_dict = {
-                        'name': player.get('name', 'Unknown'),
-                        'position': player.get('position', 'UTIL'),
-                        'team': player.get('team', 'UNK'),
-                        'salary': player.get('salary', 0),
-                        'projected_points': player.get('projected_points', 0),
-                        'ownership': player.get('ownership', 10.0),
-                        'ceiling': player.get('projected_points', 0) * 1.3,
-                        'floor': player.get('projected_points', 0) * 0.7,
-                        'is_confirmed': player.get('is_confirmed', False),
-                        'recent_form': 1.0,
-                        'vegas_total': 4.5,
-                        'original_player': player
-                    }
-                player_dicts.append(player_dict)
-
-            # Apply strategy-specific transformations
-            if strategy == "ceiling":
-                return self._optimize_ceiling_strategy(player_dicts, manual_names)
-            elif strategy == "safe":
-                return self._optimize_safe_strategy(player_dicts, manual_names)
-            elif strategy == "value":
-                return self._optimize_value_strategy(player_dicts, manual_names)
-            elif strategy == "contrarian":
-                return self._optimize_contrarian_strategy(player_dicts, manual_names)
-            else:  # balanced
-                return self._optimize_balanced_strategy(player_dicts, manual_names)
-
-        except Exception as e:
-            self.logger.error(f"Optimization failed: {e}")
-            return None
-
-    def _optimize_ceiling_strategy(self, players, manual_names):
-        """CEILING: Maximize upside potential, accept higher variance"""
-        self.logger.info("🚀 CEILING STRATEGY: Maximizing upside potential")
-
-        # Transform scores for ceiling optimization
-        for player in players:
-            base_score = player['projected_points']
-            ceiling_score = base_score
-
-            # 1. Boost based on recent form
-            if player['recent_form'] > 1.1:  # Hot players
-                ceiling_score *= 1.25
-
-            # 2. Boost high-ceiling positions
-            if player['position'] in ['P', 'OF']:  # Volatile positions
-                ceiling_score *= 1.15
-
-            # 3. Boost players in high-scoring games
-            if player['vegas_total'] > 5.0:
-                ceiling_score *= 1.1
-
-            # 4. Boost lower-owned players (GPP theory)
-            if player['ownership'] < 8.0:
-                ceiling_score *= 1.12
-
-            # 5. Reduce safer, high-floor players
-            floor_ratio = player['floor'] / max(base_score, 0.1)
-            if floor_ratio > 0.85:  # Very safe players
-                ceiling_score *= 0.95
-
-            player['opt_score'] = ceiling_score
-
-        return self._build_optimal_lineup(players, manual_names, "ceiling")
-
-    def _optimize_safe_strategy(self, players, manual_names):
-        """SAFE: Minimize variance, prioritize high floor"""
-        self.logger.info("🛡️ SAFE STRATEGY: Minimizing variance")
-
-        for player in players:
-            base_score = player['projected_points']
-            safe_score = base_score
-
-            # 1. Heavily weight floor performance
-            floor_weight = player['floor'] / max(base_score, 0.1)
-            safe_score *= (0.7 + 0.6 * floor_weight)  # 0.7-1.3x multiplier
-
-            # 2. Boost confirmed players (known quantities)
-            if player['is_confirmed']:
-                safe_score *= 1.15
-
-            # 3. Boost consistent positions
-            if player['position'] in ['1B', 'C']:  # Lower variance positions
-                safe_score *= 1.08
-
-            # 4. Penalize highly volatile players
-            if player['ownership'] < 5.0:  # Contrarian = risky
-                safe_score *= 0.92
-
-            # 5. Prefer moderate pricing (avoid min/max salary players)
-            if 3000 <= player['salary'] <= 8000:
-                safe_score *= 1.05
-
-            player['opt_score'] = safe_score
-
-        return self._build_optimal_lineup(players, manual_names, "safe")
-
-    def _optimize_value_strategy(self, players, manual_names):
-        """VALUE: Maximize points per dollar"""
-        self.logger.info("💰 VALUE STRATEGY: Maximizing points per dollar")
-
-        for player in players:
-            base_score = player['projected_points']
-
-            # Calculate value score (points per $1000)
-            if player['salary'] > 0:
-                value_ratio = base_score / (player['salary'] / 1000)
-            else:
-                value_ratio = 0
-
-            # Transform to create value-focused optimization
-            value_score = value_ratio * 10  # Scale up for optimization
-
-            # 1. Extra boost for extreme value plays
-            if value_ratio > 3.5:  # Exceptional value
-                value_score *= 1.3
-            elif value_ratio > 3.0:  # Good value
-                value_score *= 1.15
-
-            # 2. Slight penalty for expensive players (forces value hunting)
-            if player['salary'] > 8000:
-                value_score *= 0.95
-
-            # 3. Boost mid-tier players (often best value)
-            if 4000 <= player['salary'] <= 6500:
-                value_score *= 1.1
-
-            player['opt_score'] = value_score
-
-        return self._build_optimal_lineup(players, manual_names, "value")
-
-    def _optimize_contrarian_strategy(self, players, manual_names):
-        """CONTRARIAN: Target low-ownership players for GPPs"""
-        self.logger.info("🎭 CONTRARIAN STRATEGY: Targeting low-ownership plays")
-
-        for player in players:
-            base_score = player['projected_points']
-            contrarian_score = base_score
-
-            # 1. Heavily boost low-ownership players
-            ownership = player['ownership']
-            if ownership < 3.0:  # Very low owned
-                contrarian_score *= 1.4
-            elif ownership < 6.0:  # Low owned
-                contrarian_score *= 1.25
-            elif ownership < 10.0:  # Medium-low owned
-                contrarian_score *= 1.1
-            elif ownership > 20.0:  # Highly owned
-                contrarian_score *= 0.8  # Penalize chalk
-
-            # 2. Boost players with upside despite low ownership
-            ceiling_ratio = player['ceiling'] / max(base_score, 0.1)
-            if ceiling_ratio > 1.4 and ownership < 8.0:
-                contrarian_score *= 1.2
-
-            # 3. Target players from lower-total games (overlooked)
-            if player['vegas_total'] < 4.3:
-                contrarian_score *= 1.15
-
-            # 4. Avoid confirmed players (too obvious)
-            if player['is_confirmed'] and ownership > 15.0:
-                contrarian_score *= 0.85
-
-            player['opt_score'] = contrarian_score
-
-        return self._build_optimal_lineup(players, manual_names, "contrarian")
-
-    def _optimize_balanced_strategy(self, players, manual_names):
-        """BALANCED: Optimal mix of safety, upside, and value"""
-        self.logger.info("⚖️ BALANCED STRATEGY: Optimizing all factors")
-
-        for player in players:
-            base_score = player['projected_points']
-
-            # Multi-factor balanced scoring
-            balanced_score = base_score
-
-            # 1. Value component (30% weight)
-            if player['salary'] > 0:
-                value_ratio = base_score / (player['salary'] / 1000)
-                value_factor = min(1.2, 0.9 + (value_ratio - 2.5) * 0.1)  # 0.9-1.2x
-                balanced_score *= (0.7 + 0.3 * value_factor)
-
-            # 2. Safety component (25% weight)
-            floor_ratio = player['floor'] / max(base_score, 0.1)
-            safety_factor = 0.9 + 0.2 * floor_ratio  # 0.9-1.1x
-            balanced_score *= (0.75 + 0.25 * safety_factor)
-
-            # 3. Upside component (25% weight)
-            ceiling_ratio = player['ceiling'] / max(base_score, 0.1)
-            upside_factor = min(1.15, 0.95 + (ceiling_ratio - 1.2) * 0.2)
-            balanced_score *= (0.75 + 0.25 * upside_factor)
-
-            # 4. Confirmation bonus (20% weight)
-            if player['is_confirmed']:
-                balanced_score *= 1.05
-
-            player['opt_score'] = balanced_score
-
-        return self._build_optimal_lineup(players, manual_names, "balanced")
-
-    def _build_optimal_lineup(self, players, manual_names, strategy):
-        """Build lineup using strategy-optimized scores"""
-
-        # Position requirements
-        position_needs = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
-
-        lineup = []
-        used_salary = 0
-        used_players = set()
-
-        # 1. Force include manual selections
-        for name in manual_names:
-            for player in players:
-                if player['name'].lower() == name.lower() and player['name'] not in used_players:
-                    pos = player['position']
-                    if position_needs.get(pos, 0) > 0:
-                        lineup.append(player['original_player'])
-                        used_salary += player['salary']
-                        used_players.add(player['name'])
-                        position_needs[pos] -= 1
-                        self.logger.info(f"👤 Manual: {player['name']} ({pos})")
-                    break
-
-        # 2. Fill remaining positions with optimized players
-        for pos, count in position_needs.items():
-            if count <= 0:
-                continue
-
-            # Get available players for this position
-            pos_players = [
-                p for p in players
-                if p['position'] == pos
-                   and p['name'] not in used_players
-                   and p['salary'] > 0
-                   and p['projected_points'] > 0
-            ]
-
-            # Sort by strategy-optimized score
-            pos_players.sort(key=lambda x: x['opt_score'], reverse=True)
-
-            # Select best players that fit salary
-            for player in pos_players:
-                if count <= 0:
-                    break
-
-                if used_salary + player['salary'] <= self.config.salary_cap:
-                    lineup.append(player['original_player'])
-                    used_salary += player['salary']
-                    used_players.add(player['name'])
-                    count -= 1
-
-                    self.logger.info(
-                        f"⚡ {strategy.upper()}: {player['name']} ({pos}) - Score: {player['opt_score']:.1f}")
-
-        # Calculate final metrics
-        total_points = sum(p.get('projected_points', 0) if hasattr(p, 'get') else
-                           getattr(p, 'enhanced_score', getattr(p, 'base_projection', 0))
-                           for p in lineup)
-
-        # Create meta information
-        meta = {
-            'strategy': strategy,
-            'manual_count': len(manual_names),
-            'confirmed_count': sum(1 for p in lineup if getattr(p, 'is_confirmed', False)),
-            'avg_ownership': sum(getattr(p, 'ownership_projection', 10.0) for p in lineup) / max(len(lineup), 1),
-            'optimization_method': 'unified_strategies'
-        }
-
-        from dataclasses import dataclass
-
-        @dataclass
-        class OptimizationResult:
-            lineup: list
-            total_salary: int
-            projected_points: float
-            strategy: str
-            meta: dict = None
-
-        return OptimizationResult(
-            lineup=lineup,
-            total_salary=used_salary,
-            projected_points=total_points,
-            strategy=strategy,
-            meta=meta
+        self.logger.info(f"🔬 MILP: Optimizing {len(players)} players")
+
+        # Create problem
+        prob = pulp.LpProblem("DFS_Clean_Optimizer", pulp.LpMaximize)
+
+        # Decision variables
+        player_vars = {}
+        for i, player in enumerate(players):
+            player_vars[i] = pulp.LpVariable(f"x_{i}", cat="Binary")
+
+        # Position assignment variables
+        position_vars = {}
+        for i, player in enumerate(players):
+            for pos in player.positions:
+                if pos in self.config.position_requirements:
+                    position_vars[(i, pos)] = pulp.LpVariable(f"y_{i}_{pos}", cat="Binary")
+
+        # OBJECTIVE: Use optimization score (accounts for diversity penalties)
+        objective = pulp.lpSum(
+            [player_vars[i] * self.get_optimization_score(players[i]) for i in range(len(players))]
         )
 
-    def parse_manual_selections(self, manual_input, all_players):
-        """Parse manual selections from input string"""
-        if not manual_input or not manual_input.strip():
-            return []
+        prob += objective
 
-        selections = []
-        names = [name.strip() for name in manual_input.split(",") if name.strip()]
+        # CONSTRAINTS
 
-        for name in names:
-            for player in all_players:
-                player_name = player.get('name', player.name if hasattr(player, 'name') else '')
-                if name.lower() in player_name.lower():
-                    selections.append(player)
-                    break
+        # 1. Exactly 10 players (or as specified)
+        total_players = sum(self.config.position_requirements.values())
+        prob += pulp.lpSum(player_vars.values()) == total_players
 
-        return selections
+        # 2. Salary cap constraint
+        prob += (
+            pulp.lpSum([player_vars[i] * players[i].salary for i in range(len(players))])
+            <= self.config.salary_cap
+        )
+
+        # 3. Minimum salary usage
+        prob += (
+            pulp.lpSum([player_vars[i] * players[i].salary for i in range(len(players))])
+            >= self.config.salary_cap * self.config.min_salary_usage
+        )
+
+        # 4. Position requirements
+        for pos, required in self.config.position_requirements.items():
+            prob += (
+                pulp.lpSum([position_vars.get((i, pos), 0) for i in range(len(players))])
+                == required
+            )
+
+        # 5. Link player and position variables
+        for i, player in enumerate(players):
+            # If player is selected, they must fill exactly one position
+            prob += (
+                pulp.lpSum(
+                    [
+                        position_vars.get((i, pos), 0)
+                        for pos in player.positions
+                        if pos in self.config.position_requirements
+                    ]
+                )
+                == player_vars[i]
+            )
+
+        # 6. Max players per team (handle None batting_order)
+        for team in set(p.team for p in players):
+            team_players = [i for i, p in enumerate(players) if p.team == team]
+            if team_players:
+                prob += (
+                    pulp.lpSum([player_vars[i] for i in team_players])
+                    <= self.config.max_players_per_team
+                )
+
+        # 7. Batting order diversity (if enabled) - handle None values
+        if self.config.use_correlation and self.config.enforce_lineup_rules:
+            # Group by team and batting order
+            team_order_groups = {}
+            for i, player in enumerate(players):
+                if hasattr(player, "batting_order") and player.batting_order is not None:
+                    key = (player.team, player.batting_order)
+                    if key not in team_order_groups:
+                        team_order_groups[key] = []
+                    team_order_groups[key].append(i)
+
+            # Max 1 player per batting order per team
+            for (team, order), player_indices in team_order_groups.items():
+                if len(player_indices) > 1:
+                    prob += pulp.lpSum([player_vars[i] for i in player_indices]) <= 1
+
+        # 8. Hitter vs Pitcher constraints (with opponent handling)
+        if self.config.max_hitters_vs_pitcher > 0:
+            pitcher_opponents = {}
+            for i, player in enumerate(players):
+                if "P" in player.positions:
+                    opp = player.opponent if hasattr(player, "opponent") else None
+                    if opp:
+                        if opp not in pitcher_opponents:
+                            pitcher_opponents[opp] = []
+                        pitcher_opponents[opp].append(i)
+
+            # For each team, limit hitters facing selected pitchers
+            for team in set(p.team for p in players if "P" not in p.positions):
+                team_hitters = [
+                    i for i, p in enumerate(players) if p.team == team and "P" not in p.positions
+                ]
+
+                opposing_pitchers = pitcher_opponents.get(team, [])
+
+                if team_hitters and opposing_pitchers:
+                    # If we select a pitcher, limit hitters from opposing team
+                    for pitcher_idx in opposing_pitchers:
+                        prob += pulp.lpSum(
+                            [player_vars[h] for h in team_hitters]
+                        ) <= self.config.max_hitters_vs_pitcher + (
+                            1 - player_vars[pitcher_idx]
+                        ) * len(
+                            team_hitters
+                        )
+
+        # Solve with timeout
+        solver = pulp.PULP_CBC_CMD(timeLimit=self.config.timeout_seconds, msg=0)
+        prob.solve(solver)
+
+        # Extract solution
+        if prob.status != pulp.LpStatusOptimal:
+            self.logger.warning("No optimal solution found")
+            return [], 0
+
+        # Build lineup with assigned positions
+        lineup = []
+        total_score = 0
+
+        for i, player in enumerate(players):
+            if player_vars[i].value() > 0.5:
+                # Find assigned position
+                for pos in player.positions:
+                    if pos in self.config.position_requirements:
+                        if (
+                            position_vars.get((i, pos), None)
+                            and position_vars[(i, pos)].value() > 0.5
+                        ):
+                            # Create a copy to avoid modifying original
+                            player_copy = copy.copy(player)
+                            player_copy.assigned_position = pos
+                            lineup.append(player_copy)
+                            # Use the same score that was used in optimization
+                            total_score += self.get_optimization_score(player)
+                            break
+
+        return lineup, total_score
 
 
 class StrategyFilter:

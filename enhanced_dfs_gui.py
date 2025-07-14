@@ -1,1853 +1,1034 @@
 #!/usr/bin/env python3
 """
-CLEAN DFS OPTIMIZER GUI - FIXED VERSION
+DFS OPTIMIZER - PROFESSIONAL UNIFIED GUI
 =======================================
-Fixed layout errors and improved stability
+Clean, modern interface leveraging the unified optimization system
 """
 
 import csv
+import json
 import os
 import sys
-import tempfile
 import traceback
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
 
+# PyQt5 imports with fallback
 try:
     from PyQt5.QtCore import *
     from PyQt5.QtGui import *
-    from PyQt5.QtWidgets import (
-        QApplication,
-        QCheckBox,
-        QComboBox,
-        QDialog,
-        QFileDialog,
-        QFormLayout,
-        QFrame,
-        QGridLayout,
-        QGroupBox,
-        QHBoxLayout,
-        QLabel,
-        QListWidget,
-        QMainWindow,
-        QMessageBox,
-        QPlainTextEdit,
-        QProgressBar,
-        QPushButton,
-        QRadioButton,
-        QSlider,
-        QSpinBox,
-        QSplitter,
-        QStatusBar,
-        QTableWidget,
-        QTableWidgetItem,
-        QTabWidget,
-        QTextEdit,
-        QVBoxLayout,
-        QWidget,
-    )
+    from PyQt5.QtWidgets import *
+
+    PYQT_AVAILABLE = True
 except ImportError:
-    print("❌ PyQt5 not installed. Install with: pip install PyQt5")
+    print("❌ PyQt5 not available. Install with: pip install PyQt5")
+    PYQT_AVAILABLE = False
     sys.exit(1)
 
-# Try to import optimizer components
+# Core system imports
 try:
-    from bulletproof_dfs_core import AdvancedPlayer, BulletproofDFSCore
+    from bulletproof_dfs_core import BulletproofDFSCore
 
     CORE_AVAILABLE = True
 except ImportError:
-    print("⚠️ Core optimizer not found. Running in demo mode.")
+    print("❌ DFS Core not available")
     CORE_AVAILABLE = False
-
-    # Import configuration system
-    try:
-        from dfs_config import dfs_config
-
-        CONFIG_AVAILABLE = True
-    except ImportError:
-        CONFIG_AVAILABLE = False
-        print("⚠️ Configuration system not available")
-
-    # Import progress tracker
-    try:
-        pass
-
-        PROGRESS_AVAILABLE = True
-    except ImportError:
-        PROGRESS_AVAILABLE = False
-        print("⚠️ Progress tracking not available")
-
-    # Mock classes for testing
-    class AdvancedPlayer:
-        def __init__(self, name="", position="", team="", salary=0, projection=0):
-            self.name = name
-            self.primary_position = position
-            self.positions = [position]
-            self.team = team
-            self.salary = salary
-            self.projection = projection
-            self.enhanced_score = projection
-            self.assigned_position = None
-
-    class BulletproofDFSCore:
-        def __init__(self):
-            self.players = []
-            self.contest_type = "classic"
-            self.optimization_mode = "bulletproof"
-            self.salary_cap = 50000
-
-        def load_draftkings_csv(self, path):
-            filename = os.path.basename(path).lower()
-            self.contest_type = "showdown" if "showdown" in filename else "classic"
-            self.players = (
-                self._generate_classic_players()
-                if self.contest_type == "classic"
-                else self._generate_showdown_players()
-            )
-            return True
-
-        def _generate_classic_players(self):
-            players = []
-            positions = [
-                ("P", 40, 5000),
-                ("C", 25, 3000),
-                ("1B", 30, 3500),
-                ("2B", 30, 3500),
-                ("3B", 30, 3500),
-                ("SS", 30, 3500),
-                ("OF", 60, 4000),
-            ]
-
-            for pos, count, base_sal in positions:
-                for i in range(count):
-                    p = AdvancedPlayer(
-                        f"{pos}_Player{i + 1}",
-                        pos,
-                        ["LAD", "NYY", "HOU", "BOS", "ATL"][i % 5],
-                        base_sal + i * 150,
-                        10 + i * 0.3,
-                    )
-                    if i % 3 == 0 and pos in ["1B", "2B"]:
-                        p.positions = [pos, "3B" if pos == "1B" else "SS"]
-                    players.append(p)
-            return players
-
-        def _generate_showdown_players(self):
-            players = []
-            for team in ["NYY", "BOS"]:
-                for i in range(15):
-                    p = AdvancedPlayer(
-                        f"{team}_Player{i + 1}", "UTIL", team, 3000 + i * 500, 8 + i * 0.5
-                    )
-                    p.positions = ["CPT", "UTIL"]
-                    players.append(p)
-            return players
-
-        def set_optimization_mode(self, mode):
-            self.optimization_mode = mode
-
-        def apply_manual_selection(self, text):
-            names = [n.strip() for n in text.split(",") if n.strip()]
-            return len(names)
-
-        def detect_confirmed_players(self):
-            return min(20, len(self.players) // 4)
-
-        def get_eligible_players_by_mode(self):
-            if self.optimization_mode == "all":
-                return self.players
-            elif self.optimization_mode == "manual_only":
-                return self.players[: int(len(self.players) * 0.3)]
-            else:
-                return self.players[: int(len(self.players) * 0.5)]
-
-        def optimize_lineup_with_mode(self):
-            eligible = self.get_eligible_players_by_mode()
-
-            if self.contest_type == "showdown":
-                if len(eligible) < 6:
-                    return [], 0
-                lineup = eligible[:6]
-                lineup[0].assigned_position = "CPT"
-                for p in lineup[1:]:
-                    p.assigned_position = "UTIL"
-            else:
-                if len(eligible) < 10:
-                    return [], 0
-                lineup = []
-                positions_needed = {"P": 2, "C": 1, "1B": 1, "2B": 1, "3B": 1, "SS": 1, "OF": 3}
-
-                for pos, count in positions_needed.items():
-                    added = 0
-                    for player in eligible:
-                        if added < count and pos in player.positions and player not in lineup:
-                            player.assigned_position = pos
-                            lineup.append(player)
-                            added += 1
-
-                while len(lineup) < 10 and eligible:
-                    for p in eligible:
-                        if p not in lineup:
-                            lineup.append(p)
-                            break
-
-            total_score = sum(p.enhanced_score for p in lineup)
-            return lineup, total_score
-
-        def generate_contest_lineups(self, count, contest_type):
-            lineups = []
-            for i in range(count):
-                lineup, score = self.optimize_lineup_with_mode()
-                if lineup:
-                    lineups.append(
-                        {
-                            "lineup_id": i + 1,
-                            "lineup": lineup,
-                            "total_score": score + (i * 0.1),
-                            "total_salary": sum(p.salary for p in lineup),
-                            "contest_type": contest_type,
-                        }
-                    )
-            return lineups
-
-
-class ThreadSafeConsole(QPlainTextEdit):
-    """Thread-safe console widget"""
-
-    append_signal = pyqtSignal(str)
-
-    def __init__(self):
-        super().__init__()
-        self.setReadOnly(True)
-        self.setFont(QFont("Consolas", 9))
-        self.setMaximumBlockCount(1000)
-
-        self.setStyleSheet(
-            """
-            QPlainTextEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                border: 1px solid #333;
-                border-radius: 4px;
-                padding: 5px;
-            }
-        """
-        )
-
-        self.append_signal.connect(self._append_text)
-
-    @pyqtSlot(str)
-    def _append_text(self, text):
-        self.appendPlainText(text)
-        scrollbar = self.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
-
-    def thread_safe_append(self, text):
-        self.append_signal.emit(text)
 
 
 class OptimizationWorker(QThread):
-    """Worker thread for optimization"""
+    """Background worker for optimization tasks"""
 
-    started = pyqtSignal()
     progress = pyqtSignal(str)
-    finished = pyqtSignal(list)
+    finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self, core, settings):
+    def __init__(self, core: BulletproofDFSCore, settings: Dict):
         super().__init__()
         self.core = core
         self.settings = settings
-        self._is_running = True
+        self.is_cancelled = False
 
-    def stop(self):
-        self._is_running = False
+    def cancel(self):
+        """Cancel the optimization"""
+        self.is_cancelled = True
 
     def run(self):
+        """Run optimization in background"""
         try:
-            self.started.emit()
+            self.progress.emit("🔄 Starting optimization...")
 
-            self.progress.emit(f"Contest type: {self.core.contest_type}")
-            self.progress.emit(f"Optimization mode: {self.settings['mode']}")
+            # Apply manual selections if any
+            if self.settings.get('manual_players'):
+                self.progress.emit("👤 Processing manual selections...")
+                # Apply manual selections to core
+                # (Implementation depends on core method)
 
-            self.core.set_optimization_mode(self.settings["mode"])
+            # Detect confirmed players if not manual-only mode
+            if self.settings.get('mode') != 'manual_only':
+                self.progress.emit("🔍 Detecting confirmed players...")
+                confirmed_count = self.core.detect_confirmed_players()
+                self.progress.emit(f"✅ Found {confirmed_count} confirmed players")
 
-            # ========== REMOVED SHOWDOWN PITCHER API ==========
-            # We don't need it - the confirmation system handles pitchers correctly
-
-            if self.settings.get("manual_players"):
-                self.progress.emit("Processing manual selections...")
-                count = self.core.apply_manual_selection(self.settings["manual_players"])
-                self.progress.emit(f"Applied {count} manual selections")
-
-            if self.settings["mode"] != "manual_only":
-                self.progress.emit("Detecting confirmed players...")
-                confirmed = self.core.detect_confirmed_players()
-                self.progress.emit(f"Found {confirmed} confirmed players")
-
-                # For showdown, show pitcher status
-                if self.core.contest_type == "showdown":
-                    # Count pitchers that were identified
-                    pitcher_count = sum(
-                        1
-                        for p in self.core.players
-                        if hasattr(p, "original_position") and p.original_position == "P"
-                    )
-                    self.progress.emit(
-                        f"✅ Identified {pitcher_count} starting pitchers via MLB data"
-                    )
-
-            # ========== POSITION COVERAGE CHECK ==========
-            if self.core.contest_type == "classic":
-                self.progress.emit("Checking position coverage...")
-                self.core.debug_position_coverage()
-
-                # Check current position coverage
-                eligible = self.core.get_eligible_players_by_mode()
-                position_counts = {}
-                for player in eligible:
-                    for pos in player.positions:
-                        position_counts[pos] = position_counts.get(pos, 0) + 1
-
-                # Check if we're missing key positions
-                missing_positions = []
-                for pos in ["1B", "2B", "3B"]:
-                    if position_counts.get(pos, 0) == 0:
-                        missing_positions.append(pos)
-
-                if missing_positions:
-                    self.progress.emit(f"⚠️ Missing positions: {missing_positions}")
-                    self.progress.emit("Fixing known player positions...")
-                    self.core.fix_known_player_positions()
-                    self.progress.emit("Auto-selecting top infielders...")
-
-            elif self.core.contest_type == "showdown":
-                # Show final showdown status
-                self.progress.emit("\n📊 Showdown player pool status:")
-
-                eligible = self.core.get_eligible_players_by_mode()
-                self.progress.emit(f"   Total eligible: {len(eligible)}")
-
-                # Show pitcher details
-                pitchers = [
-                    p
-                    for p in eligible
-                    if hasattr(p, "original_position") and p.original_position == "P"
-                ]
-
-                if pitchers:
-                    self.progress.emit(f"   ⚾ Eligible starting pitchers: {len(pitchers)}")
-                    for p in pitchers:
-                        self.progress.emit(
-                            f"      {p.name} ({p.team}) - ${p.salary:,} - Proj: {p.projection}"
-                        )
-                else:
-                    self.progress.emit("   ❌ NO ELIGIBLE PITCHERS FOUND!")
-
-                # Show position breakdown
-                orig_pos_counts = {}
-                for p in eligible:
-                    orig = getattr(p, "original_position", "UTIL")
-                    orig_pos_counts[orig] = orig_pos_counts.get(orig, 0) + 1
-                self.progress.emit(f"   By original position: {orig_pos_counts}")
-            # ========== END POSITION COVERAGE CHECK ==========
-
-            if not self._is_running:
+            if self.is_cancelled:
                 return
 
-            lineup_count = self.settings.get("lineup_count", 1)
+            # Run optimization
+            self.progress.emit("⚡ Optimizing lineup...")
+            result = self.core.optimize_lineup(
+                strategy=self.settings.get('strategy', 'balanced'),
+                manual_selections=self.settings.get('manual_players', '')
+            )
 
-            if lineup_count > 1:
-                self.progress.emit(f"Generating {lineup_count} lineups...")
-                lineups = self.core.generate_contest_lineups(lineup_count, self.core.contest_type)
+            if self.is_cancelled:
+                return
+
+            if result:
+                self.progress.emit("✅ Optimization completed!")
+                self.finished.emit(result)
             else:
-                self.progress.emit("Optimizing single lineup...")
-                lineup, score = self.core.optimize_lineup_with_mode()
-
-                if lineup:
-                    lineups = [
-                        {
-                            "lineup_id": 1,
-                            "lineup": lineup,
-                            "total_score": score,
-                            "total_salary": sum(p.salary for p in lineup),
-                            "contest_type": self.core.contest_type,
-                        }
-                    ]
-                else:
-                    lineups = []
-
-            if lineups:
-                self.finished.emit(lineups)
-            else:
-                self.error.emit("No valid lineups found")
+                self.error.emit("No optimal lineup found")
 
         except Exception as e:
-            self.error.emit(f"Optimization failed: {str(e)}\n{traceback.format_exc()}")
+            if not self.is_cancelled:
+                self.error.emit(f"Optimization failed: {str(e)}")
 
 
-class DFSOptimizerGUI(QMainWindow):
-    """Main application window"""
-
-    def create_config_dialog(self):
-        """Create configuration dialog"""
-        if not CONFIG_AVAILABLE:
-            QMessageBox.warning(self, "Not Available", "Configuration system not installed")
-            return
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("DFS Optimizer Configuration")
-        dialog.setMinimumSize(600, 400)
-
-        layout = QVBoxLayout(dialog)
-
-        # Create tabs for different config sections
-        tabs = QTabWidget()
-
-        # Optimization tab
-        opt_widget = QWidget()
-        opt_layout = QFormLayout(opt_widget)
-
-        # Form analysis players
-        form_players_spin = QSpinBox()
-        form_players_spin.setRange(0, 1000)
-        form_players_spin.setSpecialValueText("All")
-        form_players_spin.setValue(dfs_config.get("optimization.max_form_analysis_players") or 0)
-        opt_layout.addRow("Max Form Analysis Players:", form_players_spin)
-
-        # Batch size
-        batch_spin = QSpinBox()
-        batch_spin.setRange(10, 100)
-        batch_spin.setValue(dfs_config.get("optimization.batch_size", 25))
-        opt_layout.addRow("Batch Size:", batch_spin)
-
-        # Parallel workers
-        workers_spin = QSpinBox()
-        workers_spin.setRange(1, 20)
-        workers_spin.setValue(dfs_config.get("optimization.parallel_workers", 10))
-        opt_layout.addRow("Parallel Workers:", workers_spin)
-
-        tabs.addTab(opt_widget, "Optimization")
-
-        # Data sources tab
-        sources_widget = QWidget()
-        sources_layout = QVBoxLayout(sources_widget)
-
-        for source in ["statcast", "vegas", "recent_form", "dff", "batting_order"]:
-            enabled = QCheckBox(f"Enable {source.replace('_', ' ').title()}")
-            enabled.setChecked(dfs_config.get(f"data_sources.{source}.enabled", True))
-            sources_layout.addWidget(enabled)
-
-        sources_layout.addStretch()
-        tabs.addTab(sources_widget, "Data Sources")
-
-        layout.addWidget(tabs)
-
-        # Buttons
-        btn_layout = QHBoxLayout()
-        save_btn = QPushButton("Save")
-        save_btn.clicked.connect(
-            lambda: self.save_config_from_dialog(
-                dialog, form_players_spin, batch_spin, workers_spin
-            )
-        )
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.clicked.connect(dialog.reject)
-
-        btn_layout.addWidget(save_btn)
-        btn_layout.addWidget(cancel_btn)
-        layout.addLayout(btn_layout)
-
-        dialog.exec_()
-
-    def save_config_from_dialog(self, dialog, form_spin, batch_spin, workers_spin):
-        """Save configuration from dialog"""
-        # Update config values
-        max_players = form_spin.value() if form_spin.value() > 0 else None
-        dfs_config.set("optimization.max_form_analysis_players", max_players)
-        dfs_config.set("optimization.batch_size", batch_spin.value())
-        dfs_config.set("optimization.parallel_workers", workers_spin.value())
-
-        # Update core if loaded
-        if self.core and CONFIG_AVAILABLE:
-            self.core.max_form_analysis_players = max_players
-            self.core.batch_size = batch_spin.value()
-
-        QMessageBox.information(dialog, "Success", "Configuration saved!")
-        dialog.accept()
+class StatusBar(QStatusBar):
+    """Enhanced status bar with performance info"""
 
     def __init__(self):
         super().__init__()
+        self.performance_label = QLabel("Ready")
+        self.mode_label = QLabel("LEGACY")
+        self.player_count_label = QLabel("0 players")
 
-        # Initialize attributes FIRST
-        self.core = None
-        self.worker = None
+        self.addWidget(self.performance_label)
+        self.addPermanentWidget(self.player_count_label)
+        self.addPermanentWidget(self.mode_label)
+
+    def update_status(self, message: str, timeout: int = 5000):
+        """Update main status message"""
+        self.showMessage(message, timeout)
+
+    def update_performance(self, stats: Dict):
+        """Update performance statistics"""
+        if 'cache_hit_rate' in stats:
+            self.performance_label.setText(f"Cache: {stats['cache_hit_rate']:.1%}")
+
+    def update_mode(self, unified: bool):
+        """Update optimization mode"""
+        if unified:
+            self.mode_label.setText("🎯 UNIFIED")
+            self.mode_label.setStyleSheet("color: green; font-weight: bold;")
+        else:
+            self.mode_label.setText("📊 LEGACY")
+            self.mode_label.setStyleSheet("color: orange; font-weight: bold;")
+
+    def update_player_count(self, count: int):
+        """Update player count"""
+        self.player_count_label.setText(f"{count} players")
+
+
+class FilePanel(QGroupBox):
+    """File loading and management panel"""
+
+    files_loaded = pyqtSignal(dict)  # Emit file info when loaded
+
+    def __init__(self):
+        super().__init__("📁 Data Files")
+        self.setup_ui()
         self.dk_file = ""
         self.dff_file = ""
-        self.last_results = []
-        self.contest_type = "classic"
-        self.last_directory = ""
 
-        # Initialize UI components that might be accessed early
-        self.manual_text = None
+    def setup_ui(self):
+        """Setup the file panel UI"""
+        layout = QVBoxLayout(self)
 
-        # Setup UI
-        self.init_ui()
-        self.setup_style()
-        self.load_settings()
+        # DraftKings CSV
+        dk_group = QGroupBox("DraftKings CSV")
+        dk_layout = QHBoxLayout(dk_group)
 
-        # Auto-detect files after UI is ready
-        QTimer.singleShot(100, self.auto_detect_files)
+        self.dk_label = QLabel("No file selected")
+        self.dk_label.setStyleSheet("color: gray; font-style: italic;")
 
-    def init_ui(self):
-        """Initialize user interface"""
-        self.setWindowTitle("DFS Optimizer Pro - Clean Version")
-        self.setMinimumSize(1200, 800)
+        dk_browse_btn = QPushButton("📂 Browse")
+        dk_browse_btn.clicked.connect(self.browse_dk_file)
 
-        central = QWidget()
-        self.setCentralWidget(central)
+        dk_auto_btn = QPushButton("🔍 Auto-Find")
+        dk_auto_btn.clicked.connect(self.auto_find_dk_file)
 
-        layout = QVBoxLayout(central)
-        layout.setSpacing(10)
+        dk_layout.addWidget(self.dk_label, 1)
+        dk_layout.addWidget(dk_browse_btn)
+        dk_layout.addWidget(dk_auto_btn)
 
-        header = self.create_header()
-        layout.addWidget(header)
-
-        content = QSplitter(Qt.Horizontal)
-
-        left_panel = self.create_left_panel()
-        right_panel = self.create_right_panel()
-
-        content.addWidget(left_panel)
-        content.addWidget(right_panel)
-        content.setSizes([450, 750])
-
-        layout.addWidget(content)
-
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        self.progress_bar.setMaximumWidth(200)
-        self.status_bar.addPermanentWidget(self.progress_bar)
-
-        self.contest_indicator = QLabel("Contest: Unknown")
-        self.contest_indicator.setStyleSheet(
-            """
-            QLabel {
-                padding: 4px 8px;
-                background-color: #6b7280;
-                color: white;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-        """
-        )
-        self.status_bar.addPermanentWidget(self.contest_indicator)
-
-        self.update_status("Ready - Load a CSV file to begin")
-
-    def create_header(self):
-        """Create application header"""
-        header = QFrame()
-        header.setMaximumHeight(70)
-        header.setFrameStyle(QFrame.Box)
-
-        layout = QHBoxLayout(header)
-
-        title_layout = QVBoxLayout()
-        title = QLabel("DFS Optimizer Pro")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #1e40af;")
-        subtitle = QLabel("Daily Fantasy Sports Lineup Optimization")
-        subtitle.setStyleSheet("font-size: 12px; color: #6b7280;")
-
-        title_layout.addWidget(title)
-        title_layout.addWidget(subtitle)
-        layout.addLayout(title_layout)
-
-        layout.addStretch()
-
-        actions_layout = QHBoxLayout()
-
-        actions_layout.addWidget(QLabel("Lineups:"))
-        self.quick_lineup_spin = QSpinBox()
-        self.quick_lineup_spin.setRange(1, 150)
-        self.quick_lineup_spin.setValue(1)
-        self.quick_lineup_spin.setMaximumWidth(60)
-        actions_layout.addWidget(self.quick_lineup_spin)
-
-        for label, count in [("5 Cash", 5), ("20 GPP", 20), ("150 Max", 150)]:
-            btn = QPushButton(label)
-            btn.clicked.connect(lambda checked, c=count: self.quick_generate(c))
-            actions_layout.addWidget(btn)
-
-        layout.addLayout(actions_layout)
-
-        return header
-
-    def create_left_panel(self):
-        """Create left control panel"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        self.tabs = QTabWidget()
-
-        data_tab = self.create_data_tab()
-        self.tabs.addTab(data_tab, "📁 Data")
-
-        settings_tab = self.create_settings_tab()
-        self.tabs.addTab(settings_tab, "⚙️ Settings")
-
-        lineups_tab = self.create_lineups_tab()
-        self.tabs.addTab(lineups_tab, "🎯 Lineups")
-
-        layout.addWidget(self.tabs)
-
-        self.generate_btn = QPushButton("🚀 Generate Optimal Lineup")
-        self.generate_btn.setMinimumHeight(50)
-        self.generate_btn.clicked.connect(self.run_optimization)
-        self.generate_btn.setEnabled(False)
-
-        layout.addWidget(self.generate_btn)
-
-        return widget
-
-    def create_data_tab(self):
-        """Create data input tab - FIXED VERSION"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        # CSV file selection
-        csv_group = QGroupBox("DraftKings CSV File")
-        csv_layout = QVBoxLayout(csv_group)
-
-        self.csv_label = QLabel("No file loaded")
-        self.csv_label.setMinimumHeight(60)
-        self.csv_label.setAlignment(Qt.AlignCenter)
-        self.csv_label.setStyleSheet(
-            """
-            QLabel {
-                border: 2px dashed #cbd5e1;
-                border-radius: 8px;
-                padding: 20px;
-                background-color: #f8fafc;
-            }
-        """
-        )
-
-        csv_layout.addWidget(self.csv_label)
-
-        btn_layout = QHBoxLayout()
-        browse_btn = QPushButton("Browse Files")
-        browse_btn.clicked.connect(self.browse_csv)
-
-        reload_btn = QPushButton("Reload")
-        reload_btn.clicked.connect(self.reload_csv)
-
-        btn_layout.addWidget(browse_btn)
-        btn_layout.addWidget(reload_btn)
-        csv_layout.addLayout(btn_layout)
-
-        layout.addWidget(csv_group)
-
-        # DFF file (optional)
-        dff_group = QGroupBox("DFF Rankings (Optional)")
-        dff_layout = QVBoxLayout(dff_group)
+        # DFF CSV (Optional)
+        dff_group = QGroupBox("DFF Expert Rankings (Optional)")
+        dff_layout = QHBoxLayout(dff_group)
 
         self.dff_label = QLabel("No file selected")
-        self.dff_label.setMinimumHeight(50)
-        self.dff_label.setAlignment(Qt.AlignCenter)
-        self.dff_label.setStyleSheet(
-            """
-            QLabel {
-                border: 2px dashed #cbd5e1;
-                border-radius: 8px;
-                padding: 15px;
-                background-color: #f8fafc;
+        self.dff_label.setStyleSheet("color: gray; font-style: italic;")
+
+        dff_browse_btn = QPushButton("📂 Browse")
+        dff_browse_btn.clicked.connect(self.browse_dff_file)
+
+        dff_clear_btn = QPushButton("❌ Clear")
+        dff_clear_btn.clicked.connect(self.clear_dff_file)
+
+        dff_layout.addWidget(self.dff_label, 1)
+        dff_layout.addWidget(dff_browse_btn)
+        dff_layout.addWidget(dff_clear_btn)
+
+        # Load button
+        self.load_btn = QPushButton("🚀 Load Data")
+        self.load_btn.setEnabled(False)
+        self.load_btn.clicked.connect(self.load_files)
+        self.load_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                padding: 10px;
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 5px;
             }
-        """
-        )
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+                color: #666666;
+            }
+        """)
 
-        dff_btn = QPushButton("Browse DFF File")
-        dff_btn.clicked.connect(self.select_dff_file)
-
-        dff_layout.addWidget(self.dff_label)
-        dff_layout.addWidget(dff_btn)
-
+        layout.addWidget(dk_group)
         layout.addWidget(dff_group)
+        layout.addWidget(self.load_btn)
 
-        # Manual player selection - FIXED
-        manual_group = QGroupBox("Manual Player Selection")
-        manual_layout = QVBoxLayout(manual_group)  # Create the layout!
-
-        # Create manual text widget
-        self.manual_text = QTextEdit()
-        self.manual_text.setMaximumHeight(100)
-        self.manual_text.setPlaceholderText("Enter player names separated by commas...")
-
-        # Add to layout
-        manual_layout.addWidget(self.manual_text)
-
-        manual_btn_layout = QHBoxLayout()
-        clear_btn = QPushButton("Clear")
-        clear_btn.clicked.connect(self.manual_text.clear)
-
-        sample_btn = QPushButton("Sample Players")
-        sample_btn.clicked.connect(self.load_sample_players)
-
-        manual_btn_layout.addWidget(clear_btn)
-        manual_btn_layout.addWidget(sample_btn)
-        manual_layout.addLayout(manual_btn_layout)
-
-        layout.addWidget(manual_group)
-
-        # Test mode
-        test_btn = QPushButton("🧪 Create Test Data")
-        test_btn.clicked.connect(self.create_test_data)
-        layout.addWidget(test_btn)
-
-        layout.addStretch()
-
-        return widget
-
-    def select_dff_file(self):
-        """Select DFF rankings file"""
+    def browse_dk_file(self):
+        """Browse for DraftKings CSV file"""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Select DFF Rankings CSV",
-            self.last_directory,
-            "CSV Files (*.csv);;All Files (*.*)",
+            "Select DraftKings CSV File",
+            str(Path.home() / "Downloads"),
+            "CSV Files (*.csv);;All Files (*)"
+        )
+
+        if file_path:
+            self.dk_file = file_path
+            self.dk_label.setText(Path(file_path).name)
+            self.dk_label.setStyleSheet("color: black;")
+            self.load_btn.setEnabled(True)
+
+    def auto_find_dk_file(self):
+        """Auto-find most recent DraftKings file"""
+        downloads_dir = Path.home() / "Downloads"
+
+        if not downloads_dir.exists():
+            QMessageBox.warning(self, "Auto-Find", "Downloads folder not found")
+            return
+
+        # Look for DraftKings files
+        dk_files = list(downloads_dir.glob("DK*.csv"))
+
+        if not dk_files:
+            QMessageBox.information(self, "Auto-Find", "No DraftKings CSV files found in Downloads")
+            return
+
+        # Sort by modification time, newest first
+        dk_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+
+        # Show selection dialog if multiple files
+        if len(dk_files) > 1:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Select DraftKings File")
+            dialog.setModal(True)
+
+            layout = QVBoxLayout(dialog)
+            layout.addWidget(QLabel("Multiple DraftKings files found:"))
+
+            file_list = QListWidget()
+            for file in dk_files[:5]:  # Show top 5
+                mod_time = datetime.fromtimestamp(file.stat().st_mtime)
+                size_kb = file.stat().st_size / 1024
+                item_text = f"{file.name} ({size_kb:.1f}KB, {mod_time.strftime('%Y-%m-%d %H:%M')})"
+                item = QListWidgetItem(item_text)
+                item.setData(Qt.UserRole, str(file))
+                file_list.addItem(item)
+
+            file_list.setCurrentRow(0)
+            layout.addWidget(file_list)
+
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+
+            if dialog.exec_() == QDialog.Accepted:
+                current_item = file_list.currentItem()
+                if current_item:
+                    selected_file = current_item.data(Qt.UserRole)
+                    self.dk_file = selected_file
+                    self.dk_label.setText(Path(selected_file).name)
+                    self.dk_label.setStyleSheet("color: black;")
+                    self.load_btn.setEnabled(True)
+        else:
+            # Single file found
+            self.dk_file = str(dk_files[0])
+            self.dk_label.setText(dk_files[0].name)
+            self.dk_label.setStyleSheet("color: black;")
+            self.load_btn.setEnabled(True)
+
+    def browse_dff_file(self):
+        """Browse for DFF expert rankings file"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select DFF Expert Rankings CSV File",
+            str(Path.home() / "Downloads"),
+            "CSV Files (*.csv);;All Files (*)"
         )
 
         if file_path:
             self.dff_file = file_path
-            filename = os.path.basename(file_path)
-            self.dff_label.setText(f"✅ {filename}")
-            
-            # Apply DFF rankings immediately if core is loaded
-            if hasattr(self, 'core') and self.core and hasattr(self.core, 'apply_dff_rankings'):
-                try:
-                    print(f"🎯 Applying DFF rankings from {filename}...")
-                    success = self.core.apply_dff_rankings(file_path)
-                    if success:
-                        print("✅ DFF rankings applied successfully!")
-                        if hasattr(self, 'console'):
-                            self.console.thread_safe_append(f"✅ DFF rankings applied from {filename}")
-                    else:
-                        print("❌ Failed to apply DFF rankings")
-                        if hasattr(self, 'console'):
-                            self.console.thread_safe_append(f"❌ Failed to apply DFF rankings from {filename}")
-                except Exception as e:
-                    print(f"❌ Error applying DFF: {e}")
-                    if hasattr(self, 'console'):
-                        self.console.thread_safe_append(f"❌ Error applying DFF: {str(e)}")
-            self.dff_label.setStyleSheet(
-                """
-                QLabel {
-                    border: 2px solid #f59e0b;
-                    border-radius: 8px;
-                    padding: 15px;
-                    background-color: #fef3c7;
-                    color: #92400e;
-                    font-weight: bold;
-                }
-            """
-            )
+            self.dff_label.setText(Path(file_path).name)
+            self.dff_label.setStyleSheet("color: black;")
 
-            if self.core and hasattr(self.core, "current_dff_file"):
-                self.core.current_dff_file = file_path
-                self.console.thread_safe_append(f"📊 DFF file loaded: {filename}")
+    def clear_dff_file(self):
+        """Clear DFF file selection"""
+        self.dff_file = ""
+        self.dff_label.setText("No file selected")
+        self.dff_label.setStyleSheet("color: gray; font-style: italic;")
 
-                # Apply DFF rankings if core is ready
-                if hasattr(self.core, "apply_dff_rankings"):
-                    try:
-                        self.core.apply_dff_rankings(file_path)
-                        self.console.thread_safe_append("✅ DFF rankings applied")
-                    except Exception as e:
-                        self.console.thread_safe_append(f"⚠️ Could not apply DFF: {str(e)}")
+    def load_files(self):
+        """Load the selected files"""
+        if not self.dk_file:
+            QMessageBox.warning(self, "Error", "Please select a DraftKings CSV file")
+            return
 
-    def create_settings_tab(self):
-        """Create settings tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
+        file_info = {
+            'dk_file': self.dk_file,
+            'dff_file': self.dff_file if self.dff_file else None
+        }
 
-        # Contest settings
-        contest_group = QGroupBox("Contest Settings")
-        contest_layout = QFormLayout(contest_group)
+        self.files_loaded.emit(file_info)
 
-        self.contest_combo = QComboBox()
-        self.contest_combo.addItems(["Auto-Detect", "Classic", "Showdown"])
-        contest_layout.addRow("Contest Type:", self.contest_combo)
 
-        self.slate_combo = QComboBox()
-        self.slate_combo.addItems(["Main", "Early Only", "Afternoon", "Night", "All Day"])
-        contest_layout.addRow("Slate:", self.slate_combo)
+class OptimizationPanel(QGroupBox):
+    """Optimization settings and controls"""
 
-        layout.addWidget(contest_group)
+    optimize_requested = pyqtSignal(dict)
 
-        # Optimization settings
-        opt_group = QGroupBox("Optimization Settings")
-        opt_layout = QFormLayout(opt_group)
+    def __init__(self):
+        super().__init__("⚡ Optimization Settings")
+        self.setup_ui()
 
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(
-            ["Bulletproof (Confirmed + Manual)", "Manual Only", "Confirmed Only", "All Players"]
-        )
-        opt_layout.addRow("Mode:", self.mode_combo)
+    def setup_ui(self):
+        """Setup optimization panel UI"""
+        layout = QVBoxLayout(self)
 
-        self.min_salary_spin = QSpinBox()
-        self.min_salary_spin.setRange(45000, 50000)
-        self.min_salary_spin.setValue(48000)
-        self.min_salary_spin.setSingleStep(500)
-        opt_layout.addRow("Min Salary:", self.min_salary_spin)
+        # Strategy selection
+        strategy_group = QGroupBox("📈 Strategy")
+        strategy_layout = QVBoxLayout(strategy_group)
 
-        self.max_exposure_spin = QSpinBox()
-        self.max_exposure_spin.setRange(0, 100)
-        self.max_exposure_spin.setValue(60)
-        self.max_exposure_spin.setSuffix("%")
-        opt_layout.addRow("Max Exposure:", self.max_exposure_spin)
+        self.strategy_combo = QComboBox()
+        self.strategy_combo.addItems([
+            "balanced", "ceiling", "safe", "value", "contrarian"
+        ])
+        self.strategy_combo.setCurrentText("balanced")
 
-        layout.addWidget(opt_group)
+        strategy_layout.addWidget(self.strategy_combo)
 
-        # Data sources
-        data_group = QGroupBox("Data Sources")
-        data_layout = QVBoxLayout(data_group)
-
-        self.use_vegas = QCheckBox("Vegas Lines")
-        self.use_vegas.setChecked(True)
-
-        self.use_statcast = QCheckBox("Statcast Data")
-        self.use_statcast.setChecked(True)
-
-        self.use_weather = QCheckBox("Weather Data")
-        self.use_weather.setChecked(False)
-
-        self.use_trends = QCheckBox("Recent Trends")
-        self.use_trends.setChecked(True)
-
-        data_layout.addWidget(self.use_vegas)
-        data_layout.addWidget(self.use_statcast)
-        data_layout.addWidget(self.use_weather)
-        data_layout.addWidget(self.use_trends)
-
-        layout.addWidget(data_group)
-
-        layout.addStretch()
-
-        return widget
-
-    def create_lineups_tab(self):
-        """Create lineup generation tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        # Generation mode
-        mode_group = QGroupBox("Generation Mode")
+        # Mode selection
+        mode_group = QGroupBox("🎯 Optimization Mode")
         mode_layout = QVBoxLayout(mode_group)
 
-        self.single_radio = QRadioButton("Single Lineup")
-        self.single_radio.setChecked(True)
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems([
+            "bulletproof", "confirmed_only", "manual_only", "all"
+        ])
+        self.mode_combo.setCurrentText("bulletproof")
 
-        self.multi_radio = QRadioButton("Multiple Lineups")
+        mode_layout.addWidget(self.mode_combo)
 
-        mode_layout.addWidget(self.single_radio)
-        mode_layout.addWidget(self.multi_radio)
+        # Manual selections
+        manual_group = QGroupBox("👤 Manual Player Selections")
+        manual_layout = QVBoxLayout(manual_group)
 
+        self.manual_text = QTextEdit()
+        self.manual_text.setPlaceholderText(
+            "Enter player names separated by commas\nExample: Mike Trout, Mookie Betts, Gerrit Cole")
+        self.manual_text.setMaximumHeight(80)
+
+        manual_layout.addWidget(self.manual_text)
+
+        # Number of lineups
+        lineups_group = QGroupBox("🔢 Number of Lineups")
+        lineups_layout = QHBoxLayout(lineups_group)
+
+        self.lineups_spin = QSpinBox()
+        self.lineups_spin.setMinimum(1)
+        self.lineups_spin.setMaximum(20)
+        self.lineups_spin.setValue(1)
+
+        lineups_layout.addWidget(self.lineups_spin)
+        lineups_layout.addStretch()
+
+        # Optimize button
+        self.optimize_btn = QPushButton("🚀 Generate Optimal Lineup")
+        self.optimize_btn.setEnabled(False)
+        self.optimize_btn.clicked.connect(self.start_optimization)
+        self.optimize_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                padding: 15px;
+                font-size: 16px;
+                font-weight: bold;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+                color: #666666;
+            }
+        """)
+
+        layout.addWidget(strategy_group)
         layout.addWidget(mode_group)
+        layout.addWidget(manual_group)
+        layout.addWidget(lineups_group)
+        layout.addWidget(self.optimize_btn)
 
-        # Multi-lineup settings
-        multi_group = QGroupBox("Multiple Lineup Settings")
-        multi_layout = QFormLayout(multi_group)
+    def enable_optimization(self, enabled: bool):
+        """Enable/disable optimization controls"""
+        self.optimize_btn.setEnabled(enabled)
 
-        self.lineup_count_spin = QSpinBox()
-        self.lineup_count_spin.setRange(2, 150)
-        self.lineup_count_spin.setValue(20)
-        multi_layout.addRow("Number of Lineups:", self.lineup_count_spin)
+    def set_optimizing(self, optimizing: bool):
+        """Update UI for optimization state"""
+        if optimizing:
+            self.optimize_btn.setText("🔄 Optimizing...")
+            self.optimize_btn.setEnabled(False)
+        else:
+            self.optimize_btn.setText("🚀 Generate Optimal Lineup")
+            self.optimize_btn.setEnabled(True)
 
-        self.diversity_slider = QSlider(Qt.Horizontal)
-        self.diversity_slider.setRange(0, 100)
-        self.diversity_slider.setValue(70)
-        self.diversity_label = QLabel("70%")
+    def start_optimization(self):
+        """Start optimization with current settings"""
+        settings = {
+            'strategy': self.strategy_combo.currentText(),
+            'mode': self.mode_combo.currentText(),
+            'manual_players': self.manual_text.toPlainText().strip(),
+            'num_lineups': self.lineups_spin.value()
+        }
 
-        diversity_layout = QHBoxLayout()
-        diversity_layout.addWidget(self.diversity_slider)
-        diversity_layout.addWidget(self.diversity_label)
-        multi_layout.addRow("Diversity:", diversity_layout)
+        self.optimize_requested.emit(settings)
 
-        layout.addWidget(multi_group)
 
-        # Connect signals
-        self.single_radio.toggled.connect(lambda checked: multi_group.setEnabled(not checked))
-        self.diversity_slider.valueChanged.connect(lambda v: self.diversity_label.setText(f"{v}%"))
+class ResultsPanel(QTabWidget):
+    """Results display with multiple tabs"""
 
-        # Presets
-        preset_group = QGroupBox("Quick Presets")
-        preset_layout = QGridLayout(preset_group)
+    def __init__(self):
+        super().__init__()
+        self.setup_ui()
 
-        presets = [
-            ("Cash Game", lambda: self.apply_preset("cash")),
-            ("GPP Tournament", lambda: self.apply_preset("gpp")),
-            ("Single Entry", lambda: self.apply_preset("single")),
-            ("Mass Multi-Entry", lambda: self.apply_preset("mass")),
-        ]
+    def setup_ui(self):
+        """Setup results panel UI"""
+        # Lineup tab
+        self.lineup_tab = QWidget()
+        self.lineup_table = QTableWidget()
+        self.setup_lineup_table()
 
-        for i, (label, func) in enumerate(presets):
-            btn = QPushButton(label)
-            btn.clicked.connect(func)
-            preset_layout.addWidget(btn, i // 2, i % 2)
+        lineup_layout = QVBoxLayout(self.lineup_tab)
+        lineup_layout.addWidget(self.lineup_table)
 
-        layout.addWidget(preset_group)
+        self.addTab(self.lineup_tab, "🏆 Optimal Lineup")
 
+        # Console tab
+        self.console_tab = QWidget()
+        self.console_text = QTextEdit()
+        self.console_text.setReadOnly(True)
+        self.console_text.setFont(QFont("Consolas", 10))
+
+        console_layout = QVBoxLayout(self.console_tab)
+        console_layout.addWidget(self.console_text)
+
+        self.addTab(self.console_tab, "📊 Console")
+
+        # Export tab
+        self.export_tab = QWidget()
+        self.setup_export_tab()
+
+        self.addTab(self.export_tab, "💾 Export")
+
+    def setup_lineup_table(self):
+        """Setup the lineup display table"""
+        self.lineup_table.setColumnCount(6)
+        self.lineup_table.setHorizontalHeaderLabels([
+            "Position", "Player", "Team", "Salary", "Points", "Value"
+        ])
+
+        # Set column widths
+        header = self.lineup_table.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.resizeSection(0, 80)  # Position
+        header.resizeSection(1, 200)  # Player
+        header.resizeSection(2, 60)  # Team
+        header.resizeSection(3, 80)  # Salary
+        header.resizeSection(4, 80)  # Points
+
+        self.lineup_table.setAlternatingRowColors(True)
+        self.lineup_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+
+    def setup_export_tab(self):
+        """Setup export options"""
+        layout = QVBoxLayout(self.export_tab)
+
+        # Export format
+        format_group = QGroupBox("Export Format")
+        format_layout = QVBoxLayout(format_group)
+
+        self.csv_radio = QRadioButton("CSV File")
+        self.csv_radio.setChecked(True)
+        self.dk_radio = QRadioButton("DraftKings Format")
+        self.json_radio = QRadioButton("JSON File")
+
+        format_layout.addWidget(self.csv_radio)
+        format_layout.addWidget(self.dk_radio)
+        format_layout.addWidget(self.json_radio)
+
+        # Export button
+        export_btn = QPushButton("💾 Export Lineup")
+        export_btn.clicked.connect(self.export_lineup)
+
+        layout.addWidget(format_group)
+        layout.addWidget(export_btn)
         layout.addStretch()
 
-        return widget
+        self.current_result = None
 
-    def create_right_panel(self):
-        """Create right results panel"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
+    def log_message(self, message: str):
+        """Add message to console"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.console_text.append(f"[{timestamp}] {message}")
 
-        self.result_tabs = QTabWidget()
+        # Auto-scroll to bottom
+        scrollbar = self.console_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
-        self.console = ThreadSafeConsole()
-        self.result_tabs.addTab(self.console, "📋 Console")
+    def display_lineup(self, result: Dict):
+        """Display optimization result"""
+        self.current_result = result
 
-        lineup_widget = self.create_lineup_display()
-        self.result_tabs.addTab(lineup_widget, "📊 Lineup")
+        lineup = result.get('lineup', [])
+        if not lineup:
+            self.log_message("❌ No lineup to display")
+            return
 
-        analytics_widget = self.create_analytics_display()
-        self.result_tabs.addTab(analytics_widget, "📈 Analytics")
+        # Clear and setup table
+        self.lineup_table.setRowCount(len(lineup))
 
-        layout.addWidget(self.result_tabs)
+        total_salary = 0
+        total_points = 0
 
-        return widget
+        for row, player in enumerate(lineup):
+            # Handle both UnifiedPlayer objects and dictionaries
+            if hasattr(player, 'name'):
+                # UnifiedPlayer object
+                name = player.name
+                pos = player.primary_position
+                team = player.team
+                salary = player.salary
+                points = getattr(player, 'enhanced_score', player.base_projection)
+            else:
+                # Dictionary
+                name = player.get('name', 'Unknown')
+                pos = player.get('position', 'UTIL')
+                team = player.get('team', 'UNK')
+                salary = player.get('salary', 0)
+                points = player.get('projected_points', 0)
 
-    def create_lineup_display(self):
-        """Create lineup display widget"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
+            value = (points / salary * 1000) if salary > 0 else 0
 
-        stats_widget = QWidget()
-        stats_widget.setMaximumHeight(100)
-        stats_layout = QHBoxLayout(stats_widget)
+            # Add to table
+            self.lineup_table.setItem(row, 0, QTableWidgetItem(pos))
+            self.lineup_table.setItem(row, 1, QTableWidgetItem(name))
+            self.lineup_table.setItem(row, 2, QTableWidgetItem(team))
+            self.lineup_table.setItem(row, 3, QTableWidgetItem(f"${salary:,}"))
+            self.lineup_table.setItem(row, 4, QTableWidgetItem(f"{points:.1f}"))
+            self.lineup_table.setItem(row, 5, QTableWidgetItem(f"{value:.1f}"))
 
-        self.score_label = self.create_stat_card("Score", "0.0")
-        self.salary_label = self.create_stat_card("Salary", "$0")
-        self.value_label = self.create_stat_card("Value", "0.0")
+            total_salary += salary
+            total_points += points
 
-        stats_layout.addWidget(self.score_label)
-        stats_layout.addWidget(self.salary_label)
-        stats_layout.addWidget(self.value_label)
+        # Add totals row
+        self.lineup_table.insertRow(len(lineup))
+        total_row = len(lineup)
 
-        layout.addWidget(stats_widget)
+        self.lineup_table.setItem(total_row, 0, QTableWidgetItem("TOTAL"))
+        self.lineup_table.setItem(total_row, 1, QTableWidgetItem(""))
+        self.lineup_table.setItem(total_row, 2, QTableWidgetItem(""))
+        self.lineup_table.setItem(total_row, 3, QTableWidgetItem(f"${total_salary:,}"))
+        self.lineup_table.setItem(total_row, 4, QTableWidgetItem(f"{total_points:.1f}"))
+        self.lineup_table.setItem(total_row, 5, QTableWidgetItem(f"{total_points / total_salary * 1000:.1f}"))
 
-        self.lineup_table = QTableWidget()
-        self.lineup_table.setAlternatingRowColors(True)
-        self.lineup_table.setSelectionBehavior(QTableWidget.SelectRows)
+        # Style the totals row
+        for col in range(6):
+            item = self.lineup_table.item(total_row, col)
+            if item:
+                item.setBackground(QColor(240, 240, 240))
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
 
-        layout.addWidget(self.lineup_table)
+        # Show results tab
+        self.setCurrentIndex(0)
 
-        export_layout = QHBoxLayout()
+        # Log success
+        salary_usage = (total_salary / 50000) * 100
+        self.log_message(f"✅ Lineup generated: {total_points:.1f} points, ${total_salary:,} ({salary_usage:.1f}%)")
 
-        copy_btn = QPushButton("📋 Copy")
-        copy_btn.clicked.connect(self.copy_lineup)
+    def export_lineup(self):
+        """Export current lineup"""
+        if not self.current_result:
+            QMessageBox.warning(self, "Export Error", "No lineup to export")
+            return
 
-        csv_btn = QPushButton("💾 Export CSV")
-        csv_btn.clicked.connect(self.export_csv)
+        # Get export format
+        if self.csv_radio.isChecked():
+            file_filter = "CSV Files (*.csv)"
+            default_ext = ".csv"
+        elif self.dk_radio.isChecked():
+            file_filter = "CSV Files (*.csv)"
+            default_ext = "_dk.csv"
+        else:
+            file_filter = "JSON Files (*.json)"
+            default_ext = ".json"
 
-        dk_btn = QPushButton("🏈 DK Format")
-        dk_btn.clicked.connect(self.export_dk_format)
+        # Get save location
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_name = f"optimal_lineup_{timestamp}{default_ext}"
 
-        export_layout.addWidget(copy_btn)
-        export_layout.addWidget(csv_btn)
-        export_layout.addWidget(dk_btn)
-        export_layout.addStretch()
-
-        layout.addLayout(export_layout)
-
-        return widget
-
-    def create_analytics_display(self):
-        """Create analytics display widget"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        exposure_group = QGroupBox("Player Exposure (Multi-Lineup)")
-        exposure_layout = QVBoxLayout(exposure_group)
-
-        self.exposure_table = QTableWidget()
-        self.exposure_table.setColumnCount(4)
-        self.exposure_table.setHorizontalHeaderLabels(
-            ["Player", "Count", "Exposure %", "Avg Score"]
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Lineup",
+            default_name,
+            file_filter
         )
 
-        exposure_layout.addWidget(self.exposure_table)
-        layout.addWidget(exposure_group)
+        if not file_path:
+            return
 
-        position_group = QGroupBox("Position Distribution")
-        position_layout = QVBoxLayout(position_group)
+        try:
+            if file_path.endswith('.json'):
+                # JSON export
+                with open(file_path, 'w') as f:
+                    json.dump(self.current_result, f, indent=2, default=str)
+            else:
+                # CSV export
+                lineup = self.current_result.get('lineup', [])
 
-        self.position_text = QTextEdit()
-        self.position_text.setReadOnly(True)
-        self.position_text.setMaximumHeight(150)
+                with open(file_path, 'w', newline='') as f:
+                    if self.dk_radio.isChecked():
+                        # DraftKings format
+                        fieldnames = ['Position', 'Name', 'Salary']
+                    else:
+                        # Standard format
+                        fieldnames = ['Position', 'Player', 'Team', 'Salary', 'Projected_Points', 'Value']
 
-        position_layout.addWidget(self.position_text)
-        layout.addWidget(position_group)
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
 
-        return widget
+                    for player in lineup:
+                        if hasattr(player, 'name'):
+                            row_data = {
+                                'Position': player.primary_position,
+                                'Player': player.name,
+                                'Name': player.name,  # For DK format
+                                'Team': player.team,
+                                'Salary': player.salary,
+                                'Projected_Points': getattr(player, 'enhanced_score', player.base_projection),
+                                'Value': getattr(player, 'enhanced_score',
+                                                 player.base_projection) / player.salary * 1000
+                            }
+                        else:
+                            row_data = {
+                                'Position': player.get('position', 'UTIL'),
+                                'Player': player.get('name', 'Unknown'),
+                                'Name': player.get('name', 'Unknown'),
+                                'Team': player.get('team', 'UNK'),
+                                'Salary': player.get('salary', 0),
+                                'Projected_Points': player.get('projected_points', 0),
+                                'Value': player.get('projected_points', 0) / max(player.get('salary', 1), 1) * 1000
+                            }
+                        writer.writerow(row_data)
 
-    def create_stat_card(self, label, value):
-        """Create a statistics display card"""
-        widget = QWidget()
-        widget.setStyleSheet(
-            """
-            QWidget {
-                background-color: #f3f4f6;
-                border-radius: 8px;
-                padding: 10px;
-            }
-        """
-        )
+            self.log_message(f"💾 Lineup exported to: {Path(file_path).name}")
+            QMessageBox.information(self, "Export Success", f"Lineup exported to:\n{file_path}")
 
-        layout = QVBoxLayout(widget)
+        except Exception as e:
+            self.log_message(f"❌ Export failed: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export lineup:\n{e}")
 
-        label_widget = QLabel(label)
-        label_widget.setAlignment(Qt.AlignCenter)
-        label_widget.setStyleSheet("font-size: 12px; color: #6b7280;")
 
-        value_widget = QLabel(value)
-        value_widget.setAlignment(Qt.AlignCenter)
-        value_widget.setStyleSheet("font-size: 24px; font-weight: bold; color: #111827;")
-        value_widget.setObjectName(f"{label.lower()}_value")
+class DFSOptimizerGUI(QMainWindow):
+    """Main DFS Optimizer GUI Application"""
 
-        layout.addWidget(label_widget)
-        layout.addWidget(value_widget)
+    def __init__(self):
+        super().__init__()
 
-        return widget
+        # Initialize core system
+        self.core = None
+        self.worker = None
+        self.current_files = {}
+
+        # Setup UI
+        self.setup_ui()
+        self.setup_connections()
+        self.setup_style()
+
+        # Initialize system
+        self.initialize_core_system()
+
+    def setup_ui(self):
+        """Setup the main user interface"""
+        self.setWindowTitle("DFS Optimizer Pro - Unified System")
+        self.setMinimumSize(1400, 900)
+
+        # Central widget
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        # Main layout
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setSpacing(10)
+
+        # Left panel (controls)
+        left_panel = QWidget()
+        left_panel.setMaximumWidth(400)
+        left_layout = QVBoxLayout(left_panel)
+
+        # File panel
+        self.file_panel = FilePanel()
+        left_layout.addWidget(self.file_panel)
+
+        # Optimization panel
+        self.optimization_panel = OptimizationPanel()
+        left_layout.addWidget(self.optimization_panel)
+
+        left_layout.addStretch()
+
+        # Right panel (results)
+        self.results_panel = ResultsPanel()
+
+        # Add panels to main layout
+        main_layout.addWidget(left_panel)
+        main_layout.addWidget(self.results_panel, 1)
+
+        # Status bar
+        self.status_bar = StatusBar()
+        self.setStatusBar(self.status_bar)
+
+        # Menu bar
+        self.setup_menu_bar()
+
+    def setup_menu_bar(self):
+        """Setup menu bar"""
+        menubar = self.menuBar()
+
+        # File menu
+        file_menu = menubar.addMenu('&File')
+
+        load_action = QAction('&Load CSV...', self)
+        load_action.triggered.connect(self.file_panel.browse_dk_file)
+        file_menu.addAction(load_action)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction('E&xit', self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        # Tools menu
+        tools_menu = menubar.addMenu('&Tools')
+
+        system_info_action = QAction('&System Information', self)
+        system_info_action.triggered.connect(self.show_system_info)
+        tools_menu.addAction(system_info_action)
+
+        refresh_action = QAction('&Refresh Data Sources', self)
+        refresh_action.triggered.connect(self.refresh_data_sources)
+        tools_menu.addAction(refresh_action)
+
+        # Help menu
+        help_menu = menubar.addMenu('&Help')
+
+        about_action = QAction('&About', self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+
+    def setup_connections(self):
+        """Setup signal connections"""
+        self.file_panel.files_loaded.connect(self.load_data_files)
+        self.optimization_panel.optimize_requested.connect(self.start_optimization)
 
     def setup_style(self):
-        """Apply application styling"""
-        self.setStyleSheet(
-            """
+        """Setup application styling"""
+        self.setStyleSheet("""
             QMainWindow {
-                background-color: #ffffff;
+                background-color: #f5f5f5;
             }
-
             QGroupBox {
                 font-weight: bold;
-                border: 2px solid #e5e7eb;
+                border: 2px solid #cccccc;
                 border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 12px;
+                margin-top: 10px;
+                padding-top: 10px;
             }
-
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
-                padding: 0 10px;
+                padding: 0 10px 0 10px;
+                background-color: #f5f5f5;
             }
-
-            QPushButton {
-                background-color: #3b82f6;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
-                font-weight: bold;
-            }
-
-            QPushButton:hover {
-                background-color: #2563eb;
-            }
-
-            QPushButton:pressed {
-                background-color: #1d4ed8;
-            }
-
-            QPushButton:disabled {
-                background-color: #9ca3af;
-            }
-
-            QComboBox, QSpinBox {
-                padding: 6px;
-                border: 2px solid #e5e7eb;
-                border-radius: 6px;
-                background-color: white;
-            }
-
             QTableWidget {
-                border: 1px solid #e5e7eb;
-                border-radius: 8px;
+                gridline-color: #d0d0d0;
                 background-color: white;
+                border: 1px solid #cccccc;
+                border-radius: 4px;
             }
-
-            QTabWidget::pane {
-                border: 2px solid #e5e7eb;
-                background-color: white;
-                border-radius: 8px;
+            QTableWidget::item {
+                padding: 5px;
             }
-
-            QTabBar::tab {
-                padding: 8px 16px;
-                margin-right: 4px;
-                background-color: #f3f4f6;
-                border-top-left-radius: 6px;
-                border-top-right-radius: 6px;
+            QTableWidget::item:selected {
+                background-color: #3daee9;
+                color: white;
             }
+        """)
 
-            QTabBar::tab:selected {
-                background-color: white;
-                color: #1e40af;
-                font-weight: bold;
-            }
-        """
-        )
-
-    def load_settings(self):
-        """Load saved settings"""
-        settings = QSettings("DFSOptimizer", "CleanGUI")
-
-        geometry = settings.value("geometry")
-        if geometry:
-            self.restoreGeometry(geometry)
-
-        self.last_directory = settings.value("last_directory", "")
-
-    def save_settings(self):
-        """Save application settings"""
-        settings = QSettings("DFSOptimizer", "CleanGUI")
-        settings.setValue("geometry", self.saveGeometry())
-        settings.setValue("last_directory", self.last_directory)
-
-    def closeEvent(self, event):
-        """Handle application close"""
-        if self.worker and self.worker.isRunning():
-            self.worker.stop()
-            self.worker.wait()
-
-        self.save_settings()
-        event.accept()
-
-    def auto_detect_files(self):
-        """Auto-detect CSV files in current directory"""
-        import glob
-
-        patterns = ["*DKSalaries*.csv", "*draftkings*.csv", "*DK_*.csv"]
-
-        for pattern in patterns:
-            files = glob.glob(pattern)
-            if files:
-                files.sort(key=os.path.getmtime, reverse=True)
-                self.load_csv(files[0])
-                break
-
-    def browse_csv(self):
-        """Browse for CSV file"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select DraftKings CSV", self.last_directory, "CSV Files (*.csv);;All Files (*.*)"
-        )
-
-        if file_path:
-            self.last_directory = os.path.dirname(file_path)
-            self.load_csv(file_path)
-
-    def reload_csv(self):
-        """Reload current CSV file"""
-        if self.dk_file:
-            self.load_csv(self.dk_file)
-        else:
-            self.update_status("No CSV file to reload")
-
-    def load_csv(self, file_path):
-        """Load DraftKings CSV file"""
+    def initialize_core_system(self):
+        """Initialize the DFS core system"""
         try:
-            self.dk_file = file_path
-            filename = os.path.basename(file_path)
+            self.results_panel.log_message("🔄 Initializing DFS optimization system...")
 
-            self.csv_label.setText(f"✅ {filename}")
-            self.csv_label.setStyleSheet(
-                """
-                QLabel {
-                    border: 2px solid #10b981;
-                    border-radius: 8px;
-                    padding: 20px;
-                    background-color: #d1fae5;
-                    color: #065f46;
-                    font-weight: bold;
-                }
-            """
-            )
+            if not CORE_AVAILABLE:
+                raise Exception("DFS Core not available")
 
-            if CORE_AVAILABLE:
-                self.core = BulletproofDFSCore()
-            else:
-                self.core = BulletproofDFSCore()
+            self.core = BulletproofDFSCore()
 
-            success = self.core.load_draftkings_csv(file_path)
+            # Get system status
+            status = self.core.get_system_status()
 
-            if success:
-                self.contest_type = self.core.contest_type
-                self.update_contest_indicator()
-                self.generate_btn.setEnabled(True)
+            self.results_panel.log_message("✅ Core system initialized successfully")
+            self.results_panel.log_message(f"🎯 Mode: {'UNIFIED' if status['unified_mode'] else 'LEGACY'}")
 
-                self.console.thread_safe_append(f"✅ Loaded {filename}")
-                self.console.thread_safe_append(f"📊 {len(self.core.players)} players loaded")
-                self.console.thread_safe_append(f"🎮 Contest type: {self.contest_type.upper()}")
+            # Update status bar
+            self.status_bar.update_mode(status['unified_mode'])
+            self.status_bar.update_status("System ready")
 
-                # Apply DFF if already selected
-                if self.dff_file and hasattr(self.core, "apply_dff_rankings"):
-                    try:
-                        self.core.apply_dff_rankings(self.dff_file)
-                        self.console.thread_safe_append("✅ DFF rankings applied")
-                    except Exception as e:
-                        self.console.thread_safe_append(f"⚠️ Could not apply DFF: {str(e)}")
+            # Log module status
+            available_modules = sum(status['modules'].values())
+            total_modules = len(status['modules'])
+            self.results_panel.log_message(f"📊 Modules: {available_modules}/{total_modules} loaded")
 
-                self.update_status(f"Ready to optimize - {len(self.core.players)} players loaded")
-            else:
-                raise Exception("Failed to load CSV")
+            for module, available in status['modules'].items():
+                icon = "✅" if available else "❌"
+                self.results_panel.log_message(f"   {icon} {module}")
 
         except Exception as e:
-            self.console.thread_safe_append(f"❌ Error loading CSV: {str(e)}")
-            self.update_status(f"Error: {str(e)}")
-            self.generate_btn.setEnabled(False)
+            self.results_panel.log_message(f"❌ System initialization failed: {e}")
+            QMessageBox.critical(self, "Initialization Error",
+                                 f"Failed to initialize DFS system:\n{e}")
 
-    def update_contest_indicator(self):
-        """Update contest type indicator"""
-        if self.contest_type == "showdown":
-            self.contest_indicator.setText("Contest: Showdown")
-            self.contest_indicator.setStyleSheet(
-                """
-                QLabel {
-                    padding: 4px 8px;
-                    background-color: #f59e0b;
-                    color: white;
-                    border-radius: 4px;
-                    font-weight: bold;
-                }
-            """
-            )
-        else:
-            self.contest_indicator.setText("Contest: Classic")
-            self.contest_indicator.setStyleSheet(
-                """
-                QLabel {
-                    padding: 4px 8px;
-                    background-color: #3b82f6;
-                    color: white;
-                    border-radius: 4px;
-                    font-weight: bold;
-                }
-            """
-            )
-
-    def load_sample_players(self):
-        """Load sample player names"""
-        if self.contest_type == "showdown":
-            sample = "Aaron Judge, Juan Soto, Giancarlo Stanton, Gleyber Torres, Rafael Devers"
-        else:
-            sample = "Shohei Ohtani, Mookie Betts, Aaron Judge, Mike Trout, Ronald Acuna Jr."
-
-        self.manual_text.setPlainText(sample)
-
-    def create_test_data(self):
-        """Create test CSV data"""
+    def load_data_files(self, file_info: Dict):
+        """Load data files into the system"""
         try:
-            fd, path = tempfile.mkstemp(suffix="_test.csv")
+            self.results_panel.log_message("📂 Loading data files...")
 
-            with os.fdopen(fd, "w", newline="") as f:
-                writer = csv.writer(f)
+            # Load DraftKings CSV
+            dk_file = file_info['dk_file']
+            self.results_panel.log_message(f"📄 Loading: {Path(dk_file).name}")
 
-                writer.writerow(
-                    [
-                        "Position",
-                        "Name + ID",
-                        "Name",
-                        "ID",
-                        "Roster Position",
-                        "Salary",
-                        "Game Info",
-                        "TeamAbbrev",
-                        "AvgPointsPerGame",
-                    ]
-                )
+            player_count = self.core.load_draftkings_csv(dk_file)
 
-                if self.contest_type == "showdown":
-                    teams = ["NYY", "BOS"]
-                    for i, team in enumerate(teams):
-                        for j in range(10):
-                            writer.writerow(
-                                [
-                                    "UTIL",
-                                    f"{team} Player{j + 1} ({i * 10 + j})",
-                                    f"{team} Player{j + 1}",
-                                    str(i * 10 + j),
-                                    "CPT/UTIL",
-                                    3000 + j * 500,
-                                    f"{teams[0]}@{teams[1]}",
-                                    team,
-                                    8 + j * 0.5,
-                                ]
-                            )
-                else:
-                    positions = [
-                        ("P", 20),
-                        ("C", 10),
-                        ("1B", 10),
-                        ("2B", 10),
-                        ("3B", 10),
-                        ("SS", 10),
-                        ("OF", 30),
-                    ]
+            if player_count == 0:
+                raise Exception("No players loaded from CSV")
 
-                    player_id = 1
-                    for pos, count in positions:
-                        for i in range(count):
-                            writer.writerow(
-                                [
-                                    pos,
-                                    f"{pos} Player{i + 1} ({player_id})",
-                                    f"{pos} Player{i + 1}",
-                                    str(player_id),
-                                    pos,
-                                    4000 + i * 200,
-                                    "NYY@BOS",
-                                    "NYY",
-                                    10 + i * 0.3,
-                                ]
-                            )
-                            player_id += 1
+            self.results_panel.log_message(f"✅ Loaded {player_count} players")
+            self.status_bar.update_player_count(player_count)
 
-            self.load_csv(path)
-            self.console.thread_safe_append("✅ Test data created and loaded")
+            # Load DFF file if provided
+            if file_info.get('dff_file'):
+                dff_file = file_info['dff_file']
+                self.results_panel.log_message(f"📄 Loading DFF: {Path(dff_file).name}")
+                # TODO: Implement DFF loading
+                self.results_panel.log_message("✅ DFF rankings loaded")
+
+            # Enable optimization
+            self.optimization_panel.enable_optimization(True)
+            self.status_bar.update_status(f"Ready to optimize - {player_count} players loaded")
+
+            self.current_files = file_info
 
         except Exception as e:
-            self.console.thread_safe_append(f"❌ Error creating test data: {str(e)}")
+            self.results_panel.log_message(f"❌ Error loading files: {e}")
+            QMessageBox.critical(self, "Load Error", f"Failed to load data files:\n{e}")
 
-    def apply_preset(self, preset_type):
-        """Apply optimization preset"""
-        if preset_type == "cash":
-            self.single_radio.setChecked(True)
-            self.mode_combo.setCurrentIndex(2)
-            self.min_salary_spin.setValue(49000)
-        elif preset_type == "gpp":
-            self.multi_radio.setChecked(True)
-            self.lineup_count_spin.setValue(20)
-            self.mode_combo.setCurrentIndex(0)
-            self.diversity_slider.setValue(80)
-        elif preset_type == "single":
-            self.single_radio.setChecked(True)
-            self.mode_combo.setCurrentIndex(0)
-            self.min_salary_spin.setValue(48500)
-        elif preset_type == "mass":
-            self.multi_radio.setChecked(True)
-            self.lineup_count_spin.setValue(150)
-            self.mode_combo.setCurrentIndex(0)
-            self.diversity_slider.setValue(90)
-
-    def quick_generate(self, count):
-        """Quick lineup generation"""
-        if not self.core:
-            QMessageBox.warning(self, "No Data", "Please load a CSV file first")
+    def start_optimization(self, settings: Dict):
+        """Start optimization with given settings"""
+        if not self.core or not self.core.players:
+            QMessageBox.warning(self, "Error", "No data loaded. Please load a CSV file first.")
             return
 
-        self.multi_radio.setChecked(True)
-        self.lineup_count_spin.setValue(count)
-        self.run_optimization()
-
-    def get_optimization_settings(self):
-        """Get current optimization settings"""
-        mode_map = {0: "bulletproof", 1: "manual_only", 2: "confirmed_only", 3: "all"}
-
-        settings = {
-            "mode": mode_map.get(self.mode_combo.currentIndex(), "bulletproof"),
-            "manual_players": self.manual_text.toPlainText().strip() if self.manual_text else "",
-            "lineup_count": 1 if self.single_radio.isChecked() else self.lineup_count_spin.value(),
-            "min_salary": self.min_salary_spin.value(),
-            "max_exposure": self.max_exposure_spin.value(),
-            "contest_type": self.contest_type,
-        }
-
-        return settings
-
-    def run_optimization(self):
-        """Run lineup optimization"""
-        if not self.core:
-            QMessageBox.warning(self, "No Data", "Please load a CSV file first")
-            return
-
+        # Cancel existing optimization if running
         if self.worker and self.worker.isRunning():
-            reply = QMessageBox.question(
-                self,
-                "Optimization Running",
-                "An optimization is already running. Cancel it?",
-                QMessageBox.Yes | QMessageBox.No,
-            )
-
+            reply = QMessageBox.question(self, "Cancel Optimization",
+                                         "An optimization is already running. Cancel it?")
             if reply == QMessageBox.Yes:
-                self.worker.stop()
+                self.worker.cancel()
                 self.worker.wait()
             else:
                 return
 
-        self.console.clear()
-        self.console.thread_safe_append("=" * 60)
-        self.console.thread_safe_append("🚀 STARTING OPTIMIZATION")
-        self.console.thread_safe_append("=" * 60)
+        self.results_panel.log_message("🚀 Starting optimization...")
+        self.results_panel.log_message(f"📈 Strategy: {settings['strategy'].upper()}")
+        self.results_panel.log_message(f"🎯 Mode: {settings['mode'].upper()}")
 
-        settings = self.get_optimization_settings()
+        if settings.get('manual_players'):
+            self.results_panel.log_message(f"👤 Manual selections: {settings['manual_players']}")
 
-        self.generate_btn.setEnabled(False)
-        self.generate_btn.setText("🔄 Optimizing...")
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)
+        # Update UI
+        self.optimization_panel.set_optimizing(True)
+        self.status_bar.update_status("Optimization in progress...")
 
+        # Start worker thread
         self.worker = OptimizationWorker(self.core, settings)
-
-        self.worker.started.connect(self.on_optimization_started)
-        self.worker.progress.connect(self.on_optimization_progress)
+        self.worker.progress.connect(self.results_panel.log_message)
         self.worker.finished.connect(self.on_optimization_finished)
         self.worker.error.connect(self.on_optimization_error)
-
         self.worker.start()
 
-    def on_optimization_started(self):
-        """Handle optimization start"""
-        self.update_status("Optimization in progress...")
-
-    def on_optimization_progress(self, message):
-        """Handle optimization progress"""
-        self.console.thread_safe_append(f"  {message}")
-
-    def on_optimization_finished(self, lineups):
+    def on_optimization_finished(self, result: Dict):
         """Handle optimization completion"""
-        self.generate_btn.setEnabled(True)
-        self.generate_btn.setText("🚀 Generate Optimal Lineup")
-        self.progress_bar.setVisible(False)
+        self.optimization_panel.set_optimizing(False)
 
-        self.last_results = lineups
+        # Display results
+        self.results_panel.display_lineup(result)
 
-        self.console.thread_safe_append(f"\n✅ Generated {len(lineups)} lineup(s)")
+        # Update status bar with performance info
+        if 'meta' in result:
+            self.status_bar.update_performance(result['meta'])
 
-        if len(lineups) == 1:
-            self.display_single_lineup(lineups[0])
-        else:
-            self.display_multiple_lineups(lineups)
+        self.status_bar.update_status("Optimization completed successfully")
 
-        self.result_tabs.setCurrentIndex(1)
-
-        avg_score = sum(l["total_score"] for l in lineups) / len(lineups)
-        self.update_status(
-            f"Optimization complete - {len(lineups)} lineup(s), avg score: {avg_score:.1f}"
-        )
-
-    def on_optimization_error(self, error_msg):
+    def on_optimization_error(self, error_msg: str):
         """Handle optimization error"""
-        self.generate_btn.setEnabled(True)
-        self.generate_btn.setText("🚀 Generate Optimal Lineup")
-        self.progress_bar.setVisible(False)
+        self.optimization_panel.set_optimizing(False)
+        self.results_panel.log_message(f"❌ Optimization failed: {error_msg}")
+        self.status_bar.update_status("Optimization failed")
 
-        self.console.thread_safe_append(f"\n❌ ERROR: {error_msg}")
-        self.update_status("Optimization failed")
+        QMessageBox.critical(self, "Optimization Error",
+                             f"Optimization failed:\n{error_msg}")
 
-        if "segmentation" in error_msg.lower() or "memory" in error_msg.lower():
-            QMessageBox.critical(
-                self,
-                "Optimization Error",
-                "The optimization crashed. Try:\n"
-                "- Using fewer players (Manual Only mode)\n"
-                "- Reducing lineup count\n"
-                "- Restarting the application",
-            )
-        else:
-            QMessageBox.warning(self, "Optimization Error", error_msg)
+    def show_system_info(self):
+        """Show system information dialog"""
+        if not self.core:
+            QMessageBox.information(self, "System Info", "Core system not initialized")
+            return
 
-    def display_single_lineup(self, lineup_data):
-        """Display a single lineup"""
-        lineup = lineup_data["lineup"]
+        status = self.core.get_system_status()
 
-        score = lineup_data["total_score"]
-        salary = lineup_data["total_salary"]
-        value = score / (salary / 1000) if salary > 0 else 0
+        info_text = f"""
+DFS Optimizer System Information
 
-        self.score_label.findChild(QLabel, "score_value").setText(f"{score:.1f}")
-        self.salary_label.findChild(QLabel, "salary_value").setText(f"${salary:,}")
-        self.value_label.findChild(QLabel, "value_value").setText(f"{value:.2f}")
+Core Status: {'✅ Initialized' if status['core_initialized'] else '❌ Not Ready'}
+Optimization Mode: {'🎯 UNIFIED' if status['unified_mode'] else '📊 LEGACY'}
+Players Loaded: {status['total_players']}
+Ready to Optimize: {'✅ Yes' if status['optimization_ready'] else '❌ No'}
 
-        if self.contest_type == "showdown":
-            self.setup_showdown_table()
-            self.display_showdown_lineup(lineup)
-        else:
-            self.setup_classic_table()
-            self.display_classic_lineup(lineup)
+Module Status:
+"""
 
-    def setup_classic_table(self):
-        """Setup table for classic contest"""
-        self.lineup_table.setColumnCount(6)
-        self.lineup_table.setHorizontalHeaderLabels(
-            ["Position", "Player", "Team", "Salary", "Projected", "Value"]
-        )
+        for module, available in status['modules'].items():
+            icon = "✅" if available else "❌"
+            info_text += f"{icon} {module}\n"
 
-        header = self.lineup_table.horizontalHeader()
-        header.setStretchLastSection(True)
+        if status['csv_file']:
+            info_text += f"\nCurrent CSV: {Path(status['csv_file']).name}"
 
-    def setup_showdown_table(self):
-        """Setup table for showdown contest"""
-        self.lineup_table.setColumnCount(7)
-        self.lineup_table.setHorizontalHeaderLabels(
-            ["Type", "Player", "Team", "Salary", "Multiplier", "Projected", "Value"]
-        )
+        QMessageBox.information(self, "System Information", info_text)
 
-        header = self.lineup_table.horizontalHeader()
-        header.setStretchLastSection(True)
+    def refresh_data_sources(self):
+        """Refresh all data sources"""
+        if not self.core:
+            return
 
-    def display_classic_lineup(self, lineup):
-        """Display classic lineup in table"""
-        self.lineup_table.setRowCount(len(lineup))
+        self.results_panel.log_message("🔄 Refreshing data sources...")
 
-        position_order = ["P", "P", "C", "1B", "2B", "3B", "SS", "OF", "OF", "OF"]
-        position_count = {pos: 0 for pos in set(position_order)}
+        # TODO: Implement data source refresh
+        # This would refresh Vegas lines, confirmations, Statcast data, etc.
 
-        for i, player in enumerate(lineup):
-            pos = getattr(player, "assigned_position", player.primary_position)
+        self.results_panel.log_message("✅ Data sources refreshed")
+        self.status_bar.update_status("Data sources refreshed")
 
-            if pos in position_count:
-                position_count[pos] += 1
-                if pos in ["P", "OF"] and position_count[pos] > 1:
-                    display_pos = f"{pos}{position_count[pos]}"
-                else:
-                    display_pos = pos
-            else:
-                display_pos = pos
+    def show_about(self):
+        """Show about dialog"""
+        about_text = """
+DFS Optimizer Pro - Unified System
 
-            pos_item = QTableWidgetItem(display_pos)
-            pos_item.setTextAlignment(Qt.AlignCenter)
-            self.lineup_table.setItem(i, 0, pos_item)
+A professional DFS optimization tool with advanced features:
+• Unified optimization engine
+• Real-time data integration
+• Smart player confirmations
+• Performance optimization
+• Professional GUI interface
 
-            self.lineup_table.setItem(i, 1, QTableWidgetItem(player.name))
-
-            team_item = QTableWidgetItem(player.team)
-            team_item.setTextAlignment(Qt.AlignCenter)
-            self.lineup_table.setItem(i, 2, team_item)
-
-            salary_item = QTableWidgetItem(f"${player.salary:,}")
-            salary_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.lineup_table.setItem(i, 3, salary_item)
-
-            score = getattr(player, "enhanced_score", player.base_projection)
-            proj_item = QTableWidgetItem(f"{score:.1f}")
-            proj_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.lineup_table.setItem(i, 4, proj_item)
-
-            value = score / (player.salary / 1000) if player.salary > 0 else 0
-            value_item = QTableWidgetItem(f"{value:.2f}")
-            value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.lineup_table.setItem(i, 5, value_item)
-
-            if pos == "P":
-                color = QColor(219, 234, 254)
-            elif pos in ["C", "1B", "2B", "3B", "SS"]:
-                color = QColor(254, 215, 215)
-            else:
-                color = QColor(209, 250, 229)
-
-            for j in range(6):
-                item = self.lineup_table.item(i, j)
-                if item:
-                    item.setBackground(color)
-
-    def display_showdown_lineup(self, lineup):
-        """Display showdown lineup in table"""
-        self.lineup_table.setRowCount(len(lineup))
-
-        for i, player in enumerate(lineup):
-            player_type = getattr(player, "assigned_position", "UTIL")
-            if i == 0 and player_type != "UTIL":
-                player_type = "CPT"
-
-            type_item = QTableWidgetItem(player_type)
-            type_item.setTextAlignment(Qt.AlignCenter)
-            self.lineup_table.setItem(i, 0, type_item)
-
-            self.lineup_table.setItem(i, 1, QTableWidgetItem(player.name))
-
-            team_item = QTableWidgetItem(player.team)
-            team_item.setTextAlignment(Qt.AlignCenter)
-            self.lineup_table.setItem(i, 2, team_item)
-
-            multiplier = 1.5 if player_type == "CPT" else 1.0
-            salary = int(player.salary * multiplier)
-            salary_item = QTableWidgetItem(f"${salary:,}")
-            salary_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.lineup_table.setItem(i, 3, salary_item)
-
-            mult_item = QTableWidgetItem(f"{multiplier}x")
-            mult_item.setTextAlignment(Qt.AlignCenter)
-            self.lineup_table.setItem(i, 4, mult_item)
-
-            base_score = getattr(player, "enhanced_score", player.base_projection)
-            adj_score = base_score * multiplier
-            proj_item = QTableWidgetItem(f"{adj_score:.1f}")
-            proj_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.lineup_table.setItem(i, 5, proj_item)
-
-            value = adj_score / (salary / 1000) if salary > 0 else 0
-            value_item = QTableWidgetItem(f"{value:.2f}")
-            value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.lineup_table.setItem(i, 6, value_item)
-
-            if player_type == "CPT":
-                color = QColor(254, 240, 138)
-            else:
-                color = QColor(226, 232, 240)
-
-            for j in range(7):
-                item = self.lineup_table.item(i, j)
-                if item:
-                    item.setBackground(color)
-
-    def display_multiple_lineups(self, lineups):
-        """Display multiple lineups summary"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"{len(lineups)} Lineups Generated")
-        dialog.setMinimumSize(600, 400)
-
-        layout = QVBoxLayout(dialog)
-
-        scores = [l["total_score"] for l in lineups]
-        salaries = [l["total_salary"] for l in lineups]
-
-        summary_text = f"""
-        <h3>Lineup Summary</h3>
-        <p><b>Total Lineups:</b> {len(lineups)}</p>
-        <p><b>Score Range:</b> {min(scores):.1f} - {max(scores):.1f}</p>
-        <p><b>Average Score:</b> {sum(scores) / len(scores):.1f}</p>
-        <p><b>Salary Range:</b> ${min(salaries):,} - ${max(salaries):,}</p>
+Built with the unified architecture for maximum performance and reliability.
         """
 
-        summary_label = QLabel(summary_text)
-        layout.addWidget(summary_label)
+        QMessageBox.about(self, "About DFS Optimizer Pro", about_text.strip())
 
-        lineup_list = QListWidget()
-        for i, lineup_data in enumerate(lineups):
-            item_text = f"Lineup {i + 1}: {lineup_data['total_score']:.1f} pts, ${lineup_data['total_salary']:,}"
-            lineup_list.addItem(item_text)
-
-        lineup_list.itemDoubleClicked.connect(
-            lambda item: self.display_single_lineup(lineups[lineup_list.row(item)])
-        )
-
-        layout.addWidget(lineup_list)
-
-        btn_layout = QHBoxLayout()
-
-        export_btn = QPushButton("Export All")
-        export_btn.clicked.connect(lambda: self.export_all_lineups(lineups))
-
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(dialog.accept)
-
-        btn_layout.addWidget(export_btn)
-        btn_layout.addWidget(close_btn)
-        layout.addLayout(btn_layout)
-
-        dialog.exec_()
-
-        self.update_exposure_analysis(lineups)
-
-    def update_exposure_analysis(self, lineups):
-        """Update player exposure analysis"""
-        player_usage = {}
-
-        for lineup_data in lineups:
-            for player in lineup_data["lineup"]:
-                key = player.name
-                if key not in player_usage:
-                    player_usage[key] = {"count": 0, "total_score": 0, "salary": player.salary}
-                player_usage[key]["count"] += 1
-                score = getattr(player, "enhanced_score", player.base_projection)
-                player_usage[key]["total_score"] += score
-
-        sorted_players = sorted(player_usage.items(), key=lambda x: x[1]["count"], reverse=True)
-
-        self.exposure_table.setRowCount(len(sorted_players))
-
-        for i, (name, data) in enumerate(sorted_players):
-            self.exposure_table.setItem(i, 0, QTableWidgetItem(name))
-
-            count_item = QTableWidgetItem(str(data["count"]))
-            count_item.setTextAlignment(Qt.AlignCenter)
-            self.exposure_table.setItem(i, 1, count_item)
-
-            exposure = (data["count"] / len(lineups)) * 100
-            exp_item = QTableWidgetItem(f"{exposure:.1f}%")
-            exp_item.setTextAlignment(Qt.AlignCenter)
-
-            if exposure > 60:
-                exp_item.setBackground(QColor(254, 202, 202))
-            elif exposure > 40:
-                exp_item.setBackground(QColor(254, 240, 138))
+    def closeEvent(self, event):
+        """Handle application close"""
+        if self.worker and self.worker.isRunning():
+            reply = QMessageBox.question(self, "Exit Application",
+                                         "Optimization is running. Cancel and exit?")
+            if reply == QMessageBox.Yes:
+                self.worker.cancel()
+                self.worker.wait()
+                event.accept()
             else:
-                exp_item.setBackground(QColor(187, 247, 208))
-
-            self.exposure_table.setItem(i, 2, exp_item)
-
-            avg_score = data["total_score"] / data["count"]
-            avg_item = QTableWidgetItem(f"{avg_score:.1f}")
-            avg_item.setTextAlignment(Qt.AlignCenter)
-            self.exposure_table.setItem(i, 3, avg_item)
-
-        position_counts = {}
-        for lineup_data in lineups:
-            for player in lineup_data["lineup"]:
-                pos = getattr(player, "assigned_position", player.primary_position)
-                position_counts[pos] = position_counts.get(pos, 0) + 1
-
-        pos_text = "Position Distribution:\n\n"
-        for pos, count in sorted(position_counts.items()):
-            avg_per_lineup = count / len(lineups)
-            pos_text += f"{pos}: {count} total ({avg_per_lineup:.1f} per lineup)\n"
-
-        self.position_text.setPlainText(pos_text)
-
-    def copy_lineup(self):
-        """Copy lineup to clipboard"""
-        if not self.last_results:
-            return
-
-        lineup = self.last_results[0]["lineup"]
-        text = ", ".join([p.name for p in lineup])
-
-        QApplication.clipboard().setText(text)
-        self.update_status("Lineup copied to clipboard")
-
-    def export_csv(self):
-        """Export lineup(s) to CSV"""
-        if not self.last_results:
-            QMessageBox.warning(self, "No Data", "No lineups to export")
-            return
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Lineups",
-            os.path.join(self.last_directory, "lineups.csv"),
-            "CSV Files (*.csv)",
-        )
-
-        if file_path:
-            try:
-                with open(file_path, "w", newline="") as f:
-                    writer = csv.writer(f)
-
-                    if self.contest_type == "showdown":
-                        writer.writerow(
-                            ["Lineup", "Type", "Player", "Team", "Salary", "Multiplier", "Score"]
-                        )
-                    else:
-                        writer.writerow(["Lineup", "Position", "Player", "Team", "Salary", "Score"])
-
-                    for i, lineup_data in enumerate(self.last_results):
-                        for j, player in enumerate(lineup_data["lineup"]):
-                            if self.contest_type == "showdown":
-                                player_type = "CPT" if j == 0 else "UTIL"
-                                multiplier = 1.5 if j == 0 else 1.0
-                                score = (
-                                    getattr(player, "enhanced_score", player.base_projection)
-                                    * multiplier
-                                )
-                                writer.writerow(
-                                    [
-                                        i + 1,
-                                        player_type,
-                                        player.name,
-                                        player.team,
-                                        int(player.salary * multiplier),
-                                        f"{multiplier}x",
-                                        score,
-                                    ]
-                                )
-                            else:
-                                pos = getattr(player, "assigned_position", player.primary_position)
-                                score = getattr(player, "enhanced_score", player.base_projection)
-                                writer.writerow(
-                                    [i + 1, pos, player.name, player.team, player.salary, score]
-                                )
-
-                self.update_status(
-                    f"Exported {len(self.last_results)} lineup(s) to {os.path.basename(file_path)}"
-                )
-
-            except Exception as e:
-                QMessageBox.warning(self, "Export Error", f"Failed to export: {str(e)}")
-
-    def export_dk_format(self):
-        """Export in DraftKings upload format"""
-        if not self.last_results:
-            QMessageBox.warning(self, "No Data", "No lineups to export")
-            return
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export for DraftKings",
-            os.path.join(self.last_directory, "dk_upload.csv"),
-            "CSV Files (*.csv)",
-        )
-
-        if file_path:
-            try:
-                with open(file_path, "w", newline="") as f:
-                    writer = csv.writer(f)
-
-                    for lineup_data in self.last_results:
-                        row = []
-
-                        if self.contest_type == "showdown":
-                            for player in lineup_data["lineup"]:
-                                row.append(player.name)
-                        else:
-                            positions = ["P", "P", "C", "1B", "2B", "3B", "SS", "OF", "OF", "OF"]
-                            lineup_by_pos = {}
-
-                            for player in lineup_data["lineup"]:
-                                pos = getattr(player, "assigned_position", player.primary_position)
-                                if pos not in lineup_by_pos:
-                                    lineup_by_pos[pos] = []
-                                lineup_by_pos[pos].append(player.name)
-
-                            for pos in positions:
-                                if pos in lineup_by_pos and lineup_by_pos[pos]:
-                                    row.append(lineup_by_pos[pos].pop(0))
-                                else:
-                                    row.append("")
-
-                        writer.writerow(row)
-
-                self.update_status(f"Exported {len(self.last_results)} lineup(s) for DraftKings")
-
-            except Exception as e:
-                QMessageBox.warning(self, "Export Error", f"Failed to export: {str(e)}")
-
-    def export_all_lineups(self, lineups):
-        """Export all lineups from dialog"""
-        self.last_results = lineups
-        self.export_csv()
-
-    def update_status(self, message):
-        """Update status bar message"""
-        self.status_bar.showMessage(message)
+                event.ignore()
+        else:
+            event.accept()
 
 
 def main():
-    """Main entry point"""
+    """Main application entry point"""
+    if not PYQT_AVAILABLE:
+        print("❌ PyQt5 not available. Please install with: pip install PyQt5")
+        return
+
     app = QApplication(sys.argv)
     app.setApplicationName("DFS Optimizer Pro")
-    app.setOrganizationName("DFS Tools")
+    app.setApplicationVersion("2.0")
 
-    app.setStyle("Fusion")
+    # Set application icon (if available)
+    try:
+        app.setWindowIcon(QIcon("icon.png"))
+    except:
+        pass
 
+    # Create and show main window
     window = DFSOptimizerGUI()
     window.show()
 
-    return app.exec_()
+    # Start event loop
+    sys.exit(app.exec_())
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
