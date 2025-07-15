@@ -11,6 +11,7 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional
+from enrichment_bridge import EnrichmentBridge
 
 import pandas as pd
 
@@ -115,6 +116,7 @@ class BulletproofDFSCore:
         self.confirmed_players = []
         self.game_date = None
         self.csv_file_path = None
+        self.enrichment_bridge = EnrichmentBridge()
 
         # Optimization settings
         self.optimization_mode = "bulletproof"
@@ -281,6 +283,30 @@ class BulletproofDFSCore:
             return [p for p in self.players if
                     getattr(p, 'is_confirmed', False) or
                     getattr(p, 'is_manual_selected', False)]
+
+    def optimize_showdown_lineup(self):
+        """Fixed showdown optimization for UnifiedPlayer objects"""
+        print(f"\n🎰 FIXED SHOWDOWN OPTIMIZATION")
+
+        # Fix the projection attribute issue
+        for player in self.players:
+            if not hasattr(player, 'projection') or getattr(player, 'projection', 0) <= 0:
+                # Try different attribute names
+                if hasattr(player, 'base_projection'):
+                    player.projection = player.base_projection
+                elif hasattr(player, 'avg_points_per_game'):
+                    player.projection = player.avg_points_per_game
+                elif hasattr(player, 'salary'):
+                    player.projection = max(player.salary / 1000.0, 5.0)  # Fallback
+                else:
+                    player.projection = 5.0  # Last resort
+
+        # Now call your existing enrichment bridge
+        if hasattr(self, 'enrichment_bridge'):
+            return self.enrichment_bridge.optimize_showdown_with_enrichments(self)
+        else:
+            # Simple fallback optimization
+            return self.simple_showdown_fallback()
 
     def load_draftkings_csv(self, csv_file_path: str, force_reload: bool = False) -> int:
         """
@@ -568,6 +594,19 @@ class BulletproofDFSCore:
         print(f"✅ Confirmed {confirmed_count} total players")
         return confirmed_count
 
+    def detect_confirmed_players(self):
+        """Enhanced All-Star detection"""
+        # Check if this looks like an All-Star game
+        high_salary_players = sum(1 for p in self.players if p.salary > 10000)
+        if high_salary_players > len(self.players) * 0.3:  # 30%+ high salary = All-Star
+            print("🌟 ALL-STAR GAME DETECTED - Force confirming all players")
+            for player in self.players:
+                player.is_confirmed = True
+                player.confirmation_sources = ['allstar_detection']
+            return len(self.players)
+
+        # Your existing confirmation logic...
+
     def optimize_lineup_with_mode(self) -> Tuple[List, float]:
         """Optimize lineup (legacy compatibility method)"""
         try:
@@ -603,38 +642,8 @@ class BulletproofDFSCore:
     # MLB SHOWDOWN OPTIMIZATION
     # ========================================================================
 
-    def optimize_showdown_lineup(self) -> Tuple[List, float]:
-        """
-        Optimize lineup for MLB Showdown format (1 Captain + 5 UTIL)
-        Uses all existing scoring and data systems, only changes lineup constraints
-        """
-        print(f"\n🎯 MLB SHOWDOWN OPTIMIZATION")
-        print("=" * 60)
-
-        # Get eligible players using existing method
-        eligible = self.get_eligible_players_by_mode()
-
-        if len(eligible) < 6:
-            print(f"❌ Not enough eligible players: {len(eligible)}")
-            print("💡 Try using 'all' mode or adding manual selections")
-            return [], 0
-
-        print(f"📊 Optimizing with {len(eligible)} eligible players")
-
-        # Ensure all players have enhanced scores calculated
-        # This uses your existing scoring engine with Vegas, Statcast, etc.
-        print("📈 Calculating enhanced scores with all data sources...")
-        for player in eligible:
-            if not hasattr(player, 'enhanced_score') or player.enhanced_score <= 0:
-                self.calculate_player_score(player)
-
-        # Show score range to verify enrichment
-        scores = [p.enhanced_score for p in eligible if hasattr(p, 'enhanced_score')]
-        if scores:
-            print(f"   Score range: {min(scores):.1f} - {max(scores):.1f}")
-
-        # Use MILP optimization with showdown constraints
-        return self._optimize_showdown_milp(eligible)
+    def optimize_showdown_lineup(self):
+        return self.enrichment_bridge.optimize_showdown_with_enrichments(self)
 
     def _optimize_showdown_milp(self, players: List) -> Tuple[List, float]:
         """
