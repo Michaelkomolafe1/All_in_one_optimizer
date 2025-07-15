@@ -7,6 +7,8 @@ Clean, modern interface leveraging the unified optimization system
 
 import csv
 import json
+import streamlit as st
+import pulp
 import os
 import sys
 import traceback
@@ -53,6 +55,180 @@ class OptimizationWorker(QThread):
         """Cancel the optimization"""
         self.is_cancelled = True
 
+    def apply_existing_scoring_to_players(self, players):
+        """Apply your existing scoring systems to players"""
+
+        # Try unified scoring engine first
+        if hasattr(self.core, 'scoring_engine') and self.core.scoring_engine:
+            for player in players:
+                try:
+                    enhanced_score = self.core.scoring_engine.calculate_score(player)
+                    player.enhanced_score = enhanced_score
+                except:
+                    player.enhanced_score = getattr(player, 'projection', 0)
+        else:
+            # Fallback: apply individual enrichments
+            if hasattr(self.core, 'vegas_lines') and self.core.vegas_lines:
+                try:
+                    self.core.vegas_lines.enrich_players(players)
+                except:
+                    pass
+
+            # Ensure enhanced_score exists
+            for player in players:
+                enhanced_score = getattr(player, 'projection', 0)
+                # Apply any existing multipliers
+                if hasattr(player, 'vegas_boost'):
+                    enhanced_score *= getattr(player, 'vegas_boost', 1.0)
+                if hasattr(player, 'form_multiplier'):
+                    enhanced_score *= getattr(player, 'form_multiplier', 1.0)
+                player.enhanced_score = enhanced_score
+
+    def solve_showdown_milp(self, players):
+        """Solve showdown MILP with corrected multiplier application"""
+        import pulp
+
+        try:
+            # Create MILP problem
+            prob = pulp.LpProblem("Showdown_GUI", pulp.LpMaximize)
+
+            # Variables
+            x = {}  # Utility variables
+            c = {}  # Captain variables
+
+            for i in range(len(players)):
+                x[i] = pulp.LpVariable(f"util_{i}", cat='Binary')
+                c[i] = pulp.LpVariable(f"capt_{i}", cat='Binary')
+
+            # Objective: Maximize enhanced scores with captain 1.5x
+            prob += pulp.lpSum([
+                x[i] * players[i].enhanced_score +  # Utility: normal points
+                c[i] * players[i].enhanced_score * 1.5  # Captain: 1.5x points
+                for i in range(len(players))
+            ])
+
+            # Constraints
+            prob += pulp.lpSum([c[i] for i in range(len(players))]) == 1  # 1 captain
+            prob += pulp.lpSum([x[i] for i in range(len(players))]) == 5  # 5 utilities
+
+            for i in range(len(players)):
+                prob += x[i] + c[i] <= 1  # Can't be both
+
+            # Salary constraint with 1.5x multiplier for captain
+            prob += pulp.lpSum([
+                x[i] * players[i].salary +  # Utility: UTIL salary
+                c[i] * players[i].salary * 1.5  # Captain: UTIL salary * 1.5
+                for i in range(len(players))
+            ]) <= 50000
+
+            # Solve
+            prob.solve(pulp.PULP_CBC_CMD(msg=0))
+
+            if prob.status != pulp.LpStatusOptimal:
+                return None
+
+            # Extract solution
+            lineup = []
+            total_score = 0.0
+            total_salary = 0
+
+            for i in range(len(players)):
+                if c[i].varValue == 1:
+                    # Captain
+                    players[i].is_captain = True
+                    players[i].role = "Captain"
+                    players[i].final_salary = int(players[i].salary * 1.5)
+                    players[i].final_points = players[i].enhanced_score * 1.5
+                    lineup.append(players[i])
+
+                    total_salary += players[i].final_salary
+                    total_score += players[i].final_points
+
+                elif x[i].varValue == 1:
+                    # Utility
+                    players[i].is_captain = False
+                    players[i].role = "Utility"
+                    players[i].final_salary = players[i].salary
+                    players[i].final_points = players[i].enhanced_score
+                    lineup.append(players[i])
+
+                    total_salary += players[i].final_salary
+                    total_score += players[i].final_points
+
+            # Return in format expected by your GUI
+            return {
+                'lineup': lineup,
+                'total_score': total_score,
+                'total_salary': total_salary,
+                'optimization_status': 'Optimal',
+                'meta': {
+                    'contest_type': 'Showdown',
+                    'players_used': len(lineup),
+                    'salary_used': total_salary,
+                    'score_projected': total_score
+                }
+            }
+
+        except Exception as e:
+            self.progress.emit(f"❌ MILP error: {e}")
+            return None
+
+    def run_showdown_optimization(self):
+        """Run showdown optimization using existing systems"""
+        try:
+            # Filter to UTIL players only (ignore CPT entries)
+            eligible_players = []
+            util_count = 0
+            cpt_count = 0
+
+            for player in self.core.players:
+                roster_position = getattr(player, 'roster_position', '') or getattr(player, 'primary_position', '')
+
+                if roster_position == 'CPT':
+                    cpt_count += 1
+                    continue  # Skip CPT entries - use only UTIL prices
+                elif roster_position != 'UTIL':
+                    continue
+
+                util_count += 1
+
+                # Use confirmed players if in bulletproof/confirmed mode
+                if self.settings.get('mode') in ['bulletproof', 'confirmed_only']:
+                    if not getattr(player, 'is_confirmed', False):
+                        continue
+
+                # Ensure basic attributes
+                if not hasattr(player, 'salary') or not player.salary:
+                    continue
+
+                if not hasattr(player, 'projection') or not player.projection:
+                    player.projection = max(player.salary / 1000.0, 3.0)
+
+                eligible_players.append(player)
+
+            self.progress.emit(f"📊 Found {cpt_count} CPT entries (ignored), {util_count} UTIL entries")
+            self.progress.emit(f"⚾ Using {len(eligible_players)} eligible UTIL players")
+
+            if len(eligible_players) < 6:
+                raise Exception(f"Need at least 6 eligible UTIL players, found {len(eligible_players)}")
+
+            # Apply your existing scoring systems
+            self.progress.emit("📊 Applying your existing scoring systems...")
+            self.apply_existing_scoring_to_players(eligible_players)
+
+            # Run showdown MILP optimization
+            self.progress.emit("🎯 Optimizing showdown lineup...")
+            lineup_result = self.solve_showdown_milp(eligible_players)
+
+            if not lineup_result:
+                raise Exception("Showdown optimization failed")
+
+            return lineup_result
+
+        except Exception as e:
+            self.progress.emit(f"❌ Showdown optimization error: {e}")
+            raise
+
     def run(self):
         """Run optimization in background"""
         try:
@@ -61,8 +237,6 @@ class OptimizationWorker(QThread):
             # Apply manual selections if any
             if self.settings.get('manual_players'):
                 self.progress.emit("👤 Processing manual selections...")
-                # Apply manual selections to core
-                # (Implementation depends on core method)
 
             # Detect confirmed players if not manual-only mode
             if self.settings.get('mode') != 'manual_only':
@@ -73,12 +247,20 @@ class OptimizationWorker(QThread):
             if self.is_cancelled:
                 return
 
-            # Run optimization
-            self.progress.emit("⚡ Optimizing lineup...")
-            result = self.core.optimize_lineup(
-                strategy=self.settings.get('strategy', 'balanced'),
-                manual_selections=self.settings.get('manual_players', '')
-            )
+            # ADD THIS NEW SECTION - Contest Type Handling:
+            # =============================================
+            contest_type = self.settings.get('contest_type', 'Classic')
+
+            if contest_type == "Showdown":
+                self.progress.emit("🏟️ Running SHOWDOWN optimization...")
+                result = self.run_showdown_optimization()
+            else:
+                self.progress.emit("⚡ Running CLASSIC optimization...")
+                result = self.core.optimize_lineup(
+                    strategy=self.settings.get('strategy', 'balanced'),
+                    manual_selections=self.settings.get('manual_players', '')
+                )
+            # =============================================
 
             if self.is_cancelled:
                 return
@@ -87,11 +269,11 @@ class OptimizationWorker(QThread):
                 self.progress.emit("✅ Optimization completed!")
                 self.finished.emit(result)
             else:
-                self.error.emit("No optimal lineup found")
+                self.error.emit("Optimization returned no results")
 
         except Exception as e:
-            if not self.is_cancelled:
-                self.error.emit(f"Optimization failed: {str(e)}")
+            self.error.emit(str(e))
+
 
 
 class StatusBar(QStatusBar):
@@ -319,6 +501,7 @@ class OptimizationPanel(QGroupBox):
 
     optimize_requested = pyqtSignal(dict)
 
+
     def __init__(self):
         super().__init__("⚡ Optimization Settings")
         self.setup_ui()
@@ -351,6 +534,29 @@ class OptimizationPanel(QGroupBox):
 
         mode_layout.addWidget(self.mode_combo)
 
+        # ADD THIS NEW SECTION HERE - Contest Type Selection:
+        # ===================================================
+        contest_group = QGroupBox("🏟️ Contest Type")
+        contest_layout = QVBoxLayout(contest_group)
+
+        self.contest_combo = QComboBox()
+        self.contest_combo.addItems([
+            "Classic", "Showdown"
+        ])
+        self.contest_combo.setCurrentText("Classic")
+
+        # Add info label that updates based on selection
+        self.contest_info = QLabel("Classic: 1 P, 1 C, 1 1B, 1 2B, 1 3B, 1 SS, 3 OF")
+        self.contest_info.setWordWrap(True)
+        self.contest_info.setStyleSheet("color: #666; font-size: 10px; padding: 5px;")
+
+        # Connect to update info when changed
+        self.contest_combo.currentTextChanged.connect(self.update_contest_info)
+
+        contest_layout.addWidget(self.contest_combo)
+        contest_layout.addWidget(self.contest_info)
+        # ===================================================
+
         # Manual selections
         manual_group = QGroupBox("👤 Manual Player Selections")
         manual_layout = QVBoxLayout(manual_group)
@@ -378,30 +584,20 @@ class OptimizationPanel(QGroupBox):
         self.optimize_btn = QPushButton("🚀 Generate Optimal Lineup")
         self.optimize_btn.setEnabled(False)
         self.optimize_btn.clicked.connect(self.start_optimization)
-        self.optimize_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                padding: 15px;
-                font-size: 16px;
-                font-weight: bold;
-                border-radius: 8px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-                color: #666666;
-            }
-        """)
 
         layout.addWidget(strategy_group)
         layout.addWidget(mode_group)
+        layout.addWidget(contest_group)  # ADD THIS LINE
         layout.addWidget(manual_group)
         layout.addWidget(lineups_group)
         layout.addWidget(self.optimize_btn)
+
+    def update_contest_info(self, contest_type):
+        """Update contest info label based on selection"""
+        if contest_type == "Showdown":
+            self.contest_info.setText("Showdown: 1 Captain (1.5x points, 1.5x salary) + 5 Utilities")
+        else:
+            self.contest_info.setText("Classic: 1 P, 1 C, 1 1B, 1 2B, 1 3B, 1 SS, 3 OF")
 
     def enable_optimization(self, enabled: bool):
         """Enable/disable optimization controls"""
@@ -421,6 +617,7 @@ class OptimizationPanel(QGroupBox):
         settings = {
             'strategy': self.strategy_combo.currentText(),
             'mode': self.mode_combo.currentText(),
+            'contest_type': self.contest_combo.currentText(),  # ADD THIS LINE
             'manual_players': self.manual_text.toPlainText().strip(),
             'num_lineups': self.lineups_spin.value()
         }

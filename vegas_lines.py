@@ -22,6 +22,50 @@ class VegasLines:
         """Print if verbose mode is on"""
         if self.verbose:
             print(message)
+
+    def get_player_vegas_data(self, player) -> Optional[Dict]:
+        """
+        Get Vegas data for a single player
+        Used by the performance optimizer for cached enrichment
+        """
+        if not hasattr(player, "team") or not player.team:
+            return None
+
+        # Get team data from our lines
+        team_data = self.lines.get(player.team)
+        if not team_data:
+            return None
+
+        # Convert to expected format
+        vegas_data = {
+            'total': team_data.get('total', 9.0),
+            'home': team_data.get('home', True),
+            'opponent': team_data.get('opponent', 'OPP'),
+            'vegas_multiplier': self._calculate_vegas_multiplier(player, team_data)
+        }
+
+        return vegas_data
+
+    def _calculate_vegas_multiplier(self, player, team_data) -> float:
+        """Calculate Vegas multiplier based on game total and player position"""
+        game_total = team_data.get('total', 9.0)
+
+        if getattr(player, 'primary_position', '') == 'P':
+            # Pitchers benefit from low totals
+            if game_total <= 8.0:
+                return 1.08
+            elif game_total >= 10.0:
+                return 0.94
+            else:
+                return 1.02
+        else:
+            # Hitters benefit from high totals
+            if game_total >= 9.5:
+                return 1.10
+            elif game_total <= 7.5:
+                return 0.92
+            else:
+                return 1.0
     
     def get_vegas_lines(self, force_refresh: bool = False, **kwargs) -> Dict:
         """Get MLB game totals - compatible method name"""
@@ -102,46 +146,26 @@ class VegasLines:
             "Toronto Blue Jays": "TOR", "Washington Nationals": "WSH"
         }
         return team_map.get(team_name, team_name[:3].upper())
-    
-    def enrich_players(self, players: List) -> int:
-        """Apply Vegas totals to players"""
+
+    def enrich_players(self, players) -> int:
+        """Enrich players with Vegas data"""
         if not self.lines:
             self.get_vegas_lines()
-        
+
         enriched = 0
         for player in players:
-            if hasattr(player, 'team') and player.team in self.lines:
-                game_info = self.lines[player.team]
-                game_total = game_info['total']
-                
-                # Store Vegas data on player
-                player.vegas_total = game_total
-                player.vegas_opponent = game_info.get('opponent', 'UNK')
-                
-                # Apply scoring adjustments
-                if hasattr(player, 'primary_position'):
-                    if player.primary_position == 'P':
-                        # Pitchers benefit from low totals
-                        if game_total <= 7.5:
-                            player.vegas_boost = 1.10
-                        elif game_total >= 9.5:
-                            player.vegas_boost = 0.90
-                        else:
-                            player.vegas_boost = 1.0
-                    else:
-                        # Hitters benefit from high totals
-                        if game_total >= 9.5:
-                            player.vegas_boost = 1.08
-                        elif game_total <= 7.5:
-                            player.vegas_boost = 0.92
-                        else:
-                            player.vegas_boost = 1.0
+            vegas_data = self.get_player_vegas_data(player)
+            if vegas_data:
+                # Apply vegas multiplier or boost
+                vegas_mult = vegas_data.get('vegas_multiplier', 1.0)
+                if hasattr(player, 'apply_vegas_multiplier'):
+                    player.apply_vegas_multiplier(vegas_mult)
                 else:
-                    player.vegas_boost = 1.0
-                
+                    # Fallback - set vegas boost attribute
+                    player.vegas_boost = vegas_mult
+
                 enriched += 1
-                    
-        self.verbose_print(f"🎰 Enriched {enriched} players with Vegas data")
+
         return enriched
     
     def apply_to_players(self, players: List) -> List:
