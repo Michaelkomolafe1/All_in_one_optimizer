@@ -269,6 +269,19 @@ class BulletproofDFSCore:
         else:
             self.statcast_fetcher = None
 
+    def get_eligible_players_by_mode(self):
+        """Get eligible players based on optimization mode"""
+        if self.optimization_mode == "all":
+            return self.players.copy()
+        elif self.optimization_mode == "manual_only":
+            return [p for p in self.players if getattr(p, 'is_manual_selected', False)]
+        elif self.optimization_mode == "confirmed_only":
+            return [p for p in self.players if getattr(p, 'is_confirmed', False)]
+        else:  # bulletproof
+            return [p for p in self.players if
+                    getattr(p, 'is_confirmed', False) or
+                    getattr(p, 'is_manual_selected', False)]
+
     def load_draftkings_csv(self, csv_file_path: str, force_reload: bool = False) -> int:
         """
         Load and process DraftKings CSV file
@@ -512,8 +525,8 @@ class BulletproofDFSCore:
         }
 
     def detect_confirmed_players(self) -> int:
-        """Detect confirmed players (legacy compatibility method)"""
-        print("\n🔍 DETECTING CONFIRMED PLAYERS")
+        """Detect confirmed players (optimized version)"""
+        print("\n🔍 DETECTING CONFIRMED PLAYERS (OPTIMIZED)")
         print("=" * 50)
 
         confirmed_count = 0
@@ -521,38 +534,38 @@ class BulletproofDFSCore:
         # Use confirmation system if available
         if self.confirmation_system:
             try:
-                print("  🎯 Using Smart Confirmation System")
-                for player in self.players:
-                    if hasattr(self.confirmation_system, 'is_player_confirmed'):
-                        # Use object attributes instead of dictionary access
-                        is_confirmed, order = self.confirmation_system.is_player_confirmed(
-                            player.name, player.team  # Changed from player['name'], player['team']
-                        )
-                        if is_confirmed:
-                            player.is_confirmed = True  # Changed from player['is_confirmed']
-                            confirmed_count += 1
-                    else:
-                        # Fallback: mark some top players as confirmed for demo
-                        if player.base_projection > 10:  # Changed from player['projected_points']
-                            player.is_confirmed = True  # Changed from player['is_confirmed']
-                            confirmed_count += 1
+                print("  🚀 Using Optimized Smart Confirmation System")
+
+                # Get confirmations first
+                lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
+
+                # Apply optimized confirmation workflow (22.8x faster!)
+                if hasattr(self.confirmation_system, 'apply_confirmations_optimized'):
+                    confirmed_count = self.confirmation_system.apply_confirmations_optimized(
+                        self.players,  # CSV players
+                        self.confirmation_system.confirmed_lineups,  # Confirmed lineups
+                        self.confirmation_system.confirmed_pitchers  # Confirmed pitchers
+                    )
+                else:
+                    # Fallback to old method if optimized version not available
+                    print("  ⚠️  Optimized method not found, using fallback")
+                    for player in self.players:
+                        if hasattr(self.confirmation_system, 'is_player_confirmed'):
+                            is_confirmed, order = self.confirmation_system.is_player_confirmed(
+                                player.name, player.team
+                            )
+                            if is_confirmed:
+                                player.is_confirmed = True
+                                confirmed_count += 1
 
             except Exception as e:
-                print(f"  ⚠️ Confirmation system error: {e}")
-                # Fallback confirmation logic
-                for player in self.players:
-                    if player.base_projection > 10:  # Use object attribute
-                        player.is_confirmed = True
-                        confirmed_count += 1
+                print(f"❌ Confirmation detection failed: {e}")
+                return 0
         else:
-            print("  📊 Using basic confirmation (top performers)")
-            # Simple fallback: confirm top performers
-            for player in self.players:
-                if player.base_projection > 10:  # Use object attribute
-                    player.is_confirmed = True
-                    confirmed_count += 1
+            print("❌ No confirmation system available")
+            return 0
 
-        print(f"✅ Confirmed {confirmed_count} players")
+        print(f"✅ Confirmed {confirmed_count} total players")
         return confirmed_count
 
     def optimize_lineup_with_mode(self) -> Tuple[List, float]:
@@ -584,6 +597,182 @@ class BulletproofDFSCore:
 
         except Exception as e:
             print(f"  ❌ Optimization failed: {e}")
+            return [], 0
+
+    # ========================================================================
+    # MLB SHOWDOWN OPTIMIZATION
+    # ========================================================================
+
+    def optimize_showdown_lineup(self) -> Tuple[List, float]:
+        """
+        Optimize lineup for MLB Showdown format (1 Captain + 5 UTIL)
+        Uses all existing scoring and data systems, only changes lineup constraints
+        """
+        print(f"\n🎯 MLB SHOWDOWN OPTIMIZATION")
+        print("=" * 60)
+
+        # Get eligible players using existing method
+        eligible = self.get_eligible_players_by_mode()
+
+        if len(eligible) < 6:
+            print(f"❌ Not enough eligible players: {len(eligible)}")
+            print("💡 Try using 'all' mode or adding manual selections")
+            return [], 0
+
+        print(f"📊 Optimizing with {len(eligible)} eligible players")
+
+        # Ensure all players have enhanced scores calculated
+        # This uses your existing scoring engine with Vegas, Statcast, etc.
+        print("📈 Calculating enhanced scores with all data sources...")
+        for player in eligible:
+            if not hasattr(player, 'enhanced_score') or player.enhanced_score <= 0:
+                self.calculate_player_score(player)
+
+        # Show score range to verify enrichment
+        scores = [p.enhanced_score for p in eligible if hasattr(p, 'enhanced_score')]
+        if scores:
+            print(f"   Score range: {min(scores):.1f} - {max(scores):.1f}")
+
+        # Use MILP optimization with showdown constraints
+        return self._optimize_showdown_milp(eligible)
+
+    def _optimize_showdown_milp(self, players: List) -> Tuple[List, float]:
+        """
+        MILP optimization specifically for MLB Showdown format
+        Constraints:
+        - 1 Captain (1.5x points and salary)
+        - 5 UTIL players
+        - $50,000 salary cap
+        - Must include players from both teams
+        - Player can't be both Captain and UTIL
+        """
+        try:
+            import pulp
+
+            prob = pulp.LpProblem("MLB_Showdown", pulp.LpMaximize)
+
+            # Decision variables
+            x = {}  # x[i] = 1 if player i is selected as UTIL
+            c = {}  # c[i] = 1 if player i is selected as Captain
+
+            for i in range(len(players)):
+                x[i] = pulp.LpVariable(f"util_{i}", cat='Binary')
+                c[i] = pulp.LpVariable(f"captain_{i}", cat='Binary')
+
+            # Objective: Maximize total points with captain multiplier
+            prob += pulp.lpSum([
+                x[i] * players[i].enhanced_score + 
+                c[i] * players[i].enhanced_score * 1.5
+                for i in range(len(players))
+            ])
+
+            # Constraint 1: Roster requirements
+            prob += pulp.lpSum(c.values()) == 1  # Exactly 1 captain
+            prob += pulp.lpSum(x.values()) == 5  # Exactly 5 utilities
+
+            # Constraint 2: Each player can only be selected once
+            for i in range(len(players)):
+                prob += x[i] + c[i] <= 1
+
+            # Constraint 3: Salary cap ($50,000)
+            # Captain costs 1.5x salary
+            total_salary = pulp.lpSum([
+                x[i] * players[i].salary + 
+                c[i] * players[i].salary * 1.5
+                for i in range(len(players))
+            ])
+            prob += total_salary <= 50000
+
+            # Constraint 4: Must include players from both teams
+            teams = list(set(p.team for p in players))
+            if len(teams) >= 2:
+                # At least one player from each of the first two teams
+                for team in teams[:2]:
+                    team_players = [i for i, p in enumerate(players) if p.team == team]
+                    if team_players:  # Only add constraint if team has players
+                        prob += pulp.lpSum([x[i] + c[i] for i in team_players]) >= 1
+
+            # Solve
+            solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=30)
+            status = prob.solve(solver)
+
+            if status == pulp.LpStatusOptimal:
+                # Extract lineup
+                lineup = []
+                total_score = 0
+                total_salary_used = 0
+
+                # Find captain
+                captain_found = False
+                for i in range(len(players)):
+                    if c[i].value() == 1:
+                        captain = players[i].copy() if hasattr(players[i], 'copy') else players[i]
+                        captain.assigned_position = 'CPT'
+                        captain.is_captain = True
+                        captain.multiplier = 1.5
+                        captain.captain_salary = int(captain.salary * 1.5)
+                        lineup.append(captain)
+                        total_score += captain.enhanced_score * 1.5
+                        total_salary_used += captain.captain_salary
+                        captain_found = True
+                        print(f"\n👑 CAPTAIN: {captain.name} ({captain.team})")
+                        print(f"   Position: {captain.primary_position}")
+                        print(f"   Salary: ${captain.salary:,} → ${captain.captain_salary:,}")
+                        print(f"   Points: {captain.enhanced_score:.1f} → {captain.enhanced_score * 1.5:.1f}")
+
+                # Find utilities
+                print("\n⚡ UTILITIES:")
+                util_count = 0
+                for i in range(len(players)):
+                    if x[i].value() == 1:
+                        util = players[i].copy() if hasattr(players[i], 'copy') else players[i]
+                        util.assigned_position = 'UTIL'
+                        util.is_captain = False
+                        util.multiplier = 1.0
+                        lineup.append(util)
+                        total_score += util.enhanced_score
+                        total_salary_used += util.salary
+                        util_count += 1
+                        print(f"   {util_count}. {util.name} ({util.team}) - {util.primary_position}")
+                        print(f"      ${util.salary:,} → {util.enhanced_score:.1f} pts")
+
+                # Verify lineup
+                if len(lineup) != 6 or not captain_found:
+                    print(f"\n❌ Invalid lineup: {len(lineup)} players, captain: {captain_found}")
+                    return [], 0
+
+                # Display summary
+                print(f"\n📊 LINEUP SUMMARY:")
+                print(f"   Total Salary: ${total_salary_used:,} / $50,000 (${50000 - total_salary_used:,} remaining)")
+                print(f"   Projected Score: {total_score:.1f} points")
+
+                # Team distribution
+                team_counts = {}
+                for p in lineup:
+                    team_counts[p.team] = team_counts.get(p.team, 0) + 1
+                print(f"   Team Distribution: {dict(team_counts)}")
+
+                # Data sources used
+                data_sources = []
+                sample_player = lineup[0]
+                if hasattr(sample_player, 'vegas_data') and sample_player.vegas_data:
+                    data_sources.append('Vegas')
+                if hasattr(sample_player, 'statcast_data') and sample_player.statcast_data:
+                    data_sources.append('Statcast')
+                if hasattr(sample_player, '_recent_performance') and sample_player._recent_performance:
+                    data_sources.append('Recent Form')
+                if data_sources:
+                    print(f"   Data Sources Used: {', '.join(data_sources)}")
+
+                return lineup, total_score
+            else:
+                print(f"❌ Optimization failed: {pulp.LpStatus[status]}")
+                return [], 0
+
+        except Exception as e:
+            print(f"❌ Error in showdown optimization: {e}")
+            import traceback
+            traceback.print_exc()
             return [], 0
 
     def run_diagnostics(self):

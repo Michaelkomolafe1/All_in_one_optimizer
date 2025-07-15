@@ -9,7 +9,6 @@ Maintains the same interface but with modern, efficient implementation
 import json
 import logging
 import requests
-from unified_data_system import UnifiedDataSystem
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,195 +18,7 @@ import time
 logger = logging.getLogger(__name__)
 
 
-class OptimizedConfirmationMixin:
-    """
-    Mixin to add optimized confirmation workflow
-    """
-
-    def _optimize_confirmation_workflow(self, csv_players, confirmed_lineups):
-        """Apply workflow optimizations to speed up confirmation matching"""
-
-        # OPTIMIZATION 1: Pre-index confirmed lineups by team
-        if self.verbose:
-            print("🔧 Optimizing confirmation workflow...")
-
-        lineup_by_team = {}
-        for team, lineup in confirmed_lineups.items():
-            team_norm = self.data_system.normalize_team(team)
-            if team_norm not in lineup_by_team:
-                lineup_by_team[team_norm] = []
-
-            # OPTIMIZATION 2: Pre-normalize lineup names
-            for player in lineup:
-                normalized_name = player['name'].lower().strip()
-                player['_normalized_name'] = normalized_name
-                lineup_by_team[team_norm].append(player)
-
-        # OPTIMIZATION 3: Create exact match lookup
-        exact_match_lookup = {}
-        for team, lineup in lineup_by_team.items():
-            exact_match_lookup[team] = {player['_normalized_name']: player for player in lineup}
-
-        # OPTIMIZATION 4: Group CSV players by team
-        csv_by_team = {}
-        for player in csv_players:
-            if hasattr(player, 'team'):
-                team_norm = self.data_system.normalize_team(player.team)
-            else:
-                team_norm = self.data_system.normalize_team(player.get('team', ''))
-
-            if team_norm not in csv_by_team:
-                csv_by_team[team_norm] = []
-            csv_by_team[team_norm].append(player)
-
-        return lineup_by_team, exact_match_lookup, csv_by_team
-
-    def apply_confirmations_optimized(self, csv_players, confirmed_lineups, confirmed_pitchers):
-        """Optimized version of confirmation application"""
-        start_time = time.time()
-
-        # Apply workflow optimizations
-        lineup_by_team, exact_match_lookup, csv_by_team = self._optimize_confirmation_workflow(
-            csv_players, confirmed_lineups
-        )
-
-        confirmed_count = 0
-        total_comparisons = 0
-
-        # OPTIMIZATION 5: Only process teams with both CSV players AND confirmed lineups
-        for team in csv_by_team:
-            if team in lineup_by_team:
-                csv_players_for_team = csv_by_team[team]
-                exact_matches_for_team = exact_match_lookup[team]
-                lineup_players_for_team = lineup_by_team[team]
-
-                for csv_player in csv_players_for_team:
-                    player_name = csv_player.name if hasattr(csv_player, 'name') else csv_player['name']
-                    player_name_norm = player_name.lower().strip()
-
-                    # OPTIMIZATION 6: Try exact match first
-                    if player_name_norm in exact_matches_for_team:
-                        lineup_player = exact_matches_for_team[player_name_norm]
-
-                        # Mark player as confirmed
-                        if hasattr(csv_player, 'is_confirmed'):
-                            csv_player.is_confirmed = True
-                            csv_player.add_confirmation_source("mlb_lineup")
-                            if 'order' in lineup_player:
-                                csv_player.batting_order = lineup_player['order']
-                        else:
-                            csv_player['is_confirmed'] = True
-
-                        confirmed_count += 1
-                        total_comparisons += 1
-
-                        if self.verbose:
-                            print(f"   ✅ {player_name} (exact match)")
-
-                    else:
-                        # OPTIMIZATION 7: Complex matching only if needed
-                        found_match = False
-                        for lineup_player in lineup_players_for_team:
-                            total_comparisons += 1
-
-                            # Use existing excellent name matching
-                            if self.data_system.match_player_names(player_name, lineup_player['name']):
-                                # Mark player as confirmed
-                                if hasattr(csv_player, 'is_confirmed'):
-                                    csv_player.is_confirmed = True
-                                    csv_player.add_confirmation_source("mlb_lineup")
-                                    if 'order' in lineup_player:
-                                        csv_player.batting_order = lineup_player['order']
-                                else:
-                                    csv_player['is_confirmed'] = True
-
-                                confirmed_count += 1
-                                found_match = True
-
-                                if self.verbose:
-                                    print(f"   ✅ {player_name} → {lineup_player['name']} (fuzzy match)")
-                                break
-
-        # Apply pitcher confirmations
-        pitcher_count = self._apply_pitcher_confirmations_optimized(csv_players, confirmed_pitchers)
-
-        elapsed_time = time.time() - start_time
-
-        if self.verbose:
-            print(f"\n⚡ Optimized confirmation completed:")
-            print(f"   Time: {elapsed_time * 1000:.1f}ms")
-            print(f"   Comparisons: {total_comparisons:,}")
-            print(f"   Rate: {total_comparisons / elapsed_time:,.0f} comparisons/sec")
-            print(f"   Confirmed: {confirmed_count} players, {pitcher_count} pitchers")
-
-        return confirmed_count + pitcher_count
-
-    def _apply_pitcher_confirmations_optimized(self, csv_players, confirmed_pitchers):
-        """Optimized pitcher confirmation"""
-
-        # Pre-normalize pitcher names
-        pitcher_exact_lookup = {}
-        for team, pitcher_info in confirmed_pitchers.items():
-            team_norm = self.data_system.normalize_team(team)
-            pitcher_name_norm = pitcher_info['name'].lower().strip()
-            pitcher_exact_lookup[team_norm] = {
-                'normalized_name': pitcher_name_norm,
-                'original_name': pitcher_info['name'],
-                'info': pitcher_info
-            }
-
-        pitcher_count = 0
-
-        for csv_player in csv_players:
-            # Only check pitchers
-            if hasattr(csv_player, 'primary_position'):
-                is_pitcher = csv_player.primary_position == 'P'
-                player_team = csv_player.team
-                player_name = csv_player.name
-            else:
-                is_pitcher = csv_player.get('position') == 'P'
-                player_team = csv_player.get('team', '')
-                player_name = csv_player.get('name', '')
-
-            if is_pitcher:
-                team_norm = self.data_system.normalize_team(player_team)
-                player_name_norm = player_name.lower().strip()
-
-                # Try exact match first
-                if team_norm in pitcher_exact_lookup:
-                    pitcher_data = pitcher_exact_lookup[team_norm]
-
-                    if player_name_norm == pitcher_data['normalized_name']:
-                        # Exact match
-                        if hasattr(csv_player, 'is_confirmed'):
-                            csv_player.is_confirmed = True
-                            csv_player.add_confirmation_source("mlb_starter")
-                        else:
-                            csv_player['is_confirmed'] = True
-
-                        pitcher_count += 1
-
-                        if self.verbose:
-                            print(f"   ⚾ {player_name} (pitcher exact match)")
-
-                    else:
-                        # Try fuzzy match
-                        if self.data_system.match_player_names(player_name, pitcher_data['original_name']):
-                            if hasattr(csv_player, 'is_confirmed'):
-                                csv_player.is_confirmed = True
-                                csv_player.add_confirmation_source("mlb_starter")
-                            else:
-                                csv_player['is_confirmed'] = True
-
-                            pitcher_count += 1
-
-                            if self.verbose:
-                                print(f"   ⚾ {player_name} → {pitcher_data['original_name']} (pitcher fuzzy match)")
-
-        return pitcher_count
-
-
-class SmartConfirmationSystem(OptimizedConfirmationMixin):
+class SmartConfirmationSystem:
     """
     Modern replacement for existing SmartConfirmationSystem
     Maintains same interface but with better performance and reliability
@@ -216,7 +27,6 @@ class SmartConfirmationSystem(OptimizedConfirmationMixin):
     def __init__(self, csv_players: List = None, verbose: bool = False):
         self.verbose = verbose
         self.csv_players = csv_players or []
-        self.data_system = UnifiedDataSystem()
         self.confirmed_lineups = {}
         self.confirmed_pitchers = {}
 
