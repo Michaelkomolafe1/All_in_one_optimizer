@@ -39,7 +39,7 @@ except ImportError:
 
 
 class OptimizationWorker(QThread):
-    """Background worker for optimization tasks"""
+    """Background worker for optimization tasks with proper confirmation detection"""
 
     progress = pyqtSignal(str)
     finished = pyqtSignal(dict)
@@ -54,6 +54,92 @@ class OptimizationWorker(QThread):
     def cancel(self):
         """Cancel the optimization"""
         self.is_cancelled = True
+
+    def run(self):
+        """Run optimization with CONFIRMATION DETECTION"""
+        try:
+            # Extract settings
+            mode = self.settings.get('mode', 'bulletproof')
+            strategy = self.settings.get('strategy', 'balanced')
+            manual_players = self.settings.get('manual_players', '')
+            contest_type = self.settings.get('contest_type', 'Classic').lower()
+
+            # Set optimization mode
+            self.core.optimization_mode = mode
+            self.progress.emit(f"📊 Optimization mode: {mode}")
+
+            # CRITICAL: Always run confirmation detection first!
+            self.progress.emit("🔍 Detecting confirmed players...")
+            confirmed_count = self.core.detect_confirmed_players()
+            self.progress.emit(f"✅ Found {confirmed_count} confirmed players")
+
+            # Check mode-specific requirements
+            if mode == 'bulletproof' or mode == 'confirmed_only':
+                if confirmed_count == 0:
+                    self.progress.emit("⚠️ No confirmed players found!")
+                    self.progress.emit("📌 These are players NOT in today's starting lineups")
+
+                    if mode == 'bulletproof':
+                        self.progress.emit("💡 Switching to 'all players' mode...")
+                        self.core.optimization_mode = 'all'
+                    elif mode == 'confirmed_only':
+                        self.error.emit("No confirmed players available for 'confirmed only' mode")
+                        return
+                else:
+                    # Show some confirmed players for verification
+                    confirmed_names = []
+                    for p in self.core.players[:50]:  # Check first 50
+                        if getattr(p, 'is_confirmed', False):
+                            confirmed_names.append(p.name)
+                            if len(confirmed_names) >= 5:
+                                break
+
+                    if confirmed_names:
+                        self.progress.emit(f"📋 Sample confirmed: {', '.join(confirmed_names[:3])}...")
+
+            elif mode == 'all':
+                self.progress.emit("🌐 Using ALL players (ignoring confirmations)")
+
+            # Apply manual selections if provided
+            if manual_players and hasattr(self.core, 'apply_manual_selection'):
+                self.progress.emit(f"👤 Applying manual selections: {manual_players}")
+                self.core.apply_manual_selection(manual_players)
+
+            # Check if cancelled
+            if self.is_cancelled:
+                self.error.emit("Optimization cancelled")
+                return
+
+            # Show player pool size
+            eligible_players = self.core.get_eligible_players_by_mode()
+            self.progress.emit(f"📊 Optimizing with {len(eligible_players)} eligible players")
+
+            # Run appropriate optimization
+            if contest_type == 'showdown':
+                self.progress.emit("🎰 Running Showdown optimization...")
+                # Apply scoring
+                self.apply_existing_scoring_to_players(eligible_players)
+                # Run MILP
+                result = self.solve_showdown_milp(eligible_players)
+            else:
+                # Classic optimization
+                self.progress.emit(f"🚀 Running {strategy} optimization...")
+                result = self.core.optimize_lineup(strategy, manual_players)
+
+            if result:
+                # Add confirmation status to result
+                if 'lineup' in result:
+                    confirmed_in_lineup = sum(1 for p in result['lineup']
+                                              if getattr(p, 'is_confirmed', False))
+                    self.progress.emit(f"✅ Lineup has {confirmed_in_lineup} confirmed players")
+
+                self.finished.emit(result)
+            else:
+                self.error.emit("Optimization returned no results")
+
+        except Exception as e:
+            import traceback
+            self.error.emit(f"Error: {str(e)}\n{traceback.format_exc()}")
 
     def apply_existing_scoring_to_players(self, players):
         """Apply your existing scoring systems to players"""
@@ -172,110 +258,6 @@ class OptimizationWorker(QThread):
         except Exception as e:
             self.progress.emit(f"❌ MILP error: {e}")
             return None
-
-    def run_showdown_optimization(self):
-        """Run showdown optimization using existing systems"""
-        try:
-            # Filter to UTIL players only (ignore CPT entries)
-            eligible_players = []
-            util_count = 0
-            cpt_count = 0
-
-            for player in self.core.players:
-                roster_position = getattr(player, 'roster_position', '') or getattr(player, 'primary_position', '')
-
-                if roster_position == 'CPT':
-                    cpt_count += 1
-                    continue  # Skip CPT entries - use only UTIL prices
-                elif roster_position != 'UTIL':
-                    continue
-
-                util_count += 1
-
-                # Use confirmed players if in bulletproof/confirmed mode
-                if self.settings.get('mode') in ['bulletproof', 'confirmed_only']:
-                    if not getattr(player, 'is_confirmed', False):
-                        continue
-
-                # Ensure basic attributes
-                if not hasattr(player, 'salary') or not player.salary:
-                    continue
-
-                if not hasattr(player, 'projection') or not player.projection:
-                    player.projection = max(player.salary / 1000.0, 3.0)
-
-                eligible_players.append(player)
-
-            self.progress.emit(f"📊 Found {cpt_count} CPT entries (ignored), {util_count} UTIL entries")
-            self.progress.emit(f"⚾ Using {len(eligible_players)} eligible UTIL players")
-
-            if len(eligible_players) < 6:
-                raise Exception(f"Need at least 6 eligible UTIL players, found {len(eligible_players)}")
-
-            # Apply your existing scoring systems
-            self.progress.emit("📊 Applying your existing scoring systems...")
-            self.apply_existing_scoring_to_players(eligible_players)
-
-            # Run showdown MILP optimization
-            self.progress.emit("🎯 Optimizing showdown lineup...")
-            lineup_result = self.solve_showdown_milp(eligible_players)
-
-            if not lineup_result:
-                raise Exception("Showdown optimization failed")
-
-            return lineup_result
-
-        except Exception as e:
-            self.progress.emit(f"❌ Showdown optimization error: {e}")
-            raise
-
-    def run(self):
-        """Run optimization in background"""
-        try:
-            self.progress.emit("🔄 Starting optimization...")
-
-            # Apply manual selections if any
-            if self.settings.get('manual_players'):
-                self.progress.emit("👤 Processing manual selections...")
-
-            # Detect confirmed players if not manual-only mode
-            if self.settings.get('mode') != 'manual_only':
-                self.progress.emit("🔍 Detecting confirmed players...")
-                confirmed_count = self.core.detect_confirmed_players()
-                self.progress.emit(f"✅ Found {confirmed_count} confirmed players")
-
-            if self.is_cancelled:
-                return
-
-            # ADD THIS NEW SECTION - Contest Type Handling:
-            # =============================================
-            contest_type = self.settings.get('contest_type', 'Classic')
-
-            if contest_type == "Showdown":
-                self.progress.emit("🏟️ Running SHOWDOWN optimization...")
-                result = self.run_showdown_optimization()
-            else:
-                self.progress.emit("⚡ Running CLASSIC optimization...")
-                result = self.core.optimize_lineup(
-                    strategy=self.settings.get('strategy', 'balanced'),
-                    manual_selections=self.settings.get('manual_players', '')
-                )
-            # =============================================
-
-            if self.is_cancelled:
-                return
-
-            if result:
-                self.progress.emit("✅ Optimization completed!")
-                self.finished.emit(result)
-            else:
-                self.error.emit("Optimization returned no results")
-
-        except Exception as e:
-            self.error.emit(str(e))
-
-
-
 class StatusBar(QStatusBar):
     """Enhanced status bar with performance info"""
 

@@ -550,93 +550,170 @@ class BulletproofDFSCore:
             'total_players': len(self.players)
         }
 
+    # Add these methods to your BulletproofDFSCore class:
+
     def detect_confirmed_players(self) -> int:
-        """Detect confirmed players (optimized version)"""
-        print("\n🔍 DETECTING CONFIRMED PLAYERS (OPTIMIZED)")
-        print("=" * 50)
+        """Apply confirmations using MLB starting pitchers"""
+        print("\n🔍 MLB PITCHER CONFIRMATION DETECTION")
+        print("=" * 60)
 
-        confirmed_count = 0
+        # Reset all confirmations inline
+        print("🔄 Resetting all confirmations...")
+        for player in self.players:
+            player.is_confirmed = False
+            # Only reset confirmation_sources if it exists
+            if hasattr(player, 'confirmation_sources'):
+                player.confirmation_sources = []
+        print(f"✅ Reset confirmations for {len(self.players)} players")
 
-        # Use confirmation system if available
-        if self.confirmation_system:
-            try:
-                print("  🚀 Using Optimized Smart Confirmation System")
+        # Use MLB API to get today's starting pitchers
+        return self._detect_mlb_pitchers_only()
 
-                # Get confirmations first
-                lineup_count, pitcher_count = self.confirmation_system.get_all_confirmations()
+    def _detect_mlb_pitchers_only(self):
+        """Use MLB API to confirm today's starting pitchers and exclude others"""
+        import requests
+        from datetime import datetime
 
-                # Apply optimized confirmation workflow (22.8x faster!)
-                if hasattr(self.confirmation_system, 'apply_confirmations_optimized'):
-                    confirmed_count = self.confirmation_system.apply_confirmations_optimized(
-                        self.players,  # CSV players
-                        self.confirmation_system.confirmed_lineups,  # Confirmed lineups
-                        self.confirmation_system.confirmed_pitchers  # Confirmed pitchers
-                    )
-                else:
-                    # Fallback to old method if optimized version not available
-                    print("  ⚠️  Optimized method not found, using fallback")
-                    for player in self.players:
-                        if hasattr(self.confirmation_system, 'is_player_confirmed'):
-                            is_confirmed, order = self.confirmation_system.is_player_confirmed(
-                                player.name, player.team
-                            )
-                            if is_confirmed:
-                                player.is_confirmed = True
-                                confirmed_count += 1
+        today = datetime.now().strftime('%Y-%m-%d')
+        url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}&hydrate=probablePitcher"
 
-            except Exception as e:
-                print(f"❌ Confirmation detection failed: {e}")
-                return 0
-        else:
-            print("❌ No confirmation system available")
-            return 0
-
-        print(f"✅ Confirmed {confirmed_count} total players")
-        return confirmed_count
-
-    def detect_confirmed_players(self):
-        """Enhanced All-Star detection"""
-        # Check if this looks like an All-Star game
-        high_salary_players = sum(1 for p in self.players if p.salary > 10000)
-        if high_salary_players > len(self.players) * 0.3:  # 30%+ high salary = All-Star
-            print("🌟 ALL-STAR GAME DETECTED - Force confirming all players")
-            for player in self.players:
-                player.is_confirmed = True
-                player.confirmation_sources = ['allstar_detection']
-            return len(self.players)
-
-        # Your existing confirmation logic...
-
-    def optimize_lineup_with_mode(self) -> Tuple[List, float]:
-        """Optimize lineup (legacy compatibility method)"""
         try:
-            result = self.optimize_lineup("balanced", "")
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
 
-            if result:
-                lineup = result.get('lineup', [])
-                score = result.get('projected_points', 0)
+                # Get today's starting pitchers
+                todays_pitchers = []
+                for date_entry in data.get('dates', []):
+                    for game in date_entry.get('games', []):
+                        for side in ['home', 'away']:
+                            pitcher = game.get('teams', {}).get(side, {}).get('probablePitcher')
+                            if pitcher:
+                                pitcher_name = pitcher.get('fullName', '')
+                                if pitcher_name:
+                                    todays_pitchers.append(pitcher_name)
 
-                # Convert dict players to objects for compatibility
-                if lineup and isinstance(lineup[0], dict):
-                    # Create simple player objects for legacy compatibility
-                    class SimplePlayer:
-                        def __init__(self, player_dict):
-                            self.name = player_dict['name']
-                            self.primary_position = player_dict['position']
-                            self.assigned_position = player_dict['position']
-                            self.team = player_dict['team']
-                            self.salary = player_dict['salary']
-                            self.enhanced_score = player_dict['projected_points']
+                print(f"📋 Found {len(todays_pitchers)} starting pitchers for today")
 
-                    lineup = [SimplePlayer(p) for p in lineup]
+                # Show the pitchers
+                if todays_pitchers:
+                    print("\n⚾ Starting today:")
+                    for p in sorted(todays_pitchers)[:10]:  # Show first 10
+                        print(f"   • {p}")
+                    if len(todays_pitchers) > 10:
+                        print(f"   ... and {len(todays_pitchers) - 10} more")
 
-                return lineup, score
-            else:
-                return [], 0
+                # Apply confirmations and exclusions
+                confirmed = 0
+                excluded = 0
+                excluded_names = []
+
+                for player in self.players:
+                    if player.primary_position == "P":
+                        # Check if pitcher is starting today
+                        is_starting = False
+                        for pitcher_name in todays_pitchers:
+                            if self._names_match(player.name, pitcher_name):
+                                is_starting = True
+                                break
+
+                        if is_starting:
+                            player.is_confirmed = True
+                            # Safely add confirmation source
+                            if hasattr(player, 'add_confirmation_source'):
+                                player.add_confirmation_source("mlb_starter")
+                            elif hasattr(player, 'confirmation_sources'):
+                                if "mlb_starter" not in player.confirmation_sources:
+                                    player.confirmation_sources.append("mlb_starter")
+                            confirmed += 1
+                        else:
+                            # EXCLUDE non-starting pitchers
+                            player.is_confirmed = False
+                            player.enhanced_score = 0
+                            player.projection = 0
+                            excluded += 1
+                            excluded_names.append(f"{player.name} (${player.salary:,})")
+                    else:
+                        # Confirm all position players for now
+                        player.is_confirmed = True
+                        # Safely add confirmation source
+                        if hasattr(player, 'add_confirmation_source'):
+                            player.add_confirmation_source("all_positions")
+                        elif hasattr(player, 'confirmation_sources'):
+                            if "all_positions" not in player.confirmation_sources:
+                                player.confirmation_sources.append("all_positions")
+                        confirmed += 1
+
+                # Show excluded pitchers
+                if excluded_names:
+                    print(f"\n❌ Excluded {len(excluded_names)} non-starting pitchers:")
+                    # Show high-salary excluded pitchers first
+                    high_salary_excluded = [p for p in excluded_names if "$10," in p or "$9," in p or "$8," in p]
+                    for p in high_salary_excluded[:5]:
+                        print(f"   • {p}")
+                    if len(high_salary_excluded) > 5:
+                        print(f"   ... and {len(excluded_names) - 5} more")
+
+                print(f"\n✅ Confirmed {confirmed} players")
+                print(f"❌ Excluded {excluded} pitchers not starting today")
+
+                return confirmed
 
         except Exception as e:
-            print(f"  ❌ Optimization failed: {e}")
-            return [], 0
+            print(f"❌ MLB API error: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # Last resort - confirm all position players, exclude expensive pitchers
+            print("\n⚠️ Using fallback: excluding high-salary pitchers")
+
+            confirmed = 0
+            for player in self.players:
+                if player.primary_position == "P" and player.salary > 8000:
+                    # Exclude expensive pitchers as they're likely not playing
+                    player.is_confirmed = False
+                    player.enhanced_score = 0
+                    player.projection = 0
+                else:
+                    player.is_confirmed = True
+                    confirmed += 1
+
+            return confirmed
+
+    def _names_match(self, name1: str, name2: str) -> bool:
+        """Simple name matching with better error handling"""
+        if not name1 or not name2:
+            return False
+
+        try:
+            clean1 = name1.lower().strip()
+            clean2 = name2.lower().strip()
+
+            # Exact match
+            if clean1 == clean2:
+                return True
+
+            # Last name match (for "J. Smith" vs "John Smith")
+            parts1 = clean1.split()
+            parts2 = clean2.split()
+
+            if parts1 and parts2:
+                # Check last names
+                if parts1[-1] == parts2[-1]:
+                    # Check first name or initial
+                    if len(parts1) > 0 and len(parts2) > 0:
+                        if len(parts1[0]) >= 1 and len(parts2[0]) >= 1:
+                            if parts1[0] == parts2[0] or parts1[0][0] == parts2[0][0]:
+                                return True
+
+            # One name contains the other
+            if clean1 in clean2 or clean2 in clean1:
+                return True
+
+            return False
+
+        except Exception:
+            return False
 
     # ========================================================================
     # MLB SHOWDOWN OPTIMIZATION
