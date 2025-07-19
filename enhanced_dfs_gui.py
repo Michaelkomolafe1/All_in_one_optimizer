@@ -1,55 +1,88 @@
 #!/usr/bin/env python3
 """
-DFS OPTIMIZER - PROFESSIONAL UNIFIED GUI
-=======================================
-Clean, modern interface leveraging the unified optimization system
+FIX GUI IMPORT ISSUES
+====================
+Replace the import section in your enhanced_dfs_gui.py with this
 """
+
+# Here's the FIXED import section for your enhanced_dfs_gui.py:
 
 import csv
 import json
-import streamlit as st
-import pulp
 import os
 import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
+
 
 # PyQt5 imports with fallback
 try:
     from PyQt5.QtCore import *
     from PyQt5.QtGui import *
     from PyQt5.QtWidgets import *
-
     PYQT_AVAILABLE = True
 except ImportError:
     print("❌ PyQt5 not available. Install with: pip install PyQt5")
     PYQT_AVAILABLE = False
     sys.exit(1)
 
-# Core system imports
-try:
-    from bulletproof_dfs_core import BulletproofDFSCore
-
-    CORE_AVAILABLE = True
-except ImportError:
-    print("❌ DFS Core not available")
-    CORE_AVAILABLE = False
+# Fix for BulletproofDFSCore import
+if TYPE_CHECKING:
+    # For type hints only
+    from clean_optimizer_integration import SimplifiedDFSCore as BulletproofDFSCore
+else:
+    # Actual runtime import
+    try:
+        # Try the clean integration first
+        try:
+            from clean_optimizer_integration import SimplifiedDFSCore as BulletproofDFSCore
+            CORE_AVAILABLE = True
+            print("✅ Using SimplifiedDFSCore")
+        except ImportError:
+            # Fall back to original
+            from bulletproof_dfs_core import BulletproofDFSCore
+            CORE_AVAILABLE = True
+            print("✅ Using original BulletproofDFSCore")
+    except ImportError as e:
+        print(f"❌ DFS Core not available: {e}")
+        CORE_AVAILABLE = False
+        # Create a dummy class for the GUI to use
+        class BulletproofDFSCore:
+            pass
 
 
 class OptimizationWorker(QThread):
-    """Background worker for optimization tasks with proper confirmation detection"""
+    """Background worker for optimization tasks"""
 
     progress = pyqtSignal(str)
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self, core: BulletproofDFSCore, settings: Dict):
+    def __init__(self, core: 'BulletproofDFSCore', settings: Dict):
+        """Use string annotation to avoid NameError"""
         super().__init__()
         self.core = core
         self.settings = settings
         self.is_cancelled = False
+
+    def check_core_availability(self):
+        """Check if core is available and show appropriate message"""
+        if not CORE_AVAILABLE:
+            QMessageBox.critical(
+                self,
+                "Core System Not Available",
+                "The DFS Core system could not be loaded.\n\n"
+                "Please ensure all required files are present:\n"
+                "- bulletproof_dfs_core.py\n"
+                "- unified_player_model.py\n"
+                "- unified_milp_optimizer.py\n"
+                "- unified_scoring_engine.py\n\n"
+                "Run 'python check_system.py' to diagnose issues."
+            )
+            sys.exit(1)
+
 
     def cancel(self):
         """Cancel the optimization"""

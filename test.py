@@ -1,137 +1,208 @@
 #!/usr/bin/env python3
 """
-Find DKSalaries5.csv and test optimization
-==========================================
-Searches common locations for the CSV file
+AUTO TEST ENRICHMENTS
+====================
+Automatically finds your latest DK CSV and tests enrichments
 """
 
 import os
-import sys
-from pathlib import Path
+import glob
+from datetime import datetime
+from bulletproof_dfs_core import BulletproofDFSCore
 
 
-def find_dk_csv():
-    """Search for DKSalaries5.csv in common locations"""
+def find_latest_dk_csv():
+    """Find the most recent DraftKings CSV"""
+    # Look in Downloads folder
+    downloads = os.path.expanduser("~/Downloads")
 
-    search_locations = [
-        # Current directory
-        Path.cwd() / "DKSalaries5.csv",
-
-        # Downloads folder
-        Path.home() / "Downloads" / "DKSalaries5.csv",
-
-        # Desktop
-        Path.home() / "Desktop" / "DKSalaries5.csv",
-
-        # Project directory
-        Path("/home/michael/Desktop/All_in_one_optimizer") / "DKSalaries5.csv",
-
-        # Documents
-        Path.home() / "Documents" / "DKSalaries5.csv",
+    # Find all DK CSV files
+    patterns = [
+        f"{downloads}/DKSalaries*.csv",
+        f"{downloads}/DKSalaries*.CSV",
+        f"{downloads}/dk*.csv",
+        f"{downloads}/draftkings*.csv"
     ]
 
-    print("🔍 Searching for DKSalaries5.csv...")
+    all_files = []
+    for pattern in patterns:
+        all_files.extend(glob.glob(pattern))
 
-    for location in search_locations:
-        if location.exists():
-            print(f"✅ Found at: {location}")
-            return str(location)
+    if not all_files:
+        return None
 
-    print("❌ DKSalaries5.csv not found in common locations")
-    print("\nSearched:")
-    for loc in search_locations:
-        print(f"  - {loc}")
-
-    return None
+    # Get the most recent file
+    latest_file = max(all_files, key=os.path.getmtime)
+    return latest_file
 
 
-def test_with_csv(csv_path):
-    """Test optimization with the found CSV"""
-    print(f"\n📊 Testing with: {csv_path}")
+def test_enrichments_auto():
+    """Test enrichments with auto-found CSV"""
+    print("🔍 AUTO ENRICHMENT TESTER")
     print("=" * 60)
+
+    # Initialize core
+    core = BulletproofDFSCore()
+    print("✅ Core system loaded\n")
+
+    # Find CSV automatically
+    csv_path = find_latest_dk_csv()
+
+    if not csv_path:
+        print("❌ No DraftKings CSV found in Downloads folder")
+        print("\n💡 Looking for ANY CSV in Downloads...")
+
+        all_csvs = glob.glob(os.path.expanduser("~/Downloads/*.csv"))
+        if all_csvs:
+            print(f"\nFound {len(all_csvs)} CSV files:")
+            for i, csv in enumerate(all_csvs[-5:], 1):  # Show last 5
+                print(f"  {i}. {os.path.basename(csv)}")
+        return
+
+    print(f"📄 Found CSV: {os.path.basename(csv_path)}")
+    print(f"   Full path: {csv_path}")
+
+    # Get file info
+    stat = os.stat(csv_path)
+    mod_time = datetime.fromtimestamp(stat.st_mtime)
+    print(f"   Modified: {mod_time.strftime('%Y-%m-%d %H:%M')}")
+    print(f"   Size: {stat.st_size / 1024:.1f} KB")
+
+    # Load CSV
+    print(f"\n📂 Loading CSV...")
+    if not core.load_draftkings_csv(csv_path):
+        print("❌ Failed to load CSV")
+        return
+
+    print(f"✅ Loaded {len(core.players)} players")
+
+    # Show contest type
+    if any(hasattr(p, 'roster_position') and 'CPT' in str(p.roster_position) for p in core.players):
+        print("📋 Contest Type: SHOWDOWN")
+        contest_type = "showdown"
+    else:
+        print("📋 Contest Type: CLASSIC")
+        contest_type = "classic"
+
+    # Show sample players
+    print(f"\n👥 Sample players:")
+    for i, player in enumerate(core.players[:5]):
+        print(f"  {i + 1}. {player.name} ({player.team}) - ${player.salary:,}")
+
+    # Test enrichments
+    print("\n📊 TESTING ENRICHMENT SYSTEMS:")
+    print("-" * 40)
+
+    # 1. Vegas
+    print("\n🎰 Vegas Lines:", end=" ")
+    if hasattr(core, 'vegas_lines') and core.vegas_lines:
+        print("✅ Available")
+        try:
+            lines = core.vegas_lines.get_vegas_lines()
+            if lines:
+                print(f"   ✅ Working - {len(lines)} teams with data")
+            else:
+                print("   ⚠️ No data (need API key)")
+        except Exception as e:
+            print(f"   ❌ Error: {str(e)[:50]}...")
+    else:
+        print("❌ Not found")
+
+    # 2. Statcast
+    print("\n⚾ Statcast:", end=" ")
+    if hasattr(core, 'statcast_fetcher') and core.statcast_fetcher:
+        print("✅ Available")
+        try:
+            # Test with first player
+            test_player = core.players[0]
+            if hasattr(core.statcast_fetcher, 'get_hitter_stats'):
+                data = core.statcast_fetcher.get_hitter_stats(test_player.name)
+                if data:
+                    print(f"   ✅ Working - got data for {test_player.name}")
+                else:
+                    print(f"   ⚠️ No data for {test_player.name}")
+            else:
+                print("   ⚠️ Missing get_hitter_stats method")
+        except Exception as e:
+            print(f"   ❌ Error: {str(e)[:50]}...")
+    else:
+        print("❌ Not found")
+
+    # 3. Enrichment Bridge
+    print("\n🌉 Enrichment Bridge:", end=" ")
+    if hasattr(core, 'enrichment_bridge') and core.enrichment_bridge:
+        print("✅ Available")
+    else:
+        print("❌ Not found")
+
+    # 4. Test actual enrichment
+    print("\n\n🧪 APPLYING ENRICHMENTS:")
+    print("-" * 40)
+
+    if hasattr(core, 'enrichment_bridge') and core.enrichment_bridge:
+        try:
+            print("Applying enrichments...")
+            core.enrichment_bridge.apply_enrichments_to_core(core)
+            print("✅ Enrichments applied!")
+
+            # Check results
+            enhanced_count = 0
+            total_improvement = 0
+
+            print(f"\n📊 Results for first 10 players:")
+            for player in core.players[:10]:
+                base = getattr(player, 'projection', 0)
+                enhanced = getattr(player, 'enhanced_score', base)
+
+                if enhanced != base and base > 0:
+                    enhanced_count += 1
+                    improvement = ((enhanced / base) - 1) * 100
+                    total_improvement += improvement
+                    print(f"  ✅ {player.name}: {base:.1f} → {enhanced:.1f} (+{improvement:.1f}%)")
+                else:
+                    print(f"  ⚠️ {player.name}: No enhancement")
+
+            if enhanced_count > 0:
+                avg_improvement = total_improvement / enhanced_count
+                print(f"\n📈 Average improvement: +{avg_improvement:.1f}%")
+                print(f"✅ Enriched {enhanced_count}/10 players")
+            else:
+                print(f"\n⚠️ No players were enhanced - check enrichment systems")
+
+        except Exception as e:
+            print(f"❌ Enrichment error: {e}")
+
+    # Test optimization
+    print("\n\n🎯 TESTING OPTIMIZATION:")
+    print("-" * 40)
 
     try:
-        # Try minimal optimizer first
-        from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
-        from unified_player_model import UnifiedPlayer
-        import pandas as pd
-
-        # Load CSV
-        df = pd.read_csv(csv_path)
-        print(f"✅ Loaded {len(df)} players")
-
-        # Create players
-        players = []
-        for _, row in df.iterrows():
-            player = UnifiedPlayer(
-                id=str(row['ID']),
-                name=row['Name'],
-                team=row['TeamAbbrev'],
-                salary=int(row['Salary']),
-                primary_position=row['Position'],
-                positions=[row['Position']],
-                base_projection=float(row['AvgPointsPerGame'])
-            )
-            player.enhanced_score = player.base_projection
-            players.append(player)
-
-        # Optimize
-        optimizer = UnifiedMILPOptimizer(OptimizationConfig())
-        lineup, score = optimizer.optimize_lineup(players, strategy="all_players")
+        if contest_type == "showdown":
+            print("Running showdown optimization...")
+            lineup, score = core.optimize_showdown_lineup()
+        else:
+            print("Running classic optimization...")
+            lineup = core.optimize_lineup()
+            score = sum(p.enhanced_score for p in lineup) if lineup else 0
 
         if lineup:
-            print(f"\n✅ OPTIMIZATION SUCCESSFUL!")
-            print(f"Score: {score:.2f}")
-            print("\nLineup:")
-            for p in lineup:
-                print(f"  {p.primary_position} {p.name} ({p.team}) - ${p.salary:,}")
+            print(f"✅ Generated lineup with {len(lineup)} players")
+            print(f"📈 Total score: {score:.1f}")
 
-            return True
+            # Show if using enhanced scores
+            if lineup and hasattr(lineup[0], 'enhanced_score'):
+                base_total = sum(getattr(p, 'projection', 0) for p in lineup)
+                enhanced_total = sum(getattr(p, 'enhanced_score', 0) for p in lineup)
+                if enhanced_total > base_total:
+                    print(f"🚀 Using enhanced scores! (+{((enhanced_total / base_total) - 1) * 100:.1f}%)")
         else:
-            print("❌ Optimization failed")
-            return False
+            print("❌ Failed to generate lineup")
 
     except Exception as e:
-        print(f"❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        print(f"❌ Optimization error: {e}")
 
-
-def main():
-    """Main function"""
-    print("🎯 DKSalaries5.csv Finder and Tester")
-    print("=" * 60)
-
-    # Check if path provided as argument
-    if len(sys.argv) > 1:
-        csv_path = sys.argv[1]
-        if os.path.exists(csv_path):
-            print(f"✅ Using provided path: {csv_path}")
-        else:
-            print(f"❌ Provided path not found: {csv_path}")
-            csv_path = find_dk_csv()
-    else:
-        # Search for CSV
-        csv_path = find_dk_csv()
-
-    if csv_path:
-        # Test optimization
-        success = test_with_csv(csv_path)
-
-        if success:
-            print("\n" + "=" * 60)
-            print("✅ Everything works!")
-            print(f"\n💡 To use this file in the GUI:")
-            print(f"   1. Copy to project: cp '{csv_path}' .")
-            print(f"   2. Or use full path in GUI: {csv_path}")
-
-            # Offer to copy
-            print(f"\n📋 Copy command:")
-            print(f"cp '{csv_path}' /home/michael/Desktop/All_in_one_optimizer/")
-    else:
-        print("\n💡 Download DKSalaries5.csv from DraftKings and save to Downloads folder")
+    print("\n✅ Test complete!")
 
 
 if __name__ == "__main__":
-    main()
+    test_enrichments_auto()

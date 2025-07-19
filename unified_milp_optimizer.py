@@ -67,16 +67,14 @@ class OptimizationConfig:
 
 
 class UnifiedMILPOptimizer:
-    """
-    Clean MILP optimizer with comprehensive data integration
-    NO artificial bonuses - pure performance-based optimization
-    """
-
     def __init__(self, config: OptimizationConfig = None):
+        """
+        Initializes the optimization engine with configuration and data sources.
+        """
         self.config = config or OptimizationConfig()
         self.logger = logger
 
-        # Load DFS configuration
+        # FIXED: Call the configuration loading method
         self._load_dfs_config()
 
         # Load park factors if available
@@ -85,24 +83,28 @@ class UnifiedMILPOptimizer:
         # Load real data sources
         self._initialize_data_sources()
 
-        def _load_dfs_config(self):
+    def _load_dfs_config(self):
+        """
+        FIXED: Load configuration from unified config system or fallback.
+        This method is now a properly-defined method of the class.
+        """
+        config_loaded = False
 
-            config_loaded = False  # FIXED: Added missing variable
-
+        # Try to load from unified config system first
         try:
-            # Use unified config
+            # Assumes get_config_value is defined elsewhere
             self.config.salary_cap = get_config_value("optimization.salary_cap", 50000)
             self.config.min_salary_usage = get_config_value("optimization.min_salary_usage", 0.95)
             self.config.max_players_per_team = get_config_value("optimization.max_players_per_team", 4)
             self.max_form_analysis_players = get_config_value("optimization.max_form_analysis_players", 100)
 
             self.logger.info("✅ Loaded configuration from unified config system")
-            config_loaded = True  # Mark as loaded
+            config_loaded = True
         except Exception as e:
             self.logger.warning(f"Could not load unified config: {e}")
             # Keep defaults
 
-        # Fallback to dfs_config.json
+        # Fallback to dfs_config.json if unified config failed to load
         if not config_loaded:
             try:
                 import json
@@ -115,7 +117,6 @@ class UnifiedMILPOptimizer:
                 self.max_form_analysis_players = config_data.get("optimization", {}).get("max_form_analysis_players", 100)
 
                 self.logger.info("✅ Loaded configuration from dfs_config.json")
-                config_loaded = True
             except Exception as e:
                 self.logger.warning(f"Could not load dfs_config.json: {e}")
                 # Use defaults
@@ -141,8 +142,19 @@ class UnifiedMILPOptimizer:
                 "MIA": 0.97,  # Marlins Park
             }
 
-    def optimize(self, players, strategy="balanced", manual_selections=None):
-        """Optimize lineup using MILP"""
+        from dataclasses import dataclass
+
+        @dataclass
+        class OptimizationResult:
+            lineup: list
+            total_salary: int
+            projected_points: float
+            strategy: str
+
+        required = self.config.position_requirements
+        pos_map = {p.primary_position: [] for pos in required} # <- Error line is likely here or nearby
+        for p in players:
+
         try:
             from dataclasses import dataclass
 
