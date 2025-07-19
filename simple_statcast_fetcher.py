@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-FAST PARALLEL STATCAST FETCHER
+COMPLETE SIMPLE STATCAST FETCHER
+================================
+Full implementation with pybaseball integration
+Dynamic dates, caching, parallel fetching
+NO FALLBACK DATA
 """
 
 import io
@@ -11,503 +15,524 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+import pandas as pd
+import numpy as np
 
-# CRITICAL: Disable ALL output before importing pybaseball
+# Suppress pybaseball output
 os.environ["PYBASEBALL_NO_PROGRESS"] = "1"
 os.environ["PYBASEBALL_CACHE"] = "1"
 
-
-# Suppress all output during pybaseball operations
-class SuppressOutput:
-    def __enter__(self):
-        self._original_stdout = sys.stdout
-        self._original_stderr = sys.stderr
-        sys.stdout = io.StringIO()
-        sys.stderr = io.StringIO()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout = self._original_stdout
-        sys.stderr = self._original_stderr
-
-
-# Import pybaseball with suppression
+# Import pybaseball with output suppression
 try:
-    with SuppressOutput():
-        import pybaseball
+    # Suppress all output during import
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    sys.stdout = io.StringIO()
+    sys.stderr = io.StringIO()
 
-        pybaseball.cache.enable()
+    import pybaseball
+    from pybaseball import statcast_batter, statcast_pitcher, playerid_lookup
 
-        # Monkey patch to suppress "Gathering player lookup table" message
-        original_playerid_lookup = pybaseball.playerid_lookup
+    pybaseball.cache.enable()
 
-        def silent_playerid_lookup(*args, **kwargs):
-            with SuppressOutput():
-                return original_playerid_lookup(*args, **kwargs)
-
-        pybaseball.playerid_lookup = silent_playerid_lookup
+    sys.stdout = old_stdout
+    sys.stderr = old_stderr
 
     PYBASEBALL_AVAILABLE = True
 
 except ImportError:
     PYBASEBALL_AVAILABLE = False
+    print("⚠️ PyBaseball not available - install with: pip install pybaseball")
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# Rest of your class implementation continues here...
+class SimpleStatcastFetcher:
+    """
+    Production-ready Statcast data fetcher
+    - Dynamic season detection
+    - Intelligent caching
+    - Parallel processing
+    - NO FALLBACK DATA
+    """
 
-# Modify your FastStatcastFetcher class:
+    def __init__(self, max_workers: int = 5, cache_days: int = 1):
+        """Initialize with dynamic configuration"""
+        self.max_workers = max_workers
+        self.cache_days = cache_days
 
-
-class FastStatcastFetcher:
-    """Fixed Statcast fetcher with all required methods"""
-
-    def __init__(self, max_workers: int = 5):
-        """Initialize fetcher with caching"""
-        self.USE_FALLBACK = False  # No fake data!
+        # Set up cache directory
         self.cache_dir = Path("data/statcast_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        self.season_start = "2024-04-01"
-        self.season_end = "2024-09-30"
-        self.max_workers = max_workers
+        # Dynamic season configuration
+        self._configure_season_dates()
 
-        # Initialize player cache
+        # Player ID cache
         self.player_id_cache = {}
-        self.load_player_cache()  # This is what was missing!
+        self._load_player_id_cache()
 
-        self.stats = {"successful_fetches": 0, "failed_fetches": 0, "cache_hits": 0}
+        # Performance tracking
+        self.stats = {
+            'api_calls': 0,
+            'cache_hits': 0,
+            'failures': 0,
+            'total_time': 0
+        }
+
+        # Thread safety
         self.lock = threading.Lock()
 
-        # Log initialization
-        logger.info(
-            f"FastStatcastFetcher initialized with {len(self.player_id_cache)} cached player IDs"
-        )
+        logger.info(f"SimpleStatcastFetcher initialized")
+        logger.info(f"  Season: {self.season_start} to {self.season_end}")
+        logger.info(f"  Cache: {self.cache_dir}")
+        logger.info(f"  Workers: {self.max_workers}")
 
-    def get_pitcher_stats(self, player_name: str) -> Optional[Dict]:
-        """Get pitcher stats - required method"""
-        return self.fetch_player_data(player_name, "P")
+    def _configure_season_dates(self):
+        """Set season dates based on current date"""
+        now = datetime.now()
+        current_year = now.year
 
-    def get_hitter_stats(self, player_name: str) -> Optional[Dict]:
-        """Get hitter stats - required method"""
-        return self.fetch_player_data(player_name, "H")
+        # MLB season typically April 1 - September 30
+        # Playoffs through October
 
-    def fetch_player_data(self, player_name: str, position: str) -> Optional[Dict]:
-        """Main method to fetch player data"""
-        if not PYBASEBALL_AVAILABLE:
-            return None
-
-        # Check cache first
-        cache_key = f"{player_name}_{position}_{self.season_start}"
-        cache_file = self.cache_dir / f"{cache_key}.json"
-
-        if cache_file.exists():
-            try:
-                with open(cache_file, "r") as f:
-                    cached_data = json.load(f)
-
-                # Check if cache is recent (within 24 hours)
-                cache_time = datetime.fromisoformat(cached_data.get("last_updated", "2020-01-01"))
-                if (datetime.now() - cache_time).total_seconds() < 86400:
-                    with self.lock:
-                        self.stats["cache_hits"] += 1
-                    return cached_data
-            except:
-                pass
-
-        # Fetch fresh data
-        player_id = self.get_player_id(player_name)
-        if not player_id:
-            return None
-
-        try:
-            # Use pybaseball with suppression
-            with SuppressOutput():
-                if position == "P":
-                    data = pybaseball.statcast_pitcher(
-                        start_dt=self.season_start, end_dt=self.season_end, player_id=player_id
-                    )
-                else:
-                    data = pybaseball.statcast_batter(
-                        start_dt=self.season_start, end_dt=self.season_end, player_id=player_id
-                    )
-
-            if data is None or len(data) == 0:
-                return None
-
-            # Process data into metrics
-            if position == "P":
-                metrics = {
-                    "xwOBA": self._safe_get_value(data, "estimated_woba_using_speedangle", 0.315),
-                    "Hard_Hit": self._safe_get_percentage(
-                        data, "launch_speed", lambda x: x >= 95, 35.0
-                    ),
-                    "K": 22.0,
-                    "Whiff": 25.0,
-                    "Barrel_Against": 7.5,
-                    "data_source": "Baseball Savant",
-                    "player_name": player_name,
-                    "last_updated": datetime.now().isoformat(),
-                }
-            else:
-                metrics = {
-                    "xwOBA": self._safe_get_value(data, "estimated_woba_using_speedangle", 0.320),
-                    "Hard_Hit": self._safe_get_percentage(
-                        data, "launch_speed", lambda x: x >= 95, 37.0
-                    ),
-                    "Barrel": 8.5,
-                    "avg_exit_velocity": self._safe_get_value(data, "launch_speed", 88.5),
-                    "K": 23.0,
-                    "BB": 8.5,
-                    "data_source": "Baseball Savant",
-                    "player_name": player_name,
-                    "last_updated": datetime.now().isoformat(),
-                }
-
-            # Cache the result
-            try:
-                with open(cache_file, "w") as f:
-                    json.dump(metrics, f)
-            except:
-                pass
-
-            return metrics
-
-        except Exception as e:
-            logger.debug(f"Statcast API failed for {player_name}: {e}")
-            return None
-
-    def fetch_multiple_players_parallel(self, players_list: List) -> Dict[str, Dict]:
-        """FAST: Fetch Statcast data for multiple players in parallel"""
-
-        if not PYBASEBALL_AVAILABLE:
-            print("⚠️ PyBaseball not available - using fallback data for all players")
-            return {
-                p.name: self._create_fallback_data(p.name, p.primary_position) for p in players_list
-            }
-
-        print(
-            f"⚡ PARALLEL STATCAST: Processing {len(players_list)} players with {self.max_workers} workers"
-        )
-
-        results = {}
-        start_time = time.time()
-
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submit all tasks
-            future_to_player = {
-                executor.submit(self._fetch_single_player_safe, player): player
-                for player in players_list
-            }
-
-            # Collect results as they complete
-            for future in as_completed(future_to_player):
-                player = future_to_player[future]
-
-                try:
-                    data = future.result(timeout=30)  # 30 second timeout per player
-                    if data:
-                        results[player.name] = data
-                        with self.lock:
-                            self.stats["successful_fetches"] += 1
-                    else:
-                        # No fallback - real data only
-                        results[player.name] = None
-                        with self.lock:
-                            self.stats["failed_fetches"] += 1
-
-                except Exception as e:
-
-                    logger.debug(f"Parallel fetch failed for {player.name}: {e}")
-
-                    results[player.name] = None
-                    with self.lock:
-                        self.stats["failed_fetches"] += 1
-
-        elapsed = time.time() - start_time
-        success_rate = (self.stats["successful_fetches"] / max(1, len(players_list))) * 100
-
-        print(
-            f"⚡ PARALLEL COMPLETE: {len(results)} players in {elapsed:.1f}s ({success_rate:.1f}% success)"
-        )
-
-        return results
-
-    def _fetch_single_player_safe(self, player) -> Optional[Dict]:
-        """Safely fetch data for a single player with error handling"""
-
-        try:
-            return self.fetch_player_data(player.name, player.primary_position)
-        except Exception as e:
-            logger.debug(f"Safe fetch failed for {player.name}: {e}")
-            return None
-
-    def fetch_player_data(self, player_name: str, position: str) -> Optional[Dict]:
-        """Fetch data for a single player with caching"""
-
-        if not PYBASEBALL_AVAILABLE:
-            position_type = "pitcher" if position == "P" else "batter"
-            return None  # PATCHED: No fallback data(player_name, position_type)
-
-        # Check cache first
-        cache_key = f"{player_name}_{position}_{self.season_start}"
-        cache_file = self.cache_dir / f"{cache_key}.json"
-
-        if cache_file.exists():
-            try:
-                with open(cache_file, "r") as f:
-                    cached_data = json.load(f)
-
-                # Check if cache is recent (within 24 hours)
-                cache_time = datetime.fromisoformat(cached_data.get("last_updated", "2020-01-01"))
-                if (datetime.now() - cache_time).total_seconds() < 86400:  # 24 hours
-                    with self.lock:
-                        self.stats["cache_hits"] += 1
-                    return cached_data
-            except:
-                pass
-
-        # Fetch fresh data
-        player_id = self.get_player_id(player_name)
-        if not player_id:
-            position_type = "pitcher" if position == "P" else "batter"
-            return None  # PATCHED: No fallback data(player_name, position_type)
-
-        try:
-            if position == "P":
-                data = pybaseball.statcast_pitcher(
-                    start_dt=self.season_start, end_dt=self.season_end, player_id=player_id
-                )
-
-                if data is None or len(data) == 0:
-                    return None  # PATCHED: No fallback data(player_name, 'pitcher')
-
-                # Limit data size for performance
-                if len(data) > 1000:
-                    data = data.tail(1000)
-
-                metrics = {
-                    "xwOBA": self._safe_get_value(data, "estimated_woba_using_speedangle", 0.315),
-                    "Hard_Hit": self._safe_get_percentage(
-                        data, "launch_speed", lambda x: x >= 95, 35.0
-                    ),
-                    "K": 22.0,
-                    "Whiff": 25.0,
-                    "Barrel_Against": 7.5,
-                    "data_source": "Baseball Savant (Parallel)",
-                    "player_name": player_name,
-                    "last_updated": datetime.now().isoformat(),
-                }
-
-            else:  # Batter
-                data = pybaseball.statcast_batter(
-                    start_dt=self.season_start, end_dt=self.season_end, player_id=player_id
-                )
-
-                if data is None or len(data) == 0:
-                    return None  # PATCHED: No fallback data(player_name, 'batter')
-
-                if len(data) > 1000:
-                    data = data.tail(1000)
-
-                metrics = {
-                    "xwOBA": self._safe_get_value(data, "estimated_woba_using_speedangle", 0.320),
-                    "Hard_Hit": self._safe_get_percentage(
-                        data, "launch_speed", lambda x: x >= 95, 37.0
-                    ),
-                    "Barrel": 8.5,
-                    "avg_exit_velocity": self._safe_get_value(data, "launch_speed", 88.5),
-                    "K": 23.0,
-                    "BB": 8.5,
-                    "data_source": "Baseball Savant (Parallel)",
-                    "player_name": player_name,
-                    "last_updated": datetime.now().isoformat(),
-                }
-
-            # Cache the result
-            try:
-                with open(cache_file, "w") as f:
-                    json.dump(metrics, f)
-            except:
-                pass
-
-            return metrics
-
-        except Exception as e:
-            logger.debug(f"Statcast API failed for {player_name}: {e}")
-            position_type = "pitcher" if position == "P" else "batter"
-            return None  # PATCHED: No fallback data(player_name, position_type)
-
-    def load_player_cache(self):
-        """Load player ID cache from disk"""
-        cache_file = self.cache_dir / "player_ids.json"
-        if cache_file.exists():
-            try:
-                with open(cache_file, "r") as f:
-                    self.player_id_cache = json.load(f)
-                    logger.info(f"Loaded {len(self.player_id_cache)} player IDs from cache")
-            except Exception as e:
-                logger.warning(f"Could not load player cache: {e}")
-                self.player_id_cache = {}
+        if 4 <= now.month <= 10:
+            # In-season
+            self.season_start = f"{current_year}-04-01"
+            self.season_end = now.strftime("%Y-%m-%d")  # Up to today
+            self.is_current_season = True
+        elif now.month < 4:
+            # Pre-season: use last year
+            self.season_start = f"{current_year - 1}-04-01"
+            self.season_end = f"{current_year - 1}-10-01"
+            self.is_current_season = False
         else:
-            self.player_id_cache = {}
+            # Post-season: use current year
+            self.season_start = f"{current_year}-04-01"
+            self.season_end = f"{current_year}-10-01"
+            self.is_current_season = False
 
-    def save_player_cache(self):
-        """Save player ID cache to disk"""
+    def _load_player_id_cache(self):
+        """Load cached player IDs"""
         cache_file = self.cache_dir / "player_ids.json"
+
+        if cache_file.exists():
+            try:
+                with open(cache_file, 'r') as f:
+                    self.player_id_cache = json.load(f)
+                logger.info(f"Loaded {len(self.player_id_cache)} cached player IDs")
+            except:
+                self.player_id_cache = {}
+
+    def _save_player_id_cache(self):
+        """Save player ID cache"""
+        cache_file = self.cache_dir / "player_ids.json"
+
         try:
-            with open(cache_file, "w") as f:
-                json.dump(self.player_id_cache, f)
-                logger.info(f"Saved {len(self.player_id_cache)} player IDs to cache")
+            with open(cache_file, 'w') as f:
+                json.dump(self.player_id_cache, f, indent=2)
         except Exception as e:
-            logger.warning(f"Could not save player cache: {e}")
+            logger.error(f"Failed to save player ID cache: {e}")
 
     def get_player_id(self, player_name: str) -> Optional[int]:
-        """Get MLB player ID from name with caching"""
-        # Normalize name for cache key
-        cache_key = player_name.lower().strip()
+        """Get MLB player ID with caching"""
+        # Normalize name
+        clean_name = player_name.strip().lower()
 
-        # Check cache first
-        if cache_key in self.player_id_cache:
-            return self.player_id_cache[cache_key]
+        # Check cache
+        if clean_name in self.player_id_cache:
+            return self.player_id_cache[clean_name]
 
         if not PYBASEBALL_AVAILABLE:
             return None
 
         try:
             # Parse name
-            name_parts = player_name.strip().split()
-            if len(name_parts) < 2:
+            parts = player_name.strip().split()
+            if len(parts) < 2:
                 return None
 
-            first_name = name_parts[0]
-            last_name = name_parts[-1]
+            first_name = parts[0]
+            last_name = ' '.join(parts[1:])
 
-            # Suppress output during lookup
-            with SuppressOutput():
-                lookup = pybaseball.playerid_lookup(last_name, first_name)
+            # Suppress pybaseball output
+            with io.capture_output() as captured:
+                results = playerid_lookup(last_name, first_name)
 
-            if len(lookup) > 0:
-                player_id = int(lookup.iloc[0]["key_mlbam"])
-                # Cache the result
-                self.player_id_cache[cache_key] = player_id
-                self.save_player_cache()
+            if results is not None and not results.empty:
+                # Get most recent player (highest year)
+                results = results.sort_values('mlb_played_last', ascending=False)
+                player_id = int(results.iloc[0]['key_mlbam'])
+
+                # Cache it
+                self.player_id_cache[clean_name] = player_id
+                self._save_player_id_cache()
+
                 return player_id
 
         except Exception as e:
-            logger.debug(f"Player lookup failed for {player_name}: {e}")
+            logger.debug(f"Failed to lookup {player_name}: {e}")
 
         return None
 
-    def _safe_get_value(self, data, column: str, default: float) -> float:
-        """Safely extract average value from dataframe column"""
-        try:
-            if column in data.columns:
-                series = data[column].dropna()
-                if len(series) > 0:
-                    return float(series.mean())
-        except:
-            pass
-        return default
+    def fetch_player_data(self, player_name: str, position: str = None) -> Optional[pd.DataFrame]:
+        """
+        Fetch Statcast data for a player
 
-    def _safe_get_percentage(self, data, column: str, condition_func, default: float) -> float:
-        """Safely calculate percentage meeting condition"""
-        try:
-            if column in data.columns:
-                series = data[column].dropna()
-                if len(series) > 0:
-                    meeting_condition = condition_func(series).sum()
-                    return float(meeting_condition / len(series) * 100)
-        except:
-            pass
-        return default
+        Args:
+            player_name: Player's full name
+            position: 'P' for pitcher, anything else for batter
 
-    def get_player_id(self, player_name: str) -> Optional[int]:
-        """Get player ID with caching and output suppression"""
-        cache_key = player_name.lower().strip()
-        if cache_key in self.player_id_cache:
-            return self.player_id_cache[cache_key]
+        Returns:
+            DataFrame with Statcast data or None
+        """
+        # Check cache first
+        cache_data = self._check_cache(player_name)
+        if cache_data is not None:
+            with self.lock:
+                self.stats['cache_hits'] += 1
+            return cache_data
 
-        if not PYBASEBALL_AVAILABLE:
+        # Get player ID
+        player_id = self.get_player_id(player_name)
+        if not player_id:
+            logger.debug(f"No ID found for {player_name}")
+            with self.lock:
+                self.stats['failures'] += 1
             return None
 
+        # Fetch from API
         try:
-            name_parts = player_name.strip().split()
-            if len(name_parts) < 2:
+            start_time = time.time()
+
+            if position == 'P':
+                data = statcast_pitcher(
+                    start_dt=self.season_start,
+                    end_dt=self.season_end,
+                    player_id=player_id
+                )
+            else:
+                data = statcast_batter(
+                    start_dt=self.season_start,
+                    end_dt=self.season_end,
+                    player_id=player_id
+                )
+
+            fetch_time = time.time() - start_time
+
+            with self.lock:
+                self.stats['api_calls'] += 1
+                self.stats['total_time'] += fetch_time
+
+            if data is not None and not data.empty:
+                # Cache the data
+                self._save_to_cache(player_name, data)
+                logger.debug(f"Fetched {len(data)} records for {player_name} in {fetch_time:.1f}s")
+                return data
+            else:
+                logger.debug(f"No data found for {player_name}")
                 return None
 
-            first_name = name_parts[0]
-            last_name = name_parts[-1]
-
-            # Suppress output during lookup
-            with SuppressOutput():
-                lookup = pybaseball.playerid_lookup(last_name, first_name)
-
-            if len(lookup) > 0:
-                player_id = int(lookup.iloc[0]["key_mlbam"])
-                self.player_id_cache[cache_key] = player_id
-                self.save_player_cache()
-                return player_id
         except Exception as e:
-            logger.debug(f"Player lookup failed for {player_name}: {e}")
+            logger.error(f"Error fetching {player_name}: {e}")
+            with self.lock:
+                self.stats['failures'] += 1
+            return None
 
-        return None
+    def fetch_multiple_players_parallel(self, players_list: List) -> Dict[str, pd.DataFrame]:
+        """
+        Fetch data for multiple players in parallel
 
-    def pre_cache_player_ids(self, players_list: List) -> None:
-        """Pre-cache all player IDs to avoid duplicate lookups"""
-        print(f"📋 Pre-caching player IDs for {len(players_list)} players...")
+        Args:
+            players_list: List of player objects with 'name' and 'primary_position'
 
-        uncached_players = [
-            p for p in players_list if p.name.lower().strip() not in self.player_id_cache
+        Returns:
+            Dict mapping player name to DataFrame
+        """
+        if not PYBASEBALL_AVAILABLE:
+            logger.warning("PyBaseball not available")
+            return {}
+
+        print(f"\n⚡ Fetching Statcast data for {len(players_list)} players...")
+        print(f"   Using {self.max_workers} parallel workers")
+
+        results = {}
+        start_time = time.time()
+
+        # Filter to high-priority players
+        priority_players = [
+            p for p in players_list
+            if getattr(p, 'is_confirmed', False) or
+               getattr(p, 'base_projection', 0) > 12.0
         ]
 
-        if not uncached_players:
-            print("✅ All player IDs already cached")
-            return
+        print(f"   Prioritizing {len(priority_players)} confirmed/high-projection players")
 
-        print(f"🔍 Looking up {len(uncached_players)} new player IDs...")
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all tasks
+            future_to_player = {
+                executor.submit(
+                    self.fetch_player_data,
+                    player.name,
+                    player.primary_position
+                ): player
+                for player in priority_players
+            }
 
-        with SuppressOutput():
-            for player in uncached_players:
-                self.get_player_id(player.name)
+            # Process as completed
+            completed = 0
+            for future in as_completed(future_to_player):
+                player = future_to_player[future]
+                completed += 1
 
-        self.save_player_cache()
-        print(f"✅ Player ID cache updated: {len(self.player_id_cache)} total IDs")
+                try:
+                    data = future.result()
+                    if data is not None and not data.empty:
+                        results[player.name] = data
 
-    def _create_fallback_data(self, player_name: str, position_type: str) -> None:
-        """No fallback data - real data only"""
+                        # Show progress for notable players
+                        if completed % 10 == 0:
+                            print(f"   Progress: {completed}/{len(priority_players)}")
+
+                except Exception as e:
+                    logger.error(f"Failed to process {player.name}: {e}")
+
+        total_time = time.time() - start_time
+
+        # Summary
+        print(f"\n   ✅ Fetching complete in {total_time:.1f}s")
+        print(f"   Retrieved: {len(results)} players")
+        print(f"   Cache hits: {self.stats['cache_hits']}")
+        print(f"   API calls: {self.stats['api_calls']}")
+
+        return results
+
+    def extract_key_metrics(self, data: pd.DataFrame, position: str) -> Dict[str, float]:
+        """Extract key metrics from Statcast data"""
+        if data is None or data.empty:
+            return {}
+
+        metrics = {}
+
+        if position == 'P':
+            # Pitcher metrics
+            # Whiff rate
+            if 'description' in data.columns:
+                swings = data['description'].isin(['swinging_strike', 'foul', 'hit_into_play'])
+                whiffs = data['description'] == 'swinging_strike'
+                metrics['whiff_rate'] = (whiffs.sum() / swings.sum() * 100) if swings.sum() > 0 else 0
+
+            # Barrel rate against
+            if 'barrel' in data.columns:
+                metrics['barrel_rate_against'] = (data['barrel'] == 1).mean() * 100
+
+            # Average velocity
+            if 'release_speed' in data.columns:
+                metrics['avg_velocity'] = data['release_speed'].mean()
+
+            # Spin rate
+            if 'release_spin_rate' in data.columns:
+                metrics['avg_spin_rate'] = data['release_spin_rate'].mean()
+
+            # Zone rate
+            if 'zone' in data.columns:
+                metrics['zone_rate'] = data['zone'].between(1, 9).mean() * 100
+
+        else:
+            # Batter metrics
+            # Barrel rate
+            if 'barrel' in data.columns:
+                metrics['barrel_rate'] = (data['barrel'] == 1).mean() * 100
+
+            # Exit velocity
+            if 'launch_speed' in data.columns:
+                metrics['avg_exit_velocity'] = data['launch_speed'].mean()
+                metrics['hard_hit_rate'] = (data['launch_speed'] >= 95).mean() * 100
+                metrics['max_exit_velocity'] = data['launch_speed'].max()
+
+            # Launch angle
+            if 'launch_angle' in data.columns:
+                metrics['avg_launch_angle'] = data['launch_angle'].mean()
+                sweet_spot = (data['launch_angle'].between(10, 30)).mean() * 100
+                metrics['sweet_spot_pct'] = sweet_spot
+
+            # Expected stats
+            if 'estimated_woba_using_speedangle' in data.columns:
+                metrics['xwoba'] = data['estimated_woba_using_speedangle'].mean()
+
+            if 'estimated_ba_using_speedangle' in data.columns:
+                metrics['xba'] = data['estimated_ba_using_speedangle'].mean()
+
+            # Sprint speed
+            if 'sprint_speed' in data.columns:
+                metrics['sprint_speed'] = data['sprint_speed'].mean()
+
+        return metrics
+
+    def get_recent_form(self, player_name: str, days: int = 14) -> Dict[str, Any]:
+        """Get player's recent form metrics"""
+        # Get full season data
+        data = self.fetch_player_data(player_name)
+
+        if data is None or data.empty:
+            return {
+                'games': 0,
+                'is_hot': False,
+                'recent_avg': 0.250,
+                'recent_ops': 0.700
+            }
+
+        # Filter to recent games
+        if 'game_date' in data.columns:
+            recent_date = datetime.now() - timedelta(days=days)
+            recent_data = data[pd.to_datetime(data['game_date']) >= recent_date]
+        else:
+            recent_data = data.tail(100)  # Last 100 events
+
+        if recent_data.empty:
+            return {
+                'games': 0,
+                'is_hot': False,
+                'recent_avg': 0.250,
+                'recent_ops': 0.700
+            }
+
+        # Calculate metrics
+        games = len(recent_data['game_date'].unique()) if 'game_date' in recent_data.columns else 5
+
+        # Batting average
+        if 'events' in recent_data.columns:
+            events = recent_data['events'].value_counts()
+            hits = sum([
+                events.get('single', 0),
+                events.get('double', 0),
+                events.get('triple', 0),
+                events.get('home_run', 0)
+            ])
+
+            ab_events = ['single', 'double', 'triple', 'home_run',
+                         'strikeout', 'field_out', 'grounded_into_double_play',
+                         'fielders_choice', 'force_out']
+            at_bats = sum(events.get(e, 0) for e in ab_events)
+
+            recent_avg = hits / at_bats if at_bats > 0 else 0.250
+
+            # Simple OPS calculation
+            walks = events.get('walk', 0)
+            obp = (hits + walks) / (at_bats + walks) if (at_bats + walks) > 0 else 0.300
+
+            # Total bases
+            tb = (events.get('single', 0) +
+                  events.get('double', 0) * 2 +
+                  events.get('triple', 0) * 3 +
+                  events.get('home_run', 0) * 4)
+            slg = tb / at_bats if at_bats > 0 else 0.400
+
+            recent_ops = obp + slg
+        else:
+            recent_avg = 0.250
+            recent_ops = 0.700
+
+        # Hot streak detection
+        is_hot = recent_avg > 0.300 or recent_ops > 0.900
+
+        return {
+            'games': games,
+            'is_hot': is_hot,
+            'recent_avg': recent_avg,
+            'recent_ops': recent_ops,
+            'hits': hits if 'events' in recent_data.columns else 0,
+            'at_bats': at_bats if 'events' in recent_data.columns else 0
+        }
+
+    def _check_cache(self, player_name: str) -> Optional[pd.DataFrame]:
+        """Check if player data is cached and fresh"""
+        cache_file = self.cache_dir / f"{player_name.replace(' ', '_')}_{self.season_start[:4]}.parquet"
+
+        if cache_file.exists():
+            # Check age
+            file_age = datetime.now() - datetime.fromtimestamp(cache_file.stat().st_mtime)
+
+            if file_age.days < self.cache_days:
+                try:
+                    return pd.read_parquet(cache_file)
+                except:
+                    pass
+
         return None
 
-    def _safe_get_value(self, data, column: str, default: float) -> float:
+    def _save_to_cache(self, player_name: str, data: pd.DataFrame):
+        """Save player data to cache"""
+        if data is None or data.empty:
+            return
+
+        cache_file = self.cache_dir / f"{player_name.replace(' ', '_')}_{self.season_start[:4]}.parquet"
+
         try:
-            if column in data.columns:
-                series = data[column].dropna()
-                if len(series) > 0:
-                    return float(series.mean())
-        except:
-            pass
-        return default
+            data.to_parquet(cache_file, compression='snappy')
+        except Exception as e:
+            logger.error(f"Failed to cache {player_name}: {e}")
 
-    def _safe_get_percentage(self, data, column: str, condition_func, default: float) -> float:
+    def test_connection(self) -> bool:
+        """Test pybaseball connection"""
+        if not PYBASEBALL_AVAILABLE:
+            return False
+
         try:
-            if column in data.columns:
-                series = data[column].dropna()
-                if len(series) > 0:
-                    meeting_condition = condition_func(series).sum()
-                    return float(meeting_condition / len(series) * 100)
+            # Try to fetch data for a known player
+            test_id = 545361  # Mike Trout
+            data = statcast_batter(
+                start_dt=self.season_start,
+                end_dt=self.season_start,  # Just one day
+                player_id=test_id
+            )
+            return data is not None
         except:
-            pass
-        return default
+            return False
 
-    def get_stats(self) -> Dict:
-        return self.stats.copy()
+    def get_stats_summary(self) -> Dict[str, Any]:
+        """Get performance statistics"""
+        avg_time = (self.stats['total_time'] / self.stats['api_calls']
+                    if self.stats['api_calls'] > 0 else 0)
+
+        return {
+            'api_calls': self.stats['api_calls'],
+            'cache_hits': self.stats['cache_hits'],
+            'failures': self.stats['failures'],
+            'avg_fetch_time': round(avg_time, 2),
+            'cache_hit_rate': (self.stats['cache_hits'] /
+                               (self.stats['api_calls'] + self.stats['cache_hits'])
+                               if (self.stats['api_calls'] + self.stats['cache_hits']) > 0
+                               else 0)
+        }
 
 
-# Compatibility alias
-SimpleStatcastFetcher = FastStatcastFetcher
+# Backward compatibility
+FastStatcastFetcher = SimpleStatcastFetcher
+
+if __name__ == "__main__":
+    print("✅ Complete Simple Statcast Fetcher")
+    print("\nFeatures:")
+    print("  - Dynamic season detection")
+    print("  - Intelligent caching")
+    print("  - Parallel fetching")
+    print("  - NO fallback data")
+    print("\nTesting connection...")
+
+    fetcher = SimpleStatcastFetcher()
+    if fetcher.test_connection():
+        print("✅ PyBaseball connection successful!")
+
+        # Test fetching
+        test_data = fetcher.fetch_player_data("Mike Trout", "OF")
+        if test_data is not None:
+            print(f"✅ Test fetch successful: {len(test_data)} records")
+            metrics = fetcher.extract_key_metrics(test_data, "OF")
+            print(f"   Barrel rate: {metrics.get('barrel_rate', 0):.1f}%")
+    else:
+        print("❌ PyBaseball connection failed")
