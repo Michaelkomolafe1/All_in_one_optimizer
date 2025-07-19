@@ -155,7 +155,7 @@ class SystemChecker:
         status = {}
         for package, description in dependencies.items():
             try:
-                __import__(package)
+                __import__('bs4' if package == 'beautifulsoup4' else package)
                 status[package] = True
             except ImportError:
                 status[package] = False

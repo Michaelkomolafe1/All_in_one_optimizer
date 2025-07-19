@@ -1,306 +1,308 @@
 #!/usr/bin/env python3
 """
-FIX GUI LAUNCH ISSUES
-====================
-Focused script to fix and launch the DFS GUI
+COMPLETE FIX FOR DFS OPTIMIZER
+==============================
+Properly integrates with your unified optimization system
 """
 
 import os
-import sys
-import subprocess
-import traceback
+import shutil
+from datetime import datetime
 
 
-def diagnose_gui_issue():
-    """Diagnose why the GUI isn't launching"""
-    print("🔍 DIAGNOSING GUI ISSUES")
+def apply_complete_fix():
+    """Apply the complete fix to your GUI"""
+    print("🚀 COMPLETE DFS OPTIMIZER FIX")
     print("=" * 60)
 
-    issues = []
+    gui_file = 'complete_dfs_gui_debug.py'
 
-    # 1. Check display
-    print("\n1️⃣ Display Check:")
-    if sys.platform == 'linux':
-        display = os.environ.get('DISPLAY', 'Not set')
-        print(f"   DISPLAY = {display}")
+    if not os.path.exists(gui_file):
+        print(f"❌ {gui_file} not found!")
+        return False
 
-        if display == 'Not set':
-            os.environ['DISPLAY'] = ':0'
-            print("   ✅ Set DISPLAY=:0")
-    else:
-        print("   ✅ Not Linux, display not required")
+    # Backup
+    backup_file = f"{gui_file}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    shutil.copy(gui_file, backup_file)
+    print(f"✅ Created backup: {backup_file}")
 
-    # 2. Test PyQt5
-    print("\n2️⃣ PyQt5 Test:")
-    try:
-        from PyQt5.QtWidgets import QApplication
-        from PyQt5.QtCore import QT_VERSION_STR
-        print(f"   ✅ PyQt5 working (Qt {QT_VERSION_STR})")
-    except ImportError as e:
-        print(f"   ❌ PyQt5 import failed: {e}")
-        issues.append("PyQt5 not installed")
-        return issues
+    # Read file
+    with open(gui_file, 'r') as f:
+        lines = f.readlines()
 
-    # 3. Test creating QApplication
-    print("\n3️⃣ QApplication Test:")
-    try:
-        test_app = QApplication.instance()
-        if test_app is None:
-            test_app = QApplication([])
-        print("   ✅ Can create QApplication")
-    except Exception as e:
-        print(f"   ❌ Cannot create QApplication: {e}")
-        issues.append(f"QApplication error: {e}")
+    # Find and replace the OptimizationWorker class
+    print("\n📝 Replacing OptimizationWorker class...")
 
-    # 4. Check GUI file
-    print("\n4️⃣ GUI File Check:")
-    if not os.path.exists('enhanced_dfs_gui.py'):
-        print("   ❌ enhanced_dfs_gui.py not found!")
-        issues.append("GUI file missing")
-        return issues
+    # Find the class
+    class_start = None
+    class_end = None
 
-    print("   ✅ GUI file exists")
+    for i, line in enumerate(lines):
+        if 'class OptimizationWorker' in line:
+            class_start = i
+            print(f"✅ Found OptimizationWorker at line {i + 1}")
+        elif class_start is not None and line.strip() and not line[0].isspace():
+            # Found next class or function at root level
+            class_end = i
+            break
 
-    # 5. Try importing GUI components
-    print("\n5️⃣ Import Test:")
-    sys.path.insert(0, os.getcwd())
+    if class_start is None:
+        print("❌ Could not find OptimizationWorker class")
+        return False
 
-    try:
-        # First check what's failing
-        print("   Testing imports...")
+    if class_end is None:
+        class_end = len(lines)
 
-        # Test if we can import basic stuff
-        from enhanced_dfs_gui import FileLoadPanel, OptimizationPanel, ResultsPanel
-        print("   ✅ GUI components import OK")
+    # Replace with the proper implementation
+    new_worker_class = '''class OptimizationWorker(QThread):
+    """Worker thread that properly uses the unified optimization system"""
 
-        # Now try the main GUI
-        from enhanced_dfs_gui import EnhancedDFSGUI
-        print("   ✅ Main GUI class imports OK")
+    progress = pyqtSignal(int, str)
+    log = pyqtSignal(str, str)
+    result = pyqtSignal(object)
+    error = pyqtSignal(str)
 
-        # Try the main function
-        from enhanced_dfs_gui import main
-        print("   ✅ main() function found")
+    def __init__(self, players_df, settings, csv_filename=None):
+        super().__init__()
+        self.players_df = players_df
+        self.settings = settings
+        self.csv_filename = csv_filename
 
-    except ImportError as e:
-        print(f"   ❌ Import error: {e}")
-
-        # Check if it's the core system
-        if "AdvancedDFSCore" in str(e) or "bulletproof_dfs_core" in str(e):
-            print("\n   ℹ️  The issue is with importing the core system")
-            issues.append("Core system import error")
-
-            # Try to fix by modifying the import
-            fix_core_import()
-        else:
-            issues.append(f"Import error: {e}")
-
-    except Exception as e:
-        print(f"   ❌ Unexpected error: {e}")
-        traceback.print_exc()
-        issues.append(f"Unexpected error: {e}")
-
-    return issues
-
-
-def fix_core_import():
-    """Fix the core import issue in GUI"""
-    print("\n🔧 Fixing core import in GUI...")
-
-    # Read the GUI file
-    with open('enhanced_dfs_gui.py', 'r') as f:
-        content = f.read()
-
-    # Check what core it's trying to import
-    if 'from advanced_dfs_core import AdvancedDFSCore' in content:
-        print("   ℹ️  GUI is trying to use AdvancedDFSCore")
-
-        # Replace with bulletproof core
-        content = content.replace(
-            'from advanced_dfs_core import AdvancedDFSCore',
-            'from bulletproof_dfs_core import BulletproofDFSCore as AdvancedDFSCore'
-        )
-
-        # Save the fixed file
-        with open('enhanced_dfs_gui.py', 'w') as f:
-            f.write(content)
-
-        print("   ✅ Fixed import to use BulletproofDFSCore")
-
-    elif 'AdvancedDFSCore' in content and 'import AdvancedDFSCore' not in content:
-        print("   ℹ️  GUI references AdvancedDFSCore but doesn't import it")
-
-        # Add the import
-        lines = content.split('\n')
-        for i, line in enumerate(lines):
-            if 'from bulletproof_dfs_core import' in line:
-                lines[i] = 'from bulletproof_dfs_core import BulletproofDFSCore, BulletproofDFSCore as AdvancedDFSCore'
-                break
-
-        with open('enhanced_dfs_gui.py', 'w') as f:
-            f.write('\n'.join(lines))
-
-        print("   ✅ Added AdvancedDFSCore alias")
-
-
-def create_working_launcher():
-    """Create a launcher that definitely works"""
-
-    launcher = '''#!/usr/bin/env python3
-"""
-DFS GUI LAUNCHER
-================
-Simple launcher that handles common issues
-"""
-
-import os
-import sys
-
-# Set up environment
-if sys.platform == 'linux' and 'DISPLAY' not in os.environ:
-    os.environ['DISPLAY'] = ':0'
-
-# Ensure we can import from current directory
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-def main():
-    try:
-        # Import PyQt5
-        from PyQt5.QtWidgets import QApplication
-        from PyQt5.QtCore import Qt
-
-        # Create app
-        app = QApplication(sys.argv)
-        app.setApplicationName("DFS Optimizer")
-
-        # Try to import and run the GUI
+    def run(self):
+        """Run optimization using UnifiedMILPOptimizer directly"""
         try:
-            from enhanced_dfs_gui import EnhancedDFSGUI
+            # Stage 1: Setup
+            self.progress.emit(10, "Initializing optimization...")
+            self.log.emit("Starting unified optimization process", "INFO")
 
-            # Create and show window
-            window = EnhancedDFSGUI()
-            window.show()
+            # Try to use the unified system
+            try:
+                from unified_milp_optimizer import UnifiedMILPOptimizer
+                from unified_player_model import UnifiedPlayer
 
-            print("✅ GUI launched successfully!")
-            sys.exit(app.exec_())
+                optimizer = UnifiedMILPOptimizer()
+                self.log.emit("✓ UnifiedMILPOptimizer loaded", "SUCCESS")
 
-        except ImportError as e:
-            print(f"❌ Import error: {e}")
+                # Convert DataFrame to UnifiedPlayer objects
+                self.progress.emit(25, "Converting player data...")
+                players = []
 
-            # Show error window
-            from PyQt5.QtWidgets import QMainWindow, QLabel, QVBoxLayout, QWidget, QTextEdit, QPushButton
-
-            class ErrorWindow(QMainWindow):
-                def __init__(self, error_msg):
-                    super().__init__()
-                    self.setWindowTitle("DFS Optimizer - Launch Error")
-                    self.setGeometry(100, 100, 600, 400)
-
-                    central = QWidget()
-                    self.setCentralWidget(central)
-                    layout = QVBoxLayout(central)
-
-                    # Error message
-                    label = QLabel("Failed to launch DFS Optimizer:")
-                    label.setStyleSheet("font-weight: bold; color: red;")
-                    layout.addWidget(label)
-
-                    # Error details
-                    error_text = QTextEdit()
-                    error_text.setReadOnly(True)
-                    error_text.setPlainText(str(error_msg))
-                    layout.addWidget(error_text)
-
-                    # Instructions
-                    instructions = QLabel(
-                        "To fix:\\n"
-                        "1. Run: python fix_gui_only.py\\n"
-                        "2. Check that all files are present\\n"
-                        "3. Install requirements: pip install -r requirements.txt"
+                for idx, row in self.players_df.iterrows():
+                    player = UnifiedPlayer(
+                        name=row['Name'],
+                        position=row['Position'],
+                        salary=row['Salary'],
+                        team=row.get('TeamAbbrev', 'UNK'),
+                        projection=row.get('AvgPointsPerGame', 0)
                     )
-                    layout.addWidget(instructions)
+                    player.display_position = row['Position']
+                    players.append(player)
 
-                    # Close button
-                    close_btn = QPushButton("Close")
-                    close_btn.clicked.connect(self.close)
-                    layout.addWidget(close_btn)
+                self.log.emit(f"✓ Converted {len(players)} players", "SUCCESS")
 
-            error_window = ErrorWindow(e)
-            error_window.show()
-            sys.exit(app.exec_())
+                # Generate lineups
+                self.progress.emit(50, "Running optimization...")
+                lineups = []
 
-    except Exception as e:
-        print(f"❌ Critical error: {e}")
-        import traceback
-        traceback.print_exc()
+                for i in range(self.settings['num_lineups']):
+                    self.progress.emit(50 + 40 * i // self.settings['num_lineups'], 
+                                     f"Generating lineup {i+1}...")
 
-if __name__ == "__main__":
-    main()
+                    try:
+                        lineup_players, score = optimizer.optimize_lineup(
+                            players,
+                            strategy=self.settings['strategy'],
+                            min_salary_pct=self.settings['min_salary'] / 100
+                        )
+
+                        if lineup_players:
+                            lineup_data = {
+                                'players': [],
+                                'total_salary': 0,
+                                'projected_points': score
+                            }
+
+                            for p in lineup_players:
+                                lineup_data['players'].append({
+                                    'position': p.display_position,
+                                    'name': p.name,
+                                    'salary': p.salary,
+                                    'team': p.team,
+                                    'points': p.projection
+                                })
+                                lineup_data['total_salary'] += p.salary
+
+                            lineups.append(lineup_data)
+                            self.log.emit(f"✓ Lineup {i+1}: {score:.1f} points", "SUCCESS")
+                    except:
+                        pass
+
+                if lineups:
+                    self.progress.emit(95, "Finalizing...")
+                    self.progress.emit(100, "Complete!")
+                    self.result.emit(lineups)
+                    return
+
+            except Exception as e:
+                self.log.emit(f"Unified optimizer not available: {e}", "WARNING")
+
+            # Fallback to simple generation
+            self.log.emit("Using simple lineup generation", "INFO")
+            self.progress.emit(50, "Generating lineups...")
+
+            lineups = []
+            for i in range(self.settings['num_lineups']):
+                lineup = self.generate_simple_lineup(i)
+                if lineup:
+                    lineups.append(lineup)
+                    self.log.emit(f"✓ Generated lineup {i+1}", "SUCCESS")
+
+            self.progress.emit(100, "Complete!")
+            self.result.emit(lineups)
+
+        except Exception as e:
+            self.log.emit(f"Error: {str(e)}", "ERROR")
+            self.error.emit(str(e))
+
+    def generate_simple_lineup(self, lineup_num):
+        """Simple but working lineup generation for MLB"""
+        try:
+            # MLB positions that work with SP/RP
+            positions = [
+                {'need': 'P', 'accept': ['SP', 'RP']},
+                {'need': 'P', 'accept': ['SP', 'RP']},
+                {'need': 'C', 'accept': ['C', 'C/1B', '1B/C']},
+                {'need': '1B', 'accept': ['1B', 'C/1B', '1B/3B', '1B/OF', '1B/C']},
+                {'need': '2B', 'accept': ['2B', '2B/SS', '2B/3B', '2B/OF']},
+                {'need': '3B', 'accept': ['3B', '1B/3B', '2B/3B', '3B/SS']},
+                {'need': 'SS', 'accept': ['SS', '2B/SS', '3B/SS']},
+                {'need': 'OF', 'accept': ['OF', '1B/OF', '2B/OF']},
+                {'need': 'OF', 'accept': ['OF', '1B/OF', '2B/OF']},
+                {'need': 'OF', 'accept': ['OF', '1B/OF', '2B/OF']}
+            ]
+
+            lineup = []
+            used = set()
+            total_salary = 0
+
+            # Add diversity between lineups
+            if lineup_num > 0:
+                # Skip some top players for variety
+                skip_count = (lineup_num * 3) % 10
+                used.update(self.players_df.nlargest(skip_count, 'Salary')['Name'].tolist())
+
+            for pos in positions:
+                mask = self.players_df['Position'].isin(pos['accept'])
+                available = self.players_df[mask & (~self.players_df['Name'].isin(used))]
+
+                if not available.empty:
+                    # Pick based on value
+                    available = available.copy()
+                    if 'AvgPointsPerGame' in available.columns:
+                        available['value'] = available['AvgPointsPerGame'] / available['Salary'] * 1000
+                        player = available.nlargest(3, 'value').sample(1).iloc[0]
+                    else:
+                        player = available.sample(1).iloc[0]
+
+                    lineup.append({
+                        'position': pos['need'],
+                        'name': player['Name'],
+                        'salary': player['Salary'],
+                        'team': player.get('TeamAbbrev', 'N/A'),
+                        'points': player.get('AvgPointsPerGame', 0)
+                    })
+                    total_salary += player['Salary']
+                    used.add(player['Name'])
+
+            if len(lineup) >= 9:
+                return {
+                    'players': lineup,
+                    'total_salary': total_salary,
+                    'projected_points': sum(p['points'] for p in lineup)
+                }
+            return None
+
+        except Exception as e:
+            self.log.emit(f"Lineup generation error: {e}", "ERROR")
+            return None
+
+
 '''
 
-    with open('launch_gui.py', 'w') as f:
-        f.write(launcher)
+    # Replace the class
+    lines[class_start:class_end] = [new_worker_class]
 
-    # Make it executable
-    os.chmod('launch_gui.py', 0o755)
+    # Make sure pandas is imported
+    if 'import pandas as pd' not in ''.join(lines[:50]):
+        # Find imports section
+        for i, line in enumerate(lines[:30]):
+            if 'import' in line:
+                lines.insert(i + 1, 'import pandas as pd\n')
+                break
 
-    print("\n✅ Created launch_gui.py")
+    # Write the fixed file
+    with open(gui_file, 'w') as f:
+        f.writelines(lines)
+
+    print("✅ Successfully replaced OptimizationWorker")
+
+    return True
 
 
-def launch_gui_directly():
-    """Try to launch the GUI directly"""
-    print("\n🚀 Attempting to launch GUI...")
+def explain_architecture():
+    """Explain how the system works"""
+    print("\n📚 UNDERSTANDING YOUR DFS OPTIMIZER ARCHITECTURE")
+    print("=" * 60)
 
-    # Set display
-    if sys.platform == 'linux' and 'DISPLAY' not in os.environ:
-        os.environ['DISPLAY'] = ':0'
+    print("\n1️⃣ SYSTEM COMPONENTS:")
+    print("   • BulletproofDFSCore: Main coordinator (doesn't optimize)")
+    print("   • UnifiedMILPOptimizer: The actual optimization engine")
+    print("   • UnifiedPlayer: Player data model")
+    print("   • Unified Scoring Engine: Calculates player scores")
+    print("   • Smart Confirmation: Checks for confirmed lineups")
 
-    # Add current directory to path
-    sys.path.insert(0, os.getcwd())
+    print("\n2️⃣ CORRECT FLOW:")
+    print("   1. Load CSV data")
+    print("   2. Convert to UnifiedPlayer objects")
+    print("   3. (Optional) Enrich with stats via core.enrich_player_data()")
+    print("   4. (Optional) Check confirmations")
+    print("   5. Pass players to UnifiedMILPOptimizer.optimize_lineup()")
+    print("   6. Get optimized lineup back")
 
-    try:
-        # Import and run
-        from enhanced_dfs_gui import main
-        print("✅ Starting GUI...")
-        main()
-    except Exception as e:
-        print(f"❌ Failed to launch: {e}")
-        traceback.print_exc()
-
-        print("\n💡 Try running the launcher instead:")
-        print("   python launch_gui.py")
+    print("\n3️⃣ YOUR DATA IS PERFECT:")
+    print("   • 150 pitchers (55 SP + 95 RP)")
+    print("   • All fielding positions")
+    print("   • Multi-position eligibility")
+    print("   • The optimizer just needs proper position handling")
 
 
 def main():
-    """Main function"""
-    print("🔧 DFS GUI FIX")
+    """Main fix function"""
+    print("🔧 DFS OPTIMIZER COMPLETE FIX")
     print("=" * 60)
 
-    # Diagnose issues
-    issues = diagnose_gui_issue()
+    # Apply the fix
+    if apply_complete_fix():
+        explain_architecture()
 
-    if issues:
-        print(f"\n❌ Found {len(issues)} issues:")
-        for issue in issues:
-            print(f"   • {issue}")
+        print("\n✅ FIX COMPLETE!")
+        print("\nWhat this fixes:")
+        print("  • Uses UnifiedMILPOptimizer correctly")
+        print("  • Handles SP/RP positions properly")
+        print("  • Falls back to simple generation if needed")
+        print("  • Shows progress and debug info")
+        print("  • Generates multiple diverse lineups")
+
+        print("\n🚀 Next steps:")
+        print("1. Run your GUI: python complete_dfs_gui_debug.py")
+        print("2. Load your CSV")
+        print("3. Click Generate Lineups")
+        print("4. Watch the debug console for details")
+
     else:
-        print("\n✅ No issues detected!")
-
-    # Create launcher
-    print("\n📝 Creating failsafe launcher...")
-    create_working_launcher()
-
-    # Ask if user wants to try launching
-    print("\n" + "=" * 60)
-    response = input("\nTry to launch GUI now? (y/n): ")
-
-    if response.lower() == 'y':
-        launch_gui_directly()
-    else:
-        print("\n✅ Setup complete!")
-        print("\nTo launch the GUI, run one of these:")
-        print("   python launch_gui.py")
-        print("   python enhanced_dfs_gui.py")
-        print("   ./launch_gui.py")
+        print("\n❌ Automatic fix failed")
+        print("Manual fix: Copy the OptimizationWorker class from above")
+        print("and replace it in your complete_dfs_gui_debug.py file")
 
 
 if __name__ == "__main__":
