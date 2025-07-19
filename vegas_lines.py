@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Vegas lines integration with The Odds API"""
+from datetime import datetime
 
 import requests
 from functools import lru_cache
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+from typing import Dict, List, Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)

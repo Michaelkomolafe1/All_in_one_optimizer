@@ -10,7 +10,6 @@ NO FALLBACK DATA
 import io
 import json
 import logging
-from performance_config import get_performance_settings
 import os
 import sys
 import threading
@@ -18,8 +17,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
 from typing import Any, Dict, List, Optional
+
 import pandas as pd
 
 # Suppress pybaseball output
@@ -27,6 +26,7 @@ os.environ["PYBASEBALL_NO_PROGRESS"] = "1"
 os.environ["PYBASEBALL_CACHE"] = "1"
 
 # Import pybaseball with output suppression
+PYBASEBALL_AVAILABLE = False
 try:
     # Suppress all output during import
     old_stdout = sys.stdout
@@ -45,8 +45,17 @@ try:
     PYBASEBALL_AVAILABLE = True
 
 except ImportError:
-    PYBASEBALL_AVAILABLE = False
+    sys.stdout = old_stdout if 'old_stdout' in locals() else sys.stdout
+    sys.stderr = old_stderr if 'old_stderr' in locals() else sys.stderr
     print("⚠️ PyBaseball not available - install with: pip install pybaseball")
+
+# Try to import performance config, but don't fail if it's not available
+try:
+    from performance_config import get_performance_settings
+
+    PERFORMANCE_CONFIG_AVAILABLE = True
+except ImportError:
+    PERFORMANCE_CONFIG_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -126,8 +135,11 @@ class SimpleStatcastFetcher:
                 with open(cache_file, 'r') as f:
                     self.player_id_cache = json.load(f)
                 logger.info(f"Loaded {len(self.player_id_cache)} cached player IDs")
-            except:
+            except Exception as e:
+                logger.error(f"Failed to load player ID cache: {e}")
                 self.player_id_cache = {}
+        else:
+            self.player_id_cache = {}
 
     def _save_player_id_cache(self):
         """Save player ID cache"""
@@ -161,8 +173,13 @@ class SimpleStatcastFetcher:
             last_name = ' '.join(parts[1:])
 
             # Suppress pybaseball output
-            with io.capture_output() as captured:
+            old_stdout = sys.stdout
+            sys.stdout = io.StringIO()
+
+            try:
                 results = playerid_lookup(last_name, first_name)
+            finally:
+                sys.stdout = old_stdout
 
             if results is not None and not results.empty:
                 # Get most recent player (highest year)
@@ -461,8 +478,8 @@ class SimpleStatcastFetcher:
             if file_age.days < self.cache_days:
                 try:
                     return pd.read_parquet(cache_file)
-                except:
-                    pass
+                except Exception as e:
+                    logger.error(f"Failed to read cache for {player_name}: {e}")
 
         return None
 
@@ -492,7 +509,7 @@ class SimpleStatcastFetcher:
                 player_id=test_id
             )
             return data is not None
-        except:
+        except Exception:
             return False
 
     def get_stats_summary(self) -> Dict[str, Any]:
@@ -511,6 +528,62 @@ class SimpleStatcastFetcher:
                                else 0)
         }
 
+    def fetch_all_players(self, player_names: List[str]) -> Dict[str, pd.DataFrame]:
+        """Fetch data for all players (compatibility method)"""
+        # Create player objects for the parallel fetcher
+        player_objects = []
+        for name in player_names:
+            class PlayerObj:
+                def __init__(self, name):
+                    self.name = name
+                    self.primary_position = None
+                    self.is_confirmed = True
+                    self.base_projection = 15.0
+
+            player_objects.append(PlayerObj(name))
+
+        return self.fetch_multiple_players_parallel(player_objects)
+
+    def fetch_statcast_batch(self, players: List[Any]) -> Dict[str, Any]:
+        """Fetch Statcast data for multiple players in parallel"""
+        if PERFORMANCE_CONFIG_AVAILABLE:
+            perf_settings = get_performance_settings()
+            batch_size = perf_settings.batch_sizes.get('statcast', 10)
+            max_workers = perf_settings.max_workers.get('statcast', self.max_workers)
+            api_delay = perf_settings.api_delays.get('statcast', 0.1)
+        else:
+            batch_size = 10
+            max_workers = self.max_workers
+            api_delay = 0.1
+
+        results = {}
+
+        # Process in batches
+        for i in range(0, len(players), batch_size):
+            batch = players[i:i + batch_size]
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_player = {
+                    executor.submit(self.fetch_player_data, player.name, player.primary_position): player
+                    for player in batch
+                }
+
+                for future in as_completed(future_to_player):
+                    player = future_to_player[future]
+                    try:
+                        data = future.result()
+                        if data is not None:
+                            results[player.name] = data
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch data for {player.name}: {e}")
+
+            # Small delay between batches
+            if i + batch_size < len(players):
+                time.sleep(api_delay)
+
+        logger.info(f"PERFORMANCE: Fetched Statcast data for {len(results)}/{len(players)} players")
+        return results
+
 
 # Backward compatibility
 FastStatcastFetcher = SimpleStatcastFetcher
@@ -527,40 +600,6 @@ if __name__ == "__main__":
     fetcher = SimpleStatcastFetcher()
     if fetcher.test_connection():
         print("✅ PyBaseball connection successful!")
-    def fetch_statcast_batch(self, players: List[Any]) -> Dict[str, Any]:
-        """Fetch Statcast data for multiple players in parallel"""
-        perf_settings = get_performance_settings()
-        batch_size = perf_settings.batch_sizes['statcast']
-        max_workers = perf_settings.max_workers['statcast']
-
-        results = {}
-
-        # Process in batches
-        for i in range(0, len(players), batch_size):
-            batch = players[i:i + batch_size]
-
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_to_player = {
-                    executor.submit(self.fetch_statcast_data, player): player
-                    for player in batch
-                }
-
-                for future in as_completed(future_to_player):
-                    player = future_to_player[future]
-                    try:
-                        data = future.result()
-                        if data:
-                            results[player.name] = data
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch data for {player.name}: {e}")
-
-            # Small delay between batches
-            if i + batch_size < len(players):
-                time.sleep(perf_settings.api_delays['statcast'])
-
-        logger.info(f"PERFORMANCE: Fetched Statcast data for {len(results)}/{len(players)} players")
-        return results
-
 
         # Test fetching
         test_data = fetcher.fetch_player_data("Mike Trout", "OF")

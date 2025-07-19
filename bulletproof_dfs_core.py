@@ -1,50 +1,83 @@
 #!/usr/bin/env python3
 """
-BULLETPROOF DFS CORE V2 - COMPLETE REWRITE
-==========================================
-Enhanced version with better error handling, performance, and integration
+BULLETPROOF DFS CORE V2 - WITH SHOWDOWN MODE
+============================================
+Enhanced DFS optimization system with showdown support
 """
 
-import os
-import warnings
+# Standard library imports
+import csv
+import json
+import logging
+import random
+import sys
+import time
+from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Any, Dict, List, Optional, Tuple
+# Core imports
+from unified_player_model import UnifiedPlayer
 
-import pandas as pd
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-# Suppress warnings
-warnings.filterwarnings("ignore")
-
-# ============================================================================
-# LOGGING SETUP
-# ============================================================================
+# Import scoring engine if available
 try:
-    from logging_config import get_logger
+    from unified_scoring_engine import get_scoring_engine, ScoringEngineConfig
 
-    logger = get_logger(__name__)
+    SCORING_ENGINE_AVAILABLE = True
 except ImportError:
-    import logging
+    logger.warning("Scoring engine not available")
+    SCORING_ENGINE_AVAILABLE = False
 
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
-
-# ============================================================================
-# IMPORTS WITH INTELLIGENT FALLBACKS
-# ============================================================================
-
-# Configuration
+# Import validator if available
 try:
-    from unified_config_manager import get_config_value
+    from data_validator import get_validator, ValidationConfig
 
-    CONFIG_AVAILABLE = True
+    VALIDATOR_AVAILABLE = True
 except ImportError:
-    CONFIG_AVAILABLE = False
+    logger.warning("Data validator not available")
+    VALIDATOR_AVAILABLE = False
 
+# Import unified optimizer
+try:
+    from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
 
-    def get_config_value(key, default):
-        return default
+    UNIFIED_OPTIMIZER_AVAILABLE = True
+except ImportError:
+    logger.error("CRITICAL: Unified MILP optimizer not available!")
+    UNIFIED_OPTIMIZER_AVAILABLE = False
 
-# Performance
+# Import data sources
+try:
+    from simple_statcast_fetcher import FastStatcastFetcher
+except ImportError:
+    FastStatcastFetcher = None
+
+try:
+    from smart_confirmation_system import SmartConfirmationSystem
+except ImportError:
+    SmartConfirmationSystem = None
+
+try:
+    from vegas_lines import VegasLines
+except ImportError:
+    VegasLines = None
+
+# Import performance optimizer
+try:
+    from performance_optimizer import get_performance_optimizer, CacheConfig
+
+    PERFORMANCE_OPTIMIZER_AVAILABLE = True
+except ImportError:
+    logger.warning("Performance optimizer not available")
+    PERFORMANCE_OPTIMIZER_AVAILABLE = False
+
+# Check for performance config
 try:
     from performance_config import get_performance_settings
 
@@ -52,80 +85,34 @@ try:
 except ImportError:
     PERFORMANCE_CONFIG_AVAILABLE = False
 
-# Core modules
+# Module availability tracking
 MODULES = {
-    'scoring_engine': {
-        'available': False,
-        'import': 'from unified_scoring_engine import get_scoring_engine',
-        'instance': None
-    },
-    'validator': {
-        'available': False,
-        'import': 'from data_validator import get_validator',
-        'instance': None
-    },
-    'performance_optimizer': {
-        'available': False,
-        'import': 'from performance_optimizer import get_performance_optimizer, CacheConfig',
-        'instance': None
-    },
-    'unified_optimizer': {
-        'available': False,
-        'import': 'from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig',
-        'instance': None
-    },
-    'unified_player': {
-        'available': False,
-        'import': 'from unified_player_model import UnifiedPlayer',
-        'instance': None
-    },
-    'vegas_lines': {
-        'available': False,
-        'import': 'from vegas_lines import VegasLines',
-        'instance': None
-    },
-    'statcast': {
-        'available': False,
-        'import': 'from simple_statcast_fetcher import SimpleStatcastFetcher',
-        'instance': None
-    },
-    'confirmation': {
-        'available': False,
-        'import': 'from smart_confirmation_system import SmartConfirmationSystem',
-        'instance': None
-    }
+    'scoring_engine': {'module': 'unified_scoring_engine', 'available': SCORING_ENGINE_AVAILABLE},
+    'validator': {'module': 'data_validator', 'available': VALIDATOR_AVAILABLE},
+    'unified_optimizer': {'module': 'unified_milp_optimizer', 'available': UNIFIED_OPTIMIZER_AVAILABLE},
+    'statcast': {'module': 'simple_statcast_fetcher', 'available': FastStatcastFetcher is not None},
+    'confirmation': {'module': 'smart_confirmation_system', 'available': SmartConfirmationSystem is not None},
+    'vegas_lines': {'module': 'vegas_lines', 'available': VegasLines is not None},
+    'performance_optimizer': {'module': 'performance_optimizer', 'available': PERFORMANCE_OPTIMIZER_AVAILABLE}
 }
-
-# Dynamic imports
-for module_name, module_info in MODULES.items():
-    try:
-        exec(module_info['import'])
-        module_info['available'] = True
-    except ImportError:
-        module_info['available'] = False
-
-# Extract availability flags for convenience
-UNIFIED_OPTIMIZER_AVAILABLE = MODULES['unified_optimizer']['available']
-UNIFIED_PLAYER_AVAILABLE = MODULES['unified_player']['available']
-SCORING_ENGINE_AVAILABLE = MODULES['scoring_engine']['available']
-VALIDATOR_AVAILABLE = MODULES['validator']['available']
-PERFORMANCE_OPTIMIZER_AVAILABLE = MODULES['performance_optimizer']['available']
 
 
 class BulletproofDFSCore:
     """
-    Enhanced DFS optimization system with improved error handling and performance
+    Enhanced DFS optimization system with showdown support
     """
 
-    def __init__(self, mode: str = "production"):
+    def __init__(self, mode: str = "production", contest_type: str = "classic"):
         """
         Initialize the core system
 
         Args:
             mode: 'production' or 'test' mode
+            contest_type: 'classic' or 'showdown'
         """
         self.mode = mode
         self.logger = logger
+        self.contest_type = contest_type
 
         # Display initialization header
         self._display_init_header()
@@ -133,7 +120,6 @@ class BulletproofDFSCore:
         # Core attributes
         self.salary_cap = 50000
         self.min_salary_usage = 0.95
-        self.contest_type = "classic"
         self.players = []
         self.csv_file_path = None
 
@@ -161,6 +147,7 @@ class BulletproofDFSCore:
         print("🚀 BULLETPROOF DFS CORE V2 - INITIALIZATION")
         print("=" * 60)
         print(f"Mode: {self.mode.upper()}")
+        print(f"Contest Type: {self.contest_type.upper()}")
         print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("-" * 60)
 
@@ -175,36 +162,24 @@ class BulletproofDFSCore:
         # 3. Initialize data sources
         self._initialize_data_sources()
 
-        # 4. Set unified mode flag
-        self.unified_mode = all([
-            self.modules_status.get('scoring_engine', False),
-            self.modules_status.get('unified_optimizer', False),
-            self.modules_status.get('validator', False)
-        ])
+        # 4. Check unified mode
+        self.unified_mode = self._check_unified_mode()
 
     def _load_configuration(self):
         """Load system configuration"""
         print("\n📋 Loading Configuration...")
 
-        if CONFIG_AVAILABLE:
-            try:
-                self.salary_cap = get_config_value("optimization.salary_cap", 50000)
-                self.min_salary_usage = get_config_value("optimization.min_salary_usage", 0.95)
-                self.contest_type = get_config_value("contest.type", "classic")
-                print("  ✅ Configuration loaded from unified config manager")
-            except Exception as e:
-                logger.warning(f"Config manager error: {e}, using defaults")
-                print("  ⚠️  Using default configuration")
+        # Set defaults based on contest type
+        if self.contest_type == "showdown":
+            self.salary_cap = 50000  # Same cap for showdown
+            self.min_salary_usage = 0.90  # Slightly lower for showdown flexibility
         else:
-            # Try JSON fallback
-            try:
-                import json
-                with open("dfs_config.json", "r") as f:
-                    config = json.load(f)
-                    self.salary_cap = config.get("optimization", {}).get("salary_cap", 50000)
-                    print("  ✅ Configuration loaded from dfs_config.json")
-            except:
-                print("  ℹ️  Using default configuration")
+            self.salary_cap = 50000
+            self.min_salary_usage = 0.95
+
+        print(f"  ✅ Salary Cap: ${self.salary_cap:,}")
+        print(f"  ✅ Min Usage: {self.min_salary_usage:.0%}")
+        print(f"  ✅ Contest Type: {self.contest_type}")
 
     def _initialize_core_modules(self):
         """Initialize core optimization modules"""
@@ -213,47 +188,26 @@ class BulletproofDFSCore:
         # Scoring Engine
         if SCORING_ENGINE_AVAILABLE:
             try:
-                self.scoring_engine = get_scoring_engine()
+                config = ScoringEngineConfig(cache_ttl=300)
+                self.scoring_engine = get_scoring_engine(config)
                 self.modules_status['scoring_engine'] = True
-                print("  ✅ Unified Scoring Engine")
+                print("  ✅ Scoring Engine")
             except Exception as e:
                 logger.error(f"Scoring engine initialization failed: {e}")
                 self.scoring_engine = None
                 self.modules_status['scoring_engine'] = False
-                print(f"  ❌ Scoring Engine: {str(e)[:50]}...")
 
         # Data Validator
         if VALIDATOR_AVAILABLE:
             try:
-                self.validator = get_validator()
+                val_config = ValidationConfig(strict_mode=False)
+                self.validator = get_validator(val_config)
                 self.modules_status['validator'] = True
                 print("  ✅ Data Validator")
             except Exception as e:
                 logger.error(f"Validator initialization failed: {e}")
                 self.validator = None
                 self.modules_status['validator'] = False
-                print(f"  ❌ Validator: {str(e)[:50]}...")
-
-        # Performance Optimizer
-        if PERFORMANCE_OPTIMIZER_AVAILABLE:
-            try:
-                if PERFORMANCE_CONFIG_AVAILABLE:
-                    perf_settings = get_performance_settings()
-                    cache_config = CacheConfig(
-                        max_size=perf_settings.cache_settings['memory_cache_size'],
-                        enable_disk_cache=perf_settings.cache_settings['disk_cache_enabled']
-                    )
-                else:
-                    cache_config = CacheConfig()
-
-                self.performance_optimizer = get_performance_optimizer(cache_config)
-                self.modules_status['performance_optimizer'] = True
-                print("  ✅ Performance Optimizer")
-            except Exception as e:
-                logger.error(f"Performance optimizer initialization failed: {e}")
-                self.performance_optimizer = None
-                self.modules_status['performance_optimizer'] = False
-                print(f"  ❌ Performance Optimizer: {str(e)[:50]}...")
 
         # MILP Optimizer
         if UNIFIED_OPTIMIZER_AVAILABLE:
@@ -269,7 +223,6 @@ class BulletproofDFSCore:
                 logger.error(f"MILP optimizer initialization failed: {e}")
                 self.optimizer = None
                 self.modules_status['unified_optimizer'] = False
-                print(f"  ❌ MILP Optimizer: {str(e)[:50]}...")
 
     def _initialize_data_sources(self):
         """Initialize external data sources"""
@@ -285,300 +238,519 @@ class BulletproofDFSCore:
                 logger.error(f"Vegas lines initialization failed: {e}")
                 self.vegas_lines = None
                 self.modules_status['vegas_lines'] = False
-                print(f"  ❌ Vegas Lines: {str(e)[:50]}...")
-
-        # Confirmation System
-        if MODULES['confirmation']['available']:
-            try:
-                self.confirmation_system = SmartConfirmationSystem()
-                self.modules_status['confirmation'] = True
-                print("  ✅ Confirmation System")
-            except Exception as e:
-                logger.error(f"Confirmation system initialization failed: {e}")
-                self.confirmation_system = None
-                self.modules_status['confirmation'] = False
-                print(f"  ❌ Confirmation System: {str(e)[:50]}...")
 
         # Statcast
         if MODULES['statcast']['available']:
             try:
-                self.statcast_fetcher = SimpleStatcastFetcher()
+                self.statcast_fetcher = FastStatcastFetcher(max_workers=5)
                 self.modules_status['statcast'] = True
                 print("  ✅ Statcast Fetcher")
             except Exception as e:
                 logger.error(f"Statcast initialization failed: {e}")
                 self.statcast_fetcher = None
                 self.modules_status['statcast'] = False
-                print(f"  ❌ Statcast: {str(e)[:50]}...")
+
+        # Confirmation System
+        if MODULES['confirmation']['available']:
+            try:
+                self.confirmation_system = SmartConfirmationSystem(verbose=False)
+                self.modules_status['confirmation'] = True
+                print("  ✅ Confirmation System")
+            except Exception as e:
+                logger.error(f"Confirmation system initialization failed: {e}")
+                self.confirmation_system = None
+                self.modules_status['confirmation'] = False
+
+    def _check_unified_mode(self) -> bool:
+        """Check if all unified components are available"""
+        required = ['unified_optimizer', 'scoring_engine']
+        return all(self.modules_status.get(module, False) for module in required)
 
     def _display_init_summary(self):
         """Display initialization summary"""
-        print("\n" + "=" * 60)
-        print("📈 INITIALIZATION COMPLETE")
-        print("-" * 60)
-        print(f"Mode: {'🎯 UNIFIED' if self.unified_mode else '📊 HYBRID'}")
-        print(f"Salary Cap: ${self.salary_cap:,}")
-        print(f"Min Salary: {self.min_salary_usage:.0%}")
+        print("\n📊 INITIALIZATION SUMMARY")
+        print("=" * 60)
 
-        active_modules = sum(1 for v in self.modules_status.values() if v)
-        total_modules = len(self.modules_status)
-        print(f"Modules: {active_modules}/{total_modules} active")
-        print("=" * 60 + "\n")
+        # Count available modules
+        available = sum(1 for status in self.modules_status.values() if status)
+        total = len(self.modules_status)
 
-    def load_draftkings_csv(self, filepath: str, force_reload: bool = False) -> int:
-        """
-        Load and process DraftKings CSV file
+        print(f"✅ Modules Loaded: {available}/{total}")
+        print(f"🎯 Unified Mode: {'ENABLED' if self.unified_mode else 'DISABLED'}")
+        print(f"🏆 Contest Type: {self.contest_type.upper()}")
 
-        Args:
-            filepath: Path to CSV file
-            force_reload: Force reload even if already loaded
+        if available < total:
+            print("\n⚠️  Some modules failed to load. Core functionality available.")
 
-        Returns:
-            Number of players loaded
-        """
-        # Check if already loaded
-        if not force_reload and self.csv_file_path == filepath and self.players:
-            logger.info(f"Using cached CSV data for {filepath}")
-            return len(self.players)
+        print("=" * 60)
 
-        print(f"\n📂 Loading CSV: {os.path.basename(filepath)}")
-        logger.info(f"Loading CSV file: {filepath}")
+    def set_contest_type(self, contest_type: str):
+        """Set contest type (classic or showdown)"""
+        if contest_type.lower() in ['classic', 'showdown']:
+            self.contest_type = contest_type.lower()
+            self._load_configuration()  # Reload config for new contest type
+            logger.info(f"Contest type set to: {self.contest_type}")
+            print(f"✅ Contest type changed to: {self.contest_type}")
+        else:
+            logger.error(f"Invalid contest type: {contest_type}")
+            print(f"❌ Invalid contest type. Use 'classic' or 'showdown'")
+
+    def load_draftkings_csv(self, file_path: str) -> int:
+        """Load players from DraftKings CSV file"""
+        print(f"\n📂 Loading CSV: {file_path}")
+        self.csv_file_path = file_path
+        self.players = []
 
         try:
-            # Validate file exists
-            if not os.path.exists(filepath):
-                raise FileNotFoundError(f"CSV file not found: {filepath}")
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
 
-            # Read CSV with error handling
-            try:
-                df = pd.read_csv(filepath, encoding='utf-8-sig')
-            except UnicodeDecodeError:
-                df = pd.read_csv(filepath, encoding='latin-1')
+                # Track unique players for showdown deduplication
+                unique_players = {}
 
-            if df.empty:
-                raise ValueError("CSV file is empty")
+                for row in reader:
+                    try:
+                        # Create player from CSV data
+                        player = self._create_player_from_csv(row)
 
-            print(f"  📊 Found {len(df)} rows")
+                        if player:
+                            if self.contest_type == "showdown":
+                                # For showdown, only keep UTIL entries
+                                roster_position = row.get('Roster Position', '')
+                                if roster_position != 'CPT':
+                                    # Store by name to avoid duplicates
+                                    unique_players[player.name] = player
+                            else:
+                                # For classic, add all players
+                                self.players.append(player)
 
-            # Clear existing data
-            self.players.clear()
-            self._lineup_cache.clear()
-            self._score_cache.clear()
-
-            # Process players
-            if self.unified_mode and UNIFIED_PLAYER_AVAILABLE:
-                self._process_players_unified(df)
-            else:
-                self._process_players_hybrid(df)
-
-            # Store filepath
-            self.csv_file_path = filepath
-
-            # Update external systems
-            self._update_external_systems()
-
-            print(f"  ✅ Loaded {len(self.players)} valid players")
-            logger.info(f"Successfully loaded {len(self.players)} players")
-
-            return len(self.players)
-
-        except FileNotFoundError as e:
-            logger.error(f"File not found: {e}")
-            print(f"  ❌ Error: {e}")
-            return 0
-        except pd.errors.EmptyDataError:
-            logger.error("CSV file is empty")
-            print("  ❌ Error: CSV file is empty")
-            return 0
-        except Exception as e:
-            logger.error(f"Error loading CSV: {e}")
-            print(f"  ❌ Error: {e}")
-            return 0
-
-    def _process_players_unified(self, df: pd.DataFrame):
-        """Process players using unified player model"""
-        print("  🎯 Using UNIFIED player model")
-
-        for idx, row in df.iterrows():
-            try:
-                # Create unified player
-                player = UnifiedPlayer(
-                    id=f"{row.get('ID', f'player_{idx}')}",
-                    name=str(row.get('Name', 'Unknown')).strip(),
-                    team=str(row.get('TeamAbbrev', 'UNK')).strip().upper(),
-                    salary=int(row.get('Salary', 0)),
-                    primary_position=str(row.get('Position', 'UTIL')).strip().upper(),
-                    positions=str(row.get('Position', 'UTIL')).strip().upper().split('/'),
-                    base_projection=float(row.get('AvgPointsPerGame', 0))
-                )
-
-                # Add additional data
-                if 'Game Info' in row:
-                    player.game_info = str(row['Game Info'])
-
-                # Validate if validator available
-                if self.validator:
-                    result = self.validator.validate_player(player)
-                    if not result.is_valid:
-                        logger.debug(f"Player {player.name} failed validation: {result.errors}")
+                    except Exception as e:
+                        logger.error(f"Error creating player from row: {e}")
                         continue
 
-                self.players.append(player)
-                logger.debug(f"Loaded player: {player.name} - ${player.salary} - {player.base_projection:.1f} pts")
+                # For showdown, add unique players
+                if self.contest_type == "showdown":
+                    self.players = list(unique_players.values())
 
-            except Exception as e:
-                logger.warning(f"Error processing player at row {idx}: {e}")
-                continue
+            # Validate loaded data
+            if self.validator and self.modules_status.get('validator'):
+                validation_result = self.validator.validate_players(self.players)
+                if not validation_result.is_valid:
+                    print(f"  ⚠️  Validation warnings: {len(validation_result.warnings)}")
 
-    def _process_players_hybrid(self, df: pd.DataFrame):
-        """Process players using hybrid approach"""
-        print("  📊 Using HYBRID player model")
+            print(f"✅ Loaded {len(self.players)} players")
+            print(f"  Contest Type: {self.contest_type}")
 
-        # Create wrapper class for compatibility
-        class HybridPlayer:
-            def __init__(self, data: dict):
-                self.name = data['name']
-                self.team = data['team']
-                self.salary = data['salary']
-                self.primary_position = data['position']
-                self.positions = [data['position']]
-                self.base_projection = data['projected_points']
-                self.enhanced_score = data['projected_points']
-                self.optimization_score = data['projected_points']
-                self.is_confirmed = False
-                self.is_manual_selected = False
-                self._data = data
+            if self.contest_type == "showdown":
+                print(f"  ℹ️  Using UTIL entries only (CPT entries filtered out)")
 
-            def __getattr__(self, name):
-                return self._data.get(name)
+            # Clear caches when new data is loaded
+            self.clear_cache()
 
-        for idx, row in df.iterrows():
-            try:
-                player_data = {
-                    'name': str(row.get('Name', 'Unknown')).strip(),
-                    'team': str(row.get('TeamAbbrev', 'UNK')).strip().upper(),
-                    'salary': int(row.get('Salary', 0)),
-                    'position': str(row.get('Position', 'UTIL')).strip().upper(),
-                    'projected_points': float(row.get('AvgPointsPerGame', 0)),
-                    'game_info': str(row.get('Game Info', ''))
-                }
-
-                # Basic validation
-                if player_data['salary'] <= 0 or player_data['projected_points'] < 0:
-                    continue
-
-                player = HybridPlayer(player_data)
-                self.players.append(player)
-
-            except Exception as e:
-                logger.warning(f"Error processing player at row {idx}: {e}")
-                continue
-
-    def _update_external_systems(self):
-        """Update external systems with loaded players"""
-        # Update confirmation system
-        if hasattr(self, 'confirmation_system') and self.confirmation_system:
-            try:
-                self.confirmation_system.update_csv_players(self.players)
-                print("  ✅ Updated confirmation system")
-            except Exception as e:
-                logger.warning(f"Could not update confirmation system: {e}")
-
-        # Update validator
-        if hasattr(self, 'validator') and self.validator:
-            try:
-                self.validator.update_salary_range_from_players(self.players)
-                print("  ✅ Updated validator salary ranges")
-            except Exception as e:
-                logger.warning(f"Could not update validator: {e}")
-
-    def optimize_lineup(self,
-                        strategy: str = "balanced",
-                        manual_selections: str = "",
-                        use_cache: bool = True) -> Optional[Dict[str, Any]]:
-        """
-        Optimize lineup with given strategy
-
-        Args:
-            strategy: Optimization strategy
-            manual_selections: Comma-separated player names
-            use_cache: Whether to use cached results
-
-        Returns:
-            Optimization result dictionary or None
-        """
-        print(f"\n🎯 OPTIMIZING LINEUP")
-        print(f"Strategy: {strategy.upper()}")
-        print(f"Manual Selections: {manual_selections if manual_selections else 'None'}")
-
-        logger.info(f"OPTIMIZATION: Starting with strategy: {strategy}")
-        logger.info(f"OPTIMIZATION: Players available: {len(self.players)}")
-        logger.info(f"OPTIMIZATION: Manual selections: {manual_selections}")
-
-        # Validate inputs
-        if not self.players:
-            logger.error("No players loaded")
-            print("  ❌ Error: No players loaded. Load CSV first.")
-            return None
-
-        # Check cache
-        cache_key = (strategy, manual_selections, len(self.players))
-        if use_cache and cache_key in self._lineup_cache:
-            cached_result, cache_time = self._lineup_cache[cache_key]
-            if (datetime.now() - cache_time).seconds < 300:  # 5 min cache
-                logger.info("PERFORMANCE: Using cached lineup result")
-                print("  ⚡ Using cached result")
-                return cached_result
-
-        try:
-            # Process manual selections
-            manual_players = self._process_manual_selections(manual_selections)
-
-            # Choose optimization method
-            if self.unified_mode and hasattr(self, 'optimizer'):
-                result = self._optimize_unified(strategy, manual_players)
-            else:
-                result = self._optimize_fallback(strategy, manual_players)
-
-            # Cache result
-            if result and use_cache:
-                self._lineup_cache[cache_key] = (result, datetime.now())
-
-            # Display result summary
-            if result:
-                self._display_optimization_summary(result)
-
-            return result
+            return len(self.players)
 
         except Exception as e:
-            logger.error(f"Optimization failed: {e}")
-            print(f"  ❌ Optimization failed: {e}")
+            logger.error(f"Failed to load CSV: {e}")
+            print(f"❌ Error loading CSV: {e}")
+            return 0
+
+    def _create_player_from_csv(self, row: Dict[str, str]) -> Optional[UnifiedPlayer]:
+        """Create UnifiedPlayer from CSV row"""
+        try:
+            # Extract basic info
+            name = row.get('Name', '').strip()
+            if not name:
+                return None
+
+            # Get positions
+            position_str = row.get('Position', '')
+            positions = position_str.split('/') if position_str else []
+
+            # Handle roster position for showdown
+            roster_position = row.get('Roster Position', position_str)
+            if self.contest_type == "showdown" and roster_position == 'CPT':
+                # Skip captain entries for showdown
+                return None
+
+            # Create player
+            player = UnifiedPlayer(
+                name=name,
+                team=row.get('TeamAbbrev', row.get('Team', '')),
+                opponent=row.get('Opp', ''),
+                salary=int(float(row.get('Salary', 0))),
+                positions=positions,
+                game_info=row.get('Game Info', ''),
+                slate_id=row.get('Slate ID', ''),
+                player_id=row.get('ID', f"{name}_{row.get('Team', '')}")
+            )
+
+            # Set primary position
+            player.primary_position = roster_position if roster_position != 'FLEX' else positions[0]
+
+            # Set base projection
+            player.base_projection = float(row.get('AvgPointsPerGame', row.get('Projection', 0)))
+
+            # Extract additional data
+            if row.get('Confirmed') == 'Yes':
+                player.is_confirmed = True
+
+            return player
+
+        except Exception as e:
+            logger.error(f"Error creating player {row.get('Name', 'Unknown')}: {e}")
             return None
 
-    def _process_manual_selections(self, manual_selections: str) -> List[str]:
-        """Process manual selection string"""
-        if not manual_selections:
-            return []
+    def enrich_player_data(self) -> int:
+        """Enrich player data with external sources - for ALL contest types"""
+        print(f"\n🔄 Enriching Player Data for {self.contest_type.upper()} mode...")
 
-        manual_names = []
-        for name in manual_selections.split(','):
-            name = name.strip()
-            if name:
-                manual_names.append(name.lower())
+        if not self.players:
+            print("  ❌ No players to enrich")
+            return 0
 
-        # Mark selected players
-        selected_count = 0
-        for player in self.players:
-            if player.name.lower() in manual_names:
-                player.is_manual_selected = True
-                selected_count += 1
+        enriched_count = 0
+        start_time = time.time()
+
+        # 1. Vegas data enrichment (for both classic and showdown)
+        if self.vegas_lines and self.modules_status.get('vegas_lines'):
+            try:
+                print("  📊 Fetching Vegas lines...")
+                unique_teams = set(p.team for p in self.players if p.team)
+                vegas_count = 0
+                for team in unique_teams:
+                    vegas_data = self.vegas_lines.get_team_data(team)
+                    if vegas_data:
+                        # Apply to all players on that team
+                        for player in self.players:
+                            if player.team == team:
+                                player.vegas_data = vegas_data
+                                player._vegas_data = vegas_data  # For scoring engine
+                                vegas_count += 1
+                print(f"     ✓ Applied Vegas data to {vegas_count} players")
+                enriched_count += vegas_count
+            except Exception as e:
+                logger.error(f"Vegas enrichment failed: {e}")
+
+        # 2. Statcast enrichment (valuable for showdown captain selection)
+        if self.statcast_fetcher and self.modules_status.get('statcast'):
+            try:
+                print("  ⚾ Fetching Statcast data...")
+                # For showdown, prioritize high-projection players
+                if self.contest_type == "showdown":
+                    # Get top players by base projection for Statcast data
+                    top_players = sorted(self.players, key=lambda p: p.base_projection, reverse=True)[:20]
+                    player_names = [p.name for p in top_players]
+                else:
+                    player_names = [p.name for p in self.players]
+
+                statcast_data = self.statcast_fetcher.fetch_all_players(player_names)
+                statcast_count = 0
+                for player in self.players:
+                    if player.name in statcast_data:
+                        player.statcast_data = statcast_data[player.name]
+                        player._statcast_data = statcast_data[player.name]  # For scoring engine
+                        statcast_count += 1
+                print(f"     ✓ Applied Statcast data to {statcast_count} players")
+                enriched_count += statcast_count
+            except Exception as e:
+                logger.error(f"Statcast enrichment failed: {e}")
+
+        # 3. Advanced score calculation - CRITICAL for both modes
+        if self.scoring_engine and self.modules_status.get('scoring_engine'):
+            try:
+                print("  💯 Calculating enhanced scores with advanced metrics...")
+                scored_count = 0
+                high_value_players = []
+
+                for player in self.players:
+                    # Calculate advanced score using all available data
+                    score = self.scoring_engine.calculate_score(player)
+                    player.enhanced_score = score
+                    player.optimization_score = score  # Used by optimizer
+
+                    if score > 0:
+                        scored_count += 1
+
+                        # Track high-value players for showdown captain consideration
+                        if score > player.base_projection * 1.15:
+                            boost_pct = ((score / player.base_projection) - 1) * 100
+                            high_value_players.append((player, boost_pct))
+
+                # Report high-value findings
+                if high_value_players and self.contest_type == "showdown":
+                    print(f"\n  🎯 Top Captain Candidates (based on advanced metrics):")
+                    for player, boost in sorted(high_value_players, key=lambda x: x[1], reverse=True)[:5]:
+                        print(f"     {player.name}: +{boost:.0f}% vs base projection")
+
+                print(f"     ✓ Calculated advanced scores for {scored_count} players")
+            except Exception as e:
+                logger.error(f"Score calculation failed: {e}")
+                # Fallback to base projections only if scoring engine fails
+                print("  ⚠️  Using base projections as fallback")
+                for player in self.players:
+                    if not hasattr(player, 'optimization_score') or player.optimization_score == 0:
+                        player.optimization_score = player.base_projection
+
+        elapsed = time.time() - start_time
+        print(f"\n✅ Enrichment complete: {enriched_count} data points added in {elapsed:.1f}s")
+        print(f"   Contest Type: {self.contest_type.upper()}")
+        print(
+            f"   Players with enhanced scores: {sum(1 for p in self.players if getattr(p, 'optimization_score', 0) > 0)}")
+
+        return enriched_count
+
+    def optimize_lineup(self, manual_selections: str = "") -> Tuple[List[UnifiedPlayer], float]:
+        """Optimize lineup based on contest type"""
+        if self.contest_type == "showdown":
+            return self.optimize_showdown_lineup(manual_selections)
+        else:
+            return self.optimize_classic_lineup(manual_selections)
+
+    def optimize_classic_lineup(self, manual_selections: str = "") -> Tuple[List[UnifiedPlayer], float]:
+        """Optimize classic lineup"""
+        print(f"\n🎯 OPTIMIZING CLASSIC LINEUP")
+        print(f"Strategy: {self.optimization_mode}")
+        print("=" * 60)
+
+        if not self.players:
+            print("❌ No players loaded!")
+            return [], 0
+
+        # Parse manual selections
+        manual_players = []
+        if manual_selections:
+            manual_names = [name.strip().lower() for name in manual_selections.split(',')]
+            for player in self.players:
+                if player.name.lower() in manual_names:
+                    player.is_manual_selected = True
+                    manual_players.append(player.name)
+
+        print(f"  📌 Manual selections: {len(manual_players)}")
+
+        # Run optimization
+        result = self._optimize_unified(self.optimization_mode, manual_players)
+
+        if result and result['lineup']:
+            lineup = result['lineup']
+            score = result['total_projection']
+
+            # Display results
+            self._display_lineup_results(lineup, score, result)
+
+            return lineup, score
+        else:
+            print("❌ Optimization failed!")
+            return [], 0
+
+    def optimize_showdown_lineup(self, manual_selections: str = "") -> Tuple[List[UnifiedPlayer], float]:
+        """Optimize showdown lineup with proper captain selection"""
+        print(f"\n🎰 OPTIMIZING SHOWDOWN LINEUP")
+        print("=" * 60)
+
+        if len(self.players) < 6:
+            print(f"❌ Not enough players for showdown: {len(self.players)} (need 6)")
+            return [], 0
+
+        # Create the showdown-specific optimizer
+        if not self.optimizer:
+            print("❌ Optimizer not available!")
+            return [], 0
+
+        try:
+            # Use a showdown-specific optimization
+            prob = self._create_showdown_problem()
+
+            if prob is None:
+                print("❌ Failed to create showdown problem")
+                return [], 0
+
+            # Solve the problem
+            prob.solve()
+
+            if prob.status == 1:  # Optimal solution found
+                lineup = self._extract_showdown_lineup(prob)
+                total_score = sum(p.optimization_score * getattr(p, 'multiplier', 1.0) for p in lineup)
+
+                # Display results
+                print("\n✅ SHOWDOWN LINEUP OPTIMIZED")
+                print("=" * 60)
+
+                for player in lineup:
+                    position = getattr(player, 'assigned_position', 'UTIL')
+                    multiplier = getattr(player, 'multiplier', 1.0)
+                    adjusted_salary = int(player.salary * multiplier) if position == 'CPT' else player.salary
+                    adjusted_score = player.optimization_score * multiplier
+
+                    print(f"{position:4} | {player.name:20} | {player.team:3} | "
+                          f"${adjusted_salary:,} | {adjusted_score:.1f} pts")
+
+                total_salary = sum(
+                    int(p.salary * getattr(p, 'multiplier', 1.0)) if getattr(p, 'assigned_position', '') == 'CPT'
+                    else p.salary for p in lineup
+                )
+
+                print("-" * 60)
+                print(f"Total Salary: ${total_salary:,} / ${self.salary_cap:,}")
+                print(f"Total Score: {total_score:.1f}")
+
+                return lineup, total_score
             else:
-                player.is_manual_selected = False
+                print("❌ No optimal showdown lineup found")
+                return self._greedy_showdown_fallback(manual_selections)
 
-        if selected_count > 0:
-            print(f"  📌 Marked {selected_count} manual selections")
+        except Exception as e:
+            logger.error(f"Showdown optimization error: {e}")
+            print(f"❌ Showdown optimization failed: {e}")
+            return self._greedy_showdown_fallback(manual_selections)
 
-        return manual_names
+    def _create_showdown_problem(self):
+        """Create MILP problem for showdown optimization"""
+        try:
+            import pulp
+
+            # Create problem
+            prob = pulp.LpProblem("DFS_Showdown", pulp.LpMaximize)
+
+            # Decision variables
+            # x[i,j] = 1 if player i is selected for role j (0=captain, 1=utility)
+            x = {}
+            for i, player in enumerate(self.players):
+                x[i, 0] = pulp.LpVariable(f"captain_{i}", cat="Binary")
+                x[i, 1] = pulp.LpVariable(f"util_{i}", cat="Binary")
+
+                # Store the variables on the player for extraction
+                player._captain_var = x[i, 0]
+                player._util_var = x[i, 1]
+                player._index = i
+
+            # Objective: Maximize total score (captain gets 1.5x) using ENHANCED scores
+            prob += pulp.lpSum([
+                x[i, 0] * getattr(self.players[i], 'optimization_score',
+                                  self.players[i].base_projection) * 1.5 +  # Captain score
+                x[i, 1] * getattr(self.players[i], 'optimization_score', self.players[i].base_projection)
+                # Utility score
+                for i in range(len(self.players))
+            ])
+
+            # Constraint 1: Exactly 1 captain
+            prob += pulp.lpSum([x[i, 0] for i in range(len(self.players))]) == 1
+
+            # Constraint 2: Exactly 5 utility players
+            prob += pulp.lpSum([x[i, 1] for i in range(len(self.players))]) == 5
+
+            # Constraint 3: Each player can only be selected once (as captain OR utility)
+            for i in range(len(self.players)):
+                prob += x[i, 0] + x[i, 1] <= 1
+
+            # Constraint 4: Salary cap (captain costs 1.5x)
+            prob += pulp.lpSum([
+                x[i, 0] * self.players[i].salary * 1.5 +  # Captain salary
+                x[i, 1] * self.players[i].salary  # Utility salary
+                for i in range(len(self.players))
+            ]) <= self.salary_cap
+
+            # Constraint 5: Must have players from both teams (if multiple teams)
+            teams = list(set(p.team for p in self.players if p.team))
+            if len(teams) >= 2:
+                for team in teams[:2]:  # Ensure at least one from each team
+                    team_indices = [i for i, p in enumerate(self.players) if p.team == team]
+                    if team_indices:
+                        prob += pulp.lpSum([x[i, 0] + x[i, 1] for i in team_indices]) >= 1
+
+            return prob
+
+        except Exception as e:
+            logger.error(f"Failed to create showdown problem: {e}")
+            return None
+
+    def _extract_showdown_lineup(self, prob):
+        """Extract lineup from solved showdown problem"""
+        lineup = []
+
+        for player in self.players:
+            if hasattr(player, '_captain_var') and player._captain_var.varValue == 1:
+                # Captain
+                player.assigned_position = 'CPT'
+                player.multiplier = 1.5
+                lineup.append(player)
+            elif hasattr(player, '_util_var') and player._util_var.varValue == 1:
+                # Utility
+                player.assigned_position = 'UTIL'
+                player.multiplier = 1.0
+                lineup.append(player)
+
+        # Sort: Captain first, then utilities
+        lineup.sort(key=lambda p: 0 if p.assigned_position == 'CPT' else 1)
+
+        return lineup
+
+    def _greedy_showdown_fallback(self, manual_selections: str = "") -> Tuple[List[UnifiedPlayer], float]:
+        """Greedy fallback for showdown lineup"""
+        print("  🔄 Using greedy showdown fallback...")
+
+        # Sort players by value using ENHANCED scores (points per dollar)
+        players_by_value = sorted(
+            self.players,
+            key=lambda p: getattr(p, 'optimization_score', p.base_projection) / max(p.salary, 1),
+            reverse=True
+        )
+
+        best_lineup = []
+        best_score = 0
+
+        # Try each player as captain
+        for captain in players_by_value[:20]:  # Only try top 20 as captain
+            if captain.salary * 1.5 > self.salary_cap:
+                continue
+
+            lineup = []
+            remaining_salary = self.salary_cap - int(captain.salary * 1.5)
+            used_names = {captain.name}
+
+            # Add captain
+            captain_copy = UnifiedPlayer(
+                name=captain.name,
+                team=captain.team,
+                opponent=captain.opponent,
+                salary=captain.salary,
+                positions=captain.positions
+            )
+            captain_copy.optimization_score = getattr(captain, 'optimization_score', captain.base_projection)
+            captain_copy.enhanced_score = getattr(captain, 'enhanced_score', captain.base_projection)
+            captain_copy.assigned_position = 'CPT'
+            captain_copy.multiplier = 1.5
+            lineup.append(captain_copy)
+
+            # Add best fitting utilities
+            for player in players_by_value:
+                if len(lineup) >= 6:
+                    break
+
+                if player.name in used_names or player.salary > remaining_salary:
+                    continue
+
+                util_copy = UnifiedPlayer(
+                    name=player.name,
+                    team=player.team,
+                    opponent=player.opponent,
+                    salary=player.salary,
+                    positions=player.positions
+                )
+                util_copy.optimization_score = getattr(player, 'optimization_score', player.base_projection)
+                util_copy.enhanced_score = getattr(player, 'enhanced_score', player.base_projection)
+                util_copy.assigned_position = 'UTIL'
+                util_copy.multiplier = 1.0
+                lineup.append(util_copy)
+                remaining_salary -= player.salary
+                used_names.add(player.name)
+
+            if len(lineup) == 6:
+                total_score = sum(p.optimization_score * p.multiplier for p in lineup)
+                if total_score > best_score:
+                    best_score = total_score
+                    best_lineup = lineup
+
+        return best_lineup, best_score
 
     def _optimize_unified(self, strategy: str, manual_players: List[str]) -> Optional[Dict]:
         """Optimize using unified MILP optimizer"""
@@ -612,137 +784,43 @@ class BulletproofDFSCore:
         except Exception as e:
             logger.error(f"Unified optimization error: {e}")
             print(f"  ⚠️  Unified optimization failed: {e}")
-            return self._optimize_fallback(strategy, manual_players)
-
-    def _optimize_fallback(self, strategy: str, manual_players: List[str]) -> Optional[Dict]:
-        """Fallback optimization method"""
-        print("  📊 Using FALLBACK optimization")
-
-        try:
-            # Simple greedy algorithm
-            position_requirements = {
-                'P': 2, 'C': 1, '1B': 1, '2B': 1,
-                '3B': 1, 'SS': 1, 'OF': 3
-            }
-
-            lineup = []
-            used_salary = 0
-            positions_filled = {pos: 0 for pos in position_requirements}
-
-            # Sort players by value (points per dollar)
-            sorted_players = sorted(
-                self.players,
-                key=lambda p: getattr(p, 'base_projection', 0) / max(p.salary, 1),
-                reverse=True
-            )
-
-            # First, add manual selections
-            for player in sorted_players:
-                if getattr(player, 'is_manual_selected', False):
-                    pos = player.primary_position
-                    if pos in positions_filled and positions_filled[pos] < position_requirements.get(pos, 0):
-                        if used_salary + player.salary <= self.salary_cap:
-                            lineup.append(player)
-                            used_salary += player.salary
-                            positions_filled[pos] += 1
-
-            # Then fill remaining positions
-            for player in sorted_players:
-                if player in lineup:
-                    continue
-
-                pos = player.primary_position
-                if pos in positions_filled and positions_filled[pos] < position_requirements.get(pos, 0):
-                    if used_salary + player.salary <= self.salary_cap * 0.98:  # Leave some buffer
-                        lineup.append(player)
-                        used_salary += player.salary
-                        positions_filled[pos] += 1
-
-            # Check if valid lineup
-            total_required = sum(position_requirements.values())
-            if len(lineup) < total_required:
-                logger.warning(f"Could only create lineup with {len(lineup)} players")
-                return None
-
-            total_projection = sum(getattr(p, 'base_projection', 0) for p in lineup)
-
-            return {
-                'lineup': lineup,
-                'total_salary': used_salary,
-                'total_projection': total_projection,
-                'salary_used': used_salary / self.salary_cap,
-                'strategy': strategy,
-                'optimization_method': 'fallback',
-                'player_count': len(lineup)
-            }
-
-        except Exception as e:
-            logger.error(f"Fallback optimization error: {e}")
             return None
 
-    def _display_optimization_summary(self, result: Dict):
-        """Display optimization result summary"""
-        print(f"\n✅ OPTIMIZATION COMPLETE")
-        print(f"  Method: {result['optimization_method'].upper()}")
-        print(f"  Players: {result['player_count']}")
-        print(f"  Salary: ${result['total_salary']:,} ({result['salary_used']:.1%} used)")
-        print(f"  Projection: {result['total_projection']:.1f} points")
+    def _display_lineup_results(self, lineup: List[UnifiedPlayer], score: float, result: Dict):
+        """Display lineup results"""
+        print("\n✅ LINEUP OPTIMIZED")
+        print("=" * 60)
 
-        # Log lineup details
-        logger.info(f"LINEUP SELECTED: Score={result['total_projection']:.1f}, Salary=${result['total_salary']:,}")
-        for player in result['lineup']:
-            score = getattr(player, 'optimization_score', player.base_projection)
-            logger.info(f"  LINEUP: {player.primary_position} - {player.name} - ${player.salary} - {score:.1f} pts")
+        # Display players
+        for player in lineup:
+            proj = getattr(player, 'optimization_score', player.base_projection)
+            value = proj / (player.salary / 1000) if player.salary > 0 else 0
 
-    def detect_confirmed_players(self) -> int:
-        """Detect and mark confirmed players"""
-        if not hasattr(self, 'confirmation_system') or not self.confirmation_system:
-            logger.warning("No confirmation system available")
-            return 0
+            print(f"{player.primary_position:3} | {player.name:20} | "
+                  f"{player.team:3} | ${player.salary:,} | "
+                  f"{proj:.1f} pts | {value:.2f} val")
 
-        print("\n🔍 Detecting Confirmed Players...")
+        print("-" * 60)
+        print(f"Total Salary: ${result['total_salary']:,} / ${self.salary_cap:,} "
+              f"({result['salary_used']:.1%})")
+        print(f"Total Projection: {result['total_projection']:.1f} pts")
+        print(f"Strategy: {result['strategy']}")
+        print(f"Method: {result['optimization_method']}")
+        print("=" * 60)
 
-        try:
-            confirmed_count = 0
-
-            for player in self.players:
-                if player.primary_position == 'P':
-                    is_confirmed, source = self.confirmation_system.is_pitcher_confirmed(
-                        player.name, player.team
-                    )
-                else:
-                    is_confirmed, batting_order = self.confirmation_system.is_player_confirmed(
-                        player.name, player.team
-                    )
-                    if is_confirmed and batting_order:
-                        player.batting_order = batting_order
-
-                if is_confirmed:
-                    player.is_confirmed = True
-                    confirmed_count += 1
-
-            print(f"  ✅ Confirmed {confirmed_count} players")
-            return confirmed_count
-
-        except Exception as e:
-            logger.error(f"Error detecting confirmed players: {e}")
-            print(f"  ❌ Error: {e}")
-            return 0
-
-    def get_system_status(self) -> Dict[str, Any]:
-        """Get comprehensive system status"""
+    def get_system_status(self) -> Dict:
+        """Get current system status"""
         return {
             'initialized': True,
             'mode': self.mode,
+            'contest_type': self.contest_type,
             'unified_mode': self.unified_mode,
-            'players_loaded': len(self.players),
-            'csv_file': self.csv_file_path,
-            'salary_cap': self.salary_cap,
             'modules': self.modules_status,
-            'cache_size': len(self._lineup_cache),
+            'players_loaded': len(self.players),
+            'players_scored': sum(1 for p in self.players if getattr(p, 'optimization_score', 0) > 0),
+            'confirmed_players': sum(1 for p in self.players if getattr(p, 'is_confirmed', False)),
             'stats': {
                 'total_players': len(self.players),
-                'confirmed_players': sum(1 for p in self.players if getattr(p, 'is_confirmed', False)),
                 'manual_selections': sum(1 for p in self.players if getattr(p, 'is_manual_selected', False))
             }
         }
@@ -755,51 +833,11 @@ class BulletproofDFSCore:
         print("✅ Caches cleared")
 
 
-# ============================================================================
-# FACTORY FUNCTIONS
-# ============================================================================
-
-def create_bulletproof_core(mode: str = "production") -> BulletproofDFSCore:
+# Factory function
+def create_bulletproof_core(mode: str = "production", contest_type: str = "classic") -> BulletproofDFSCore:
     """Create a new BulletproofDFSCore instance"""
-    return BulletproofDFSCore(mode=mode)
+    return BulletproofDFSCore(mode=mode, contest_type=contest_type)
 
-
-def verify_system() -> bool:
-    """Verify system functionality"""
-    try:
-        core = BulletproofDFSCore(mode="test")
-        status = core.get_system_status()
-
-        print("\n🔍 SYSTEM VERIFICATION")
-        print("=" * 60)
-        print(f"Status: {'✅ OPERATIONAL' if status['initialized'] else '❌ FAILED'}")
-        print(f"Mode: {status['mode']}")
-        print(f"Unified: {'Yes' if status['unified_mode'] else 'No'}")
-        print(f"Modules: {sum(1 for v in status['modules'].values() if v)}/{len(status['modules'])}")
-        print("=" * 60)
-
-        return status['initialized']
-
-    except Exception as e:
-        print(f"❌ System verification failed: {e}")
-        return False
-
-
-# ============================================================================
-# MAIN
-# ============================================================================
 
 if __name__ == "__main__":
-    print("✅ BulletproofDFSCore V2 module loaded successfully")
-    print("\n📚 Quick Start:")
-    print("  from bulletproof_dfs_core import BulletproofDFSCore")
-    print("  core = BulletproofDFSCore()")
-    print("  core.load_draftkings_csv('your_file.csv')")
-    print("  result = core.optimize_lineup('balanced')")
-
-    # Run verification
-    print("\nRunning system verification...")
-    if verify_system():
-        print("\n✅ All systems operational!")
-    else:
-        print("\n⚠️  Some systems need attention")
+    print("✅ BulletproofDFSCore V2 with Showdown Mode loaded successfully")

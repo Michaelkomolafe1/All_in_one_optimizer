@@ -10,7 +10,7 @@ import logging
 from performance_config import get_performance_settings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 logger = logging.getLogger(__name__)
