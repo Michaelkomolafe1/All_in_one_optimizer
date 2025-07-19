@@ -10,6 +10,7 @@ NO FALLBACK DATA
 import io
 import json
 import logging
+from performance_config import get_performance_settings
 import os
 import sys
 import threading
@@ -17,10 +18,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import pandas as pd
-import numpy as np
 
 # Suppress pybaseball output
 os.environ["PYBASEBALL_NO_PROGRESS"] = "1"
@@ -527,6 +527,40 @@ if __name__ == "__main__":
     fetcher = SimpleStatcastFetcher()
     if fetcher.test_connection():
         print("✅ PyBaseball connection successful!")
+    def fetch_statcast_batch(self, players: List[Any]) -> Dict[str, Any]:
+        """Fetch Statcast data for multiple players in parallel"""
+        perf_settings = get_performance_settings()
+        batch_size = perf_settings.batch_sizes['statcast']
+        max_workers = perf_settings.max_workers['statcast']
+
+        results = {}
+
+        # Process in batches
+        for i in range(0, len(players), batch_size):
+            batch = players[i:i + batch_size]
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_player = {
+                    executor.submit(self.fetch_statcast_data, player): player
+                    for player in batch
+                }
+
+                for future in as_completed(future_to_player):
+                    player = future_to_player[future]
+                    try:
+                        data = future.result()
+                        if data:
+                            results[player.name] = data
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch data for {player.name}: {e}")
+
+            # Small delay between batches
+            if i + batch_size < len(players):
+                time.sleep(perf_settings.api_delays['statcast'])
+
+        logger.info(f"PERFORMANCE: Fetched Statcast data for {len(results)}/{len(players)} players")
+        return results
+
 
         # Test fetching
         test_data = fetcher.fetch_player_data("Mike Trout", "OF")

@@ -2,8 +2,7 @@
 """Vegas lines integration with The Odds API"""
 
 import requests
-import json
-from datetime import datetime
+from functools import lru_cache
 from typing import Dict, List, Optional
 import logging
 
@@ -43,6 +42,11 @@ class VegasLines:
             'opponent': team_data.get('opponent', 'OPP'),
             'vegas_multiplier': self._calculate_vegas_multiplier(player, team_data)
         }
+
+        # Log high-value games
+        for team, data in vegas_data.items():
+            if data.get('implied_total', 0) > 5.5:
+                logger.info(f"VEGAS: High-scoring game alert - {team} implied total: {data['implied_total']}")
 
         return vegas_data
 
@@ -205,6 +209,35 @@ class VegasLines:
             
         print(f"\nHigh totals (9.5+): {len(self.get_high_total_teams(9.5))}")
         print(f"Low totals (7.5-): {len(self.get_low_total_teams(7.5))}")
+    def get_all_vegas_data(self, teams: List[str]) -> Dict[str, Any]:
+        """Fetch Vegas data for all teams at once"""
+        # Check if we already have recent data for all games
+        cache_key = f"all_vegas_{datetime.now().strftime('%Y%m%d_%H')}"
+
+        if hasattr(self, '_all_vegas_cache'):
+            cached_data, cached_time = self._all_vegas_cache
+            if (datetime.now() - cached_time).seconds < 600:  # 10 min cache
+                logger.info("PERFORMANCE: Using cached Vegas data for all teams")
+                return cached_data
+
+        # Fetch all game data in one request
+        all_data = {}
+        try:
+            # This would be your actual API call to get all games
+            # For now, simulate batch processing
+            for team in teams:
+                data = self.get_team_vegas_data(team)
+                if data:
+                    all_data[team] = data
+
+            # Cache the results
+            self._all_vegas_cache = (all_data, datetime.now())
+
+        except Exception as e:
+            logger.error(f"Failed to fetch Vegas data: {e}")
+
+        return all_data
+
 
 # Test if module loads correctly
 if __name__ == "__main__":

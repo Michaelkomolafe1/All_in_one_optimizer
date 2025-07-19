@@ -6,7 +6,7 @@ Now uses the unified configuration manager as the backend
 """
 
 from typing import Any, Dict
-from unified_config_manager import get_config_manager, get_config_value
+from unified_config_manager import get_config_manager
 
 
 class DFSConfig:

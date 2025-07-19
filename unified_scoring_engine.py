@@ -6,7 +6,6 @@ Replaces the scattered scoring logic across multiple files with one
 consistent, validated, and efficient implementation.
 """
 
-import json
 from unified_config_manager import get_config_manager
 import logging
 from dataclasses import dataclass, field
@@ -17,7 +16,8 @@ import numpy as np
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from logging_config import get_logger
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -314,7 +314,16 @@ class UnifiedScoringEngine:
             player._score_calculated = True
 
         # Log high-level players for debugging
-        if final_score > base_score * 1.3:
+        if final_score > base_score * 1.15:
+            boost_pct = ((final_score / base_score) - 1) * 100
+            logger.info(f"SCORE BOOST: {player.name} - Base: {base_score:.1f} → Enhanced: {final_score:.1f} (+{boost_pct:.0f}%)")
+
+            # Log why the boost happened
+            if hasattr(player, '_score_audit'):
+                audit = player._score_audit
+                for comp_name, comp_data in audit['components'].items():
+                    if comp_data['multiplier'] > 1.05:
+                        logger.info(f"  BOOST REASON: {comp_name} = {comp_data['multiplier']:.2f}x")
             logger.info(f"High score for {player.name}: {base_score:.1f} → {final_score:.1f}")
 
         return final_score
@@ -382,6 +391,10 @@ class UnifiedScoringEngine:
             )
         else:
             logger.debug(f"  Final: {final_score:.2f} (within bounds)")
+
+        # Log detailed scoring for high-value players
+        if final_score > 20:
+            logger.info(f"SCORE DETAILS: {player.name} scored {final_score:.1f} with components: {[f"{c.name}:{c.multiplier:.2f}" for c in components]}")
 
         return final_score
 

@@ -6,11 +6,10 @@ This file can directly replace your existing smart_confirmation_system.py
 Maintains the same interface but with modern, efficient implementation
 """
 
-import json
 import logging
 import requests
 from unified_data_system import UnifiedDataSystem
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
@@ -106,7 +105,6 @@ class OptimizedConfirmationMixin:
 
                     else:
                         # OPTIMIZATION 7: Complex matching only if needed
-                        found_match = False
                         for lineup_player in lineup_players_for_team:
                             total_comparisons += 1
 
@@ -122,7 +120,6 @@ class OptimizedConfirmationMixin:
                                     csv_player['is_confirmed'] = True
 
                                 confirmed_count += 1
-                                found_match = True
 
                                 if self.verbose:
                                     print(f"   ✅ {player_name} → {lineup_player['name']} (fuzzy match)")
@@ -524,7 +521,6 @@ class SmartConfirmationSystem(OptimizedConfirmationMixin):
 # Backwards compatibility alias
 class SmartConfirmation(SmartConfirmationSystem):
     """Alias for backwards compatibility"""
-    pass
 
 
 # Factory function for easy creation
@@ -562,5 +558,33 @@ if __name__ == "__main__":
     # Test cache stats
     stats = system.get_cache_stats()
     print(f"\nCache Stats: {stats}")
+    def get_all_confirmations_batch(self) -> Tuple[Dict[str, List], Dict[str, str]]:
+        """Get all confirmations in one batched operation"""
+        logger.info("PERFORMANCE: Batch fetching all lineup confirmations")
+
+        lineups = {}
+        pitchers = {}
+
+        # Fetch all team lineups at once (simulated batch operation)
+        # In reality, this would be a single API call for all games
+
+        teams = set()
+        for source in self.sources:
+            # Collect all teams that need checking
+            # This is where you'd optimize the actual fetching
+            pass
+
+        # Return cached results if recent
+        if hasattr(self, '_confirmation_cache'):
+            cache_data, cache_time = self._confirmation_cache
+            if (datetime.now() - cache_time).seconds < 300:  # 5 min
+                return cache_data
+
+        # Otherwise fetch and cache
+        result = self._fetch_all_confirmations()
+        self._confirmation_cache = (result, datetime.now())
+
+        return result
+
 
     print("\n✅ Test completed!")

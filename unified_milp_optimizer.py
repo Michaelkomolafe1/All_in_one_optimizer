@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 """
-UNIFIED MILP OPTIMIZER - COMPLETE FIXED VERSION
+UNIFIED MILP OPTIMIZER - COMPLETE CLEAN VERSION
 ==============================================
-All methods implemented, no circular dependencies
+All methods implemented with proper logging and performance optimizations
 """
 
 import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import pulp
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+try:
+    from logging_config import get_logger
+
+    logger = get_logger(__name__)
+except ImportError:
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -75,6 +80,7 @@ class UnifiedMILPOptimizer:
         # Cache for optimization results
         self._last_result = None
         self._optimization_count = 0
+        self._lineup_cache = {}
 
     def _load_dfs_config(self):
         """Load configuration from unified config system or JSON file"""
@@ -130,7 +136,6 @@ class UnifiedMILPOptimizer:
 
         except Exception as e:
             logger.warning(f"Failed to load config: {e}, using defaults")
-            # Defaults are already set in OptimizationConfig
 
     def _load_park_factors(self) -> Dict[str, float]:
         """Load park factors for teams"""
@@ -248,6 +253,36 @@ class UnifiedMILPOptimizer:
 
         return True
 
+    def _pre_filter_players(self, players: List[Any], strategy: str) -> List[Any]:
+        """Pre-filter players to reduce problem size for performance"""
+        if len(players) <= 200:
+            return players
+
+        logger.info(f"PERFORMANCE: Pre-filtering {len(players)} players")
+
+        # Sort by value (points per dollar)
+        players_with_value = [
+            (p, getattr(p, 'optimization_score', 0) / max(p.salary, 1))
+            for p in players
+        ]
+        players_with_value.sort(key=lambda x: x[1], reverse=True)
+
+        # Keep top players by value, ensuring position coverage
+        filtered = []
+        position_counts = {}
+
+        for player, value in players_with_value:
+            pos = player.primary_position
+            count = position_counts.get(pos, 0)
+
+            # Keep at least 10 per position, or top 200 overall
+            if count < 10 or len(filtered) < 200:
+                filtered.append(player)
+                position_counts[pos] = count + 1
+
+        logger.info(f"PERFORMANCE: Reduced to {len(filtered)} players")
+        return filtered
+
     def calculate_player_scores(self, players: List) -> List:
         """Calculate enhanced scores for all players using available data"""
         for player in players:
@@ -289,8 +324,19 @@ class UnifiedMILPOptimizer:
         """
         Main optimization method
         """
-        logger.info(f"Starting optimization with strategy: {strategy}")
+        logger.info(f"OPTIMIZATION: Starting optimization with strategy: {strategy}")
+        logger.info(f"OPTIMIZATION: Players available: {len(players)}")
+        logger.info(f"OPTIMIZATION: Manual selections: {manual_selections}")
         self._optimization_count += 1
+
+        # Check cache first
+        cache_key = (strategy, manual_selections, len(players))
+        if cache_key in self._lineup_cache:
+            cached_result, cache_time = self._lineup_cache[cache_key]
+            from datetime import datetime
+            if (datetime.now() - cache_time).seconds < 300:  # 5 min cache
+                logger.info("PERFORMANCE: Using cached lineup result")
+                return cached_result
 
         # 1. Apply strategy filter
         eligible_players = self.apply_strategy_filter(players, strategy)
@@ -298,13 +344,16 @@ class UnifiedMILPOptimizer:
             logger.error("No eligible players after strategy filter")
             return [], 0
 
-        # 2. Calculate scores
+        # 2. Pre-filter for performance if needed
+        eligible_players = self._pre_filter_players(eligible_players, strategy)
+
+        # 3. Calculate scores
         scored_players = self.calculate_player_scores(eligible_players)
 
-        # 3. Apply correlation bonuses
+        # 4. Apply correlation bonuses
         final_players = self.pre_calculate_correlation_bonuses(scored_players)
 
-        # 4. Process manual selections
+        # 5. Process manual selections
         if manual_selections:
             manual_names = [name.strip().lower() for name in manual_selections.split(',')]
             for player in final_players:
@@ -313,16 +362,20 @@ class UnifiedMILPOptimizer:
                     # Boost score slightly to encourage selection
                     player.optimization_score *= 1.1
 
-        # 5. Run MILP optimization
+        # 6. Run MILP optimization
         lineup, total_score = self._run_milp_optimization(final_players)
 
-        # 6. Store result
+        # 7. Store result
         self._last_result = {
             'lineup': lineup,
             'score': total_score,
             'strategy': strategy,
             'players_considered': len(final_players)
         }
+
+        # Cache the result
+        from datetime import datetime
+        self._lineup_cache[cache_key] = ((lineup, total_score), datetime.now())
 
         return lineup, total_score
 
@@ -370,6 +423,8 @@ class UnifiedMILPOptimizer:
 
             if len(eligible_indices) < required:
                 logger.warning(f"Not enough players for position {pos}")
+                logger.info(
+                    f"OPTIMIZATION: Position constraint failed - {pos} needs {required}, have {len(eligible_indices)}")
                 return [], 0
 
             prob += pulp.lpSum([
@@ -399,11 +454,14 @@ class UnifiedMILPOptimizer:
 
         # Solve
         try:
-            solver = pulp.PULP_CBC_CMD(
-                timeLimit=self.config.timeout_seconds,
-                msg=0  # Suppress output
+            # Use optimized solver settings
+            solver_options = pulp.PULP_CBC_CMD(
+                timeLimit=30,  # 30 second timeout
+                threads=4,  # Use 4 threads
+                options=['preprocess=on', 'cuts=on', 'heuristics=on'],
+                msg=0  # Suppress solver output
             )
-            prob.solve(solver)
+            prob.solve(solver_options)
 
             if prob.status == pulp.LpStatusOptimal:
                 # Extract lineup
@@ -423,6 +481,14 @@ class UnifiedMILPOptimizer:
                 ))
 
                 logger.info(f"Optimization successful: {len(lineup)} players, score: {total_score:.2f}")
+
+                # Log the final lineup
+                logger.info(
+                    f"LINEUP SELECTED: Total score = {total_score:.1f}, Total salary = {sum(p.salary for p in lineup)}")
+                for p in lineup:
+                    logger.info(
+                        f"  LINEUP: {p.primary_position} - {p.name} - ${p.salary} - {getattr(p, 'optimization_score', 0):.1f} pts")
+
                 return lineup, total_score
 
             else:
@@ -445,6 +511,45 @@ class UnifiedMILPOptimizer:
             }
         }
         return stats
+
+    def parse_manual_selections(self, manual_text: str, all_players: List) -> List[str]:
+        """Parse manual player selections from text"""
+        if not manual_text:
+            return []
+
+        manual_names = []
+        for name in manual_text.split(','):
+            name = name.strip()
+            if name:
+                manual_names.append(name.lower())
+
+        # Find matching players
+        selected_players = []
+        for player in all_players:
+            if player.name.lower() in manual_names:
+                selected_players.append(player.name)
+                player.is_manual_selected = True
+
+        return selected_players
+
+    def optimize(self, players: List, strategy: str = "balanced",
+                 manual_selections: Optional[List[str]] = None) -> Any:
+        """Optimize lineup (compatibility method)"""
+        # Convert manual selections list to string if needed
+        manual_text = ""
+        if manual_selections:
+            manual_text = ", ".join(manual_selections)
+
+        lineup, score = self.optimize_lineup(players, strategy, manual_text)
+
+        # Return a result object for compatibility
+        class OptimizationResult:
+            def __init__(self, lineup, score):
+                self.lineup = lineup
+                self.score = score
+                self.total_score = score
+
+        return OptimizationResult(lineup, score) if lineup else None
 
 
 def create_unified_optimizer(config: Optional[OptimizationConfig] = None) -> UnifiedMILPOptimizer:

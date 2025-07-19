@@ -5,7 +5,7 @@ MILP OPTIMIZER WITH INTEGRATED STACKING
 Extends UnifiedMILPOptimizer to include automated stacking constraints
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 import pulp
 import logging
 

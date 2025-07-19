@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 from datetime import datetime
 import hashlib
-import json
 
 
 class ProjectAuditor:

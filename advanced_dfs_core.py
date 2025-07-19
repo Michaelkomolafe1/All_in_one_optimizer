@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
-FIX FOR ADVANCED_DFS_CORE.PY IMPORTS
-====================================
-Replace the import section at the top of advanced_dfs_core.py with this
+ADVANCED DFS CORE
+=================
+Complete DFS optimization system with advanced analytics
 """
 
 # Standard imports
 import csv
 import logging
 from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Any, Tuple
 
 # Core imports
 from unified_player_model import UnifiedPlayer
 from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
 
-# Import scoring engine - use the backward compatible function
+# Import scoring engine
 from advanced_scoring_engine import AdvancedScoringEngine, AdvancedScoringConfig
+
 # Import data pipeline
 from pure_data_pipeline import create_pure_data_pipeline
 

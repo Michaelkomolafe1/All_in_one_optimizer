@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """
-UPDATED ENHANCED DFS GUI
-========================
-Works with the new Advanced DFS Core system
-Includes automated stacking integration
+ENHANCED DFS GUI
+================
+Works with the core DFS optimization system
 """
 
 import csv
-import json
 import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
 
 try:
     from PyQt5.QtCore import *
@@ -22,19 +20,30 @@ except ImportError:
     print("❌ PyQt5 not installed. Install with: pip install PyQt5")
     sys.exit(1)
 
-# Import the new advanced system
+# Import the core system
 try:
-    from advanced_dfs_core import AdvancedDFSCore
-    from automated_stacking_system import create_stacking_system
-    from milp_with_stacking import create_milp_with_stacking
+    from bulletproof_dfs_core import BulletproofDFSCore
 
     CORE_AVAILABLE = True
+    ADVANCED_AVAILABLE = False
+
+    # Try to import advanced if available
+    try:
+        from advanced_dfs_core import AdvancedDFSCore
+        from automated_stacking_system import create_stacking_system
+        from milp_with_stacking import create_milp_with_stacking
+
+        ADVANCED_AVAILABLE = True
+    except ImportError:
+        pass
+
 except ImportError as e:
-    print(f"⚠️ Advanced system not available: {e}")
+    print(f"⚠️ Core system not available: {e}")
     CORE_AVAILABLE = False
+    ADVANCED_AVAILABLE = False
 
 
-    class AdvancedDFSCore:
+    class BulletproofDFSCore:
         pass
 
 

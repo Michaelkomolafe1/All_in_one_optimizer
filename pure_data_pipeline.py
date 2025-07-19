@@ -6,13 +6,12 @@ Fetches all required Statcast data with ZERO fallbacks
 Optimized for performance with parallel processing
 """
 
-import asyncio
 import logging
+from performance_config import get_performance_settings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 import pandas as pd
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +85,9 @@ class PureDataPipeline:
 
         # Step 1: Get confirmed lineups and batting orders
         if self.confirmation_system:
-            self._enrich_confirmed_lineups(players, stats)
+            # Batch process confirmations
+            logger.info("PERFORMANCE: Batch processing lineup confirmations...")
+            self._enrich_confirmed_lineups(players, stats)  # Note: using the existing method
 
         # Step 2: Get Vegas data for all games
         if self.vegas_client:
@@ -107,6 +108,11 @@ class PureDataPipeline:
         stats['enriched_count'] = sum(1 for p in players if hasattr(p, '_is_enriched'))
 
         self._print_enrichment_summary(stats)
+
+        # Log performance metrics
+        logger.info(f"PERFORMANCE: Data enrichment completed in {stats['processing_time']}s")
+        logger.info(f"PERFORMANCE: Enriched {stats['enriched_count']}/{stats['total_players']} players")
+        logger.info(f"PERFORMANCE: API calls - Statcast: {stats.get('statcast_api_calls', 0)}, Vegas: {stats.get('vegas_api_calls', 0)}")
 
         return players, stats
 
@@ -182,7 +188,16 @@ class PureDataPipeline:
         print(f"   Fetching Statcast for {len(players_to_fetch)} priority players")
 
         statcast_count = 0
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+        perf_settings = get_performance_settings()
+        batch_size = perf_settings.batch_sizes['enrichment']
+
+        # Use dynamic worker count based on player count
+        worker_count = min(
+            perf_settings.max_workers['enrichment'],
+            max(1, len(players) // 10)
+        )
+
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
             # Submit all tasks
             future_to_player = {
                 executor.submit(self._fetch_statcast_safe, player): player

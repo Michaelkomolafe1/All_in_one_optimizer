@@ -7,7 +7,7 @@ Intelligent lineup stacking based on data-driven analysis
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Set
 import numpy as np
 
 logger = logging.getLogger(__name__)

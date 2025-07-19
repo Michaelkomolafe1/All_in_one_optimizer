@@ -6,7 +6,6 @@ Fixes memory leak and adds LRU cache eviction
 """
 
 import hashlib
-import heapq
 import logging
 import os
 import pickle
@@ -14,7 +13,7 @@ import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -142,7 +141,8 @@ class EnhancedPerformanceOptimizer:
                     self._cache_stats["hits"] += 1
                     elapsed = time.time() - start_time
                     self._record_timing(func.__name__, elapsed, True)
-                    return cached_result
+                    logger.debug(f"PERFORMANCE: Cache hit for {cache_key}")
+                return cached_result
 
                 # Cache miss - compute result
                 self._cache_stats["misses"] += 1
@@ -318,7 +318,8 @@ class EnhancedPerformanceOptimizer:
         if len(self._slow_operations) > 100:
             self._slow_operations = self._slow_operations[-100:]
 
-        logger.warning(f"Slow operation: {func_name} took {elapsed:.3f}s")
+        logger.warning(f"PERFORMANCE: Slow operation - {func_name} took {elapsed:.3f}s")
+        logger.info(f"PERFORMANCE: Cache hit rate: {self._cache_stats['hits'] / max(1, self._cache_stats['hits'] + self._cache_stats['misses']):.1%}")
 
     def _check_memory_usage(self):
         """Check memory usage and clear cache if needed"""
