@@ -12,6 +12,7 @@ from datetime import datetime
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont
+from PyQt5.QtCore import QThread, pyqtSignal
 import pandas as pd
 import random
 import time
@@ -350,7 +351,7 @@ class ProgressTracker(QWidget):
 
 
 class OptimizationWorker(QThread):
-    """Worker thread that correctly uses the DFS architecture"""
+    """Worker thread using the Unified Core System"""
 
     progress = pyqtSignal(int, str)
     log = pyqtSignal(str, str)
@@ -364,182 +365,184 @@ class OptimizationWorker(QThread):
         self.csv_filename = csv_filename
 
     def run(self):
-        """Run optimization using correct architecture"""
+        """Run optimization using Unified Core System"""
         try:
-            self.progress.emit(10, "Initializing optimization...")
-            self.log.emit("Using unified optimization system", "INFO")
+            # Import the unified system
+            from unified_core_system import UnifiedCoreSystem
 
-            # Import modules
-            try:
-                from unified_player_model import UnifiedPlayer
-                from unified_milp_optimizer import UnifiedMILPOptimizer
-                from bulletproof_dfs_core import BulletproofDFSCore
+            self.log.emit("🚀 Starting Unified Core System", "INFO")
+            self.progress.emit(5, "Initializing system...")
 
-                self.log.emit("✓ Modules loaded", "SUCCESS")
-            except ImportError as e:
-                self.log.emit(f"Module error: {e}", "ERROR")
-                self.run_simple_fallback()
+            # Initialize system
+            system = UnifiedCoreSystem()
+
+            # Load CSV
+            self.progress.emit(15, "Loading player data...")
+            self.log.emit(f"Loading {len(self.players_df)} players", "INFO")
+
+            # Save temp CSV if needed
+            if not self.csv_filename:
+                self.csv_filename = 'temp_optimization.csv'
+                self.players_df.to_csv(self.csv_filename, index=False)
+
+            num_loaded = system.load_csv(self.csv_filename)
+            self.log.emit(f"✅ Loaded {num_loaded} players", "SUCCESS")
+
+            # Fetch confirmed players
+            self.progress.emit(30, "Fetching confirmed lineups...")
+            self.log.emit("🔍 Checking for confirmed lineups...", "INFO")
+
+            num_confirmed = system.fetch_confirmed_players()
+            self.log.emit(f"✅ Found {num_confirmed} confirmed players", "SUCCESS")
+
+            # Add manual selections
+            manual_players = self.settings.get('manual_players', [])
+            if manual_players:
+                self.log.emit(f"Adding {len(manual_players)} manual selections", "INFO")
+                for player_name in manual_players:
+                    if system.add_manual_player(player_name):
+                        self.log.emit(f"   ✅ Added: {player_name}", "SUCCESS")
+                    else:
+                        self.log.emit(f"   ❌ Not found: {player_name}", "WARNING")
+
+            # Build player pool
+            self.progress.emit(40, "Building player pool...")
+            pool_size = system.build_player_pool()
+
+            if pool_size == 0:
+                self.log.emit("❌ No players in pool!", "ERROR")
+                self.log.emit("Add manual selections or wait for confirmed lineups", "WARNING")
+                self.error.emit("No players available for optimization")
                 return
 
-            # Convert DataFrame to UnifiedPlayer objects
-            self.progress.emit(25, "Creating player objects...")
-            players = []
+            self.log.emit(f"✅ Player pool: {pool_size} players", "SUCCESS")
 
-            for idx, row in self.players_df.iterrows():
-                # Parse positions
-                pos_str = str(row.get('Position', ''))
-                positions = pos_str.split('/') if '/' in pos_str else [pos_str]
-                primary = positions[0]
+            # Show pool breakdown
+            status = system.get_system_status()
+            self.log.emit(f"   Confirmed: {status['confirmed_players']} (includes pitchers)", "INFO")
+            self.log.emit(f"   Manual: {status['manual_players']}", "INFO")
 
-                # Create player with CORRECT parameters
-                player = UnifiedPlayer(
-                    id=str(row.get('ID', f"{row['Name']}_{idx}")),
-                    name=row['Name'],
-                    team=row.get('TeamAbbrev', 'UNK'),
-                    salary=int(row['Salary']),
-                    primary_position=primary,
-                    positions=positions,
-                    base_projection=float(row.get('AvgPointsPerGame', 0))
-                )
+            # Enrich player pool with ALL data
+            self.progress.emit(50, "Enriching with Vegas data...")
+            self.log.emit("📊 Fetching Vegas lines...", "INFO")
 
-                # Store display position
-                player.display_position = pos_str
-                players.append(player)
+            self.progress.emit(60, "Enriching with Statcast data...")
+            self.log.emit("⚾ Fetching Statcast data...", "INFO")
 
-            self.log.emit(f"✓ Created {len(players)} players", "SUCCESS")
+            enriched_count = system.enrich_player_pool()
+            self.log.emit(f"✅ Enriched {enriched_count} players", "SUCCESS")
 
-            # Optional enrichment
-            self.progress.emit(40, "Enriching data...")
-            try:
-                core = BulletproofDFSCore(mode="optimization")
-                core.players = players
-                enriched = core.enrich_player_data()
-                self.log.emit(f"✓ Enriched {enriched} players", "SUCCESS")
-                players = core.players
-            except:
-                self.log.emit("Using base projections", "INFO")
+            # Generate lineups
+            self.progress.emit(70, "Optimizing lineups...")
+            num_lineups = self.settings.get('num_lineups', 1)
+            strategy = self.settings.get('strategy', 'balanced')
 
-            # Initialize optimizer
-            self.progress.emit(60, "Running optimization...")
-            optimizer = UnifiedMILPOptimizer()
+            self.log.emit(f"🎯 Generating {num_lineups} {strategy} lineups...", "INFO")
 
-            lineups = []
-            for i in range(self.settings['num_lineups']):
-                self.progress.emit(60 + 30 * i // self.settings['num_lineups'], 
-                                 f"Lineup {i+1}/{self.settings['num_lineups']}...")
+            lineups = system.optimize_lineups(
+                num_lineups=num_lineups,
+                strategy=strategy,
+                min_unique_players=3
+            )
 
-                try:
-                    lineup_players, score = optimizer.optimize_lineup(
-                        players,
-                        strategy=self.settings['strategy'],
-                        min_salary_pct=self.settings['min_salary'] / 100
-                    )
+            if not lineups:
+                self.log.emit("❌ Optimization failed!", "ERROR")
+                self.error.emit("Failed to generate lineups")
+                return
 
-                    if lineup_players:
-                        lineup_data = {
-                            'players': [],
-                            'total_salary': 0,
-                            'projected_points': score
-                        }
+            # Convert to GUI format
+            gui_lineups = []
 
-                        # Convert to display format
-                        for p in lineup_players:
-                            lineup_data['players'].append({
-                                'position': getattr(p, 'display_position', p.primary_position),
-                                'name': p.name,
-                                'salary': p.salary,
-                                'team': p.team,
-                                'points': getattr(p, 'enhanced_score', p.base_projection)
-                            })
-                            lineup_data['total_salary'] += p.salary
+            for i, lineup in enumerate(lineups, 1):
+                self.progress.emit(70 + (25 * i // num_lineups), f"Processing lineup {i}...")
 
-                        lineups.append(lineup_data)
-                        self.log.emit(f"✓ Lineup {i+1}: {score:.1f} pts", "SUCCESS")
-                except Exception as e:
-                    self.log.emit(f"Lineup error: {e}", "ERROR")
+                player.opponent = row.get('Opponent', 'UNK')
+                player.game_info = row.get('Game Info', '')
 
-            if lineups:
-                self.progress.emit(100, "Complete!")
-                self.result.emit(lineups)
-            else:
-                self.run_simple_fallback()
+                gui_lineup = {
+                    'players': [],
+                    'total_salary': lineup['total_salary'],
+                    'projected_points': lineup['total_projection']
+                }
+
+                # Convert each player
+                for p in lineup['players']:
+                    # Get display position
+                    pos = getattr(p, 'display_position', p.primary_position)
+
+                    # Get best score
+                    score = getattr(p, 'optimization_score', p.base_projection)
+
+                    # Check if confirmed/manual
+                    is_confirmed = getattr(p, 'is_confirmed', False)
+                    is_manual = getattr(p, 'is_manual', False)
+
+                    player_dict = {
+                        'position': pos,
+                        'name': p.name,
+                        'salary': p.salary,
+                        'team': p.team,
+                        'points': score,
+                        'confirmed': is_confirmed,
+                        'manual': is_manual
+                    }
+
+                    gui_lineup['players'].append(player_dict)
+
+                gui_lineups.append(gui_lineup)
+
+                # Log lineup summary
+                self.log.emit(f"✅ Lineup {i}: {lineup['total_projection']:.1f} pts, ${lineup['total_salary']:,}",
+                              "SUCCESS")
+
+            # Final status
+            self.progress.emit(100, "Optimization complete!")
+            self.log.emit(f"✅ Generated {len(gui_lineups)} optimized lineups", "SUCCESS")
+
+            # Emit results
+            self.result.emit(gui_lineups)
 
         except Exception as e:
+            import traceback
             self.log.emit(f"Error: {str(e)}", "ERROR")
+            self.log.emit(traceback.format_exc(), "ERROR")
             self.error.emit(str(e))
 
-    def run_simple_fallback(self):
-        """Fallback optimization"""
-        self.log.emit("Using fallback optimization", "INFO")
-        lineups = []
 
-        for i in range(self.settings['num_lineups']):
-            lineup = self.generate_simple_lineup(i)
-            if lineup:
-                lineups.append(lineup)
+def apply_gui_integration():
+    """Apply the integration to complete_dfs_gui_debug.py"""
+    import shutil
+    from datetime import datetime
 
-        if lineups:
-            self.progress.emit(100, "Complete!")
-            self.result.emit(lineups)
-        else:
-            self.error.emit("Failed to generate lineups")
+    print("\n🔧 APPLYING GUI INTEGRATION")
+    print("=" * 60)
 
-    def generate_simple_lineup(self, num):
-        """Simple lineup for MLB with SP/RP"""
-        positions = [
-            {'need': 'P', 'accept': ['SP', 'RP']},
-            {'need': 'P', 'accept': ['SP', 'RP']},
-            {'need': 'C', 'accept': ['C', 'C/1B', '1B/C']},
-            {'need': '1B', 'accept': ['1B', '1B/3B', '1B/C', '1B/OF', 'C/1B']},
-            {'need': '2B', 'accept': ['2B', '2B/SS', '2B/3B', '2B/OF']},
-            {'need': '3B', 'accept': ['3B', '1B/3B', '2B/3B', '3B/SS']},
-            {'need': 'SS', 'accept': ['SS', '2B/SS', '3B/SS']},
-            {'need': 'OF', 'accept': ['OF', '1B/OF', '2B/OF']},
-            {'need': 'OF', 'accept': ['OF', '1B/OF', '2B/OF']},
-            {'need': 'OF', 'accept': ['OF', '1B/OF', '2B/OF']}
-        ]
+    gui_file = 'complete_dfs_gui_debug.py'
 
-        lineup = []
-        used = set()
-        total = 0
+    # Backup
+    backup = f"{gui_file}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    try:
+        shutil.copy(gui_file, backup)
+        print(f"✅ Created backup: {backup}")
+    except:
+        print("⚠️  Could not create backup")
 
-        # Add variety
-        if num > 0:
-            skip = self.players_df.nlargest(num * 2, 'Salary')['Name'].tolist()
-            used.update(skip[:num])
+    print("\n📋 MANUAL INTEGRATION STEPS:")
+    print("1. Copy the OptimizationWorker class above")
+    print("2. Replace the existing OptimizationWorker in your GUI")
+    print("3. Make sure unified_core_system.py is in the same directory")
+    print("4. Run your GUI!")
 
-        for pos in positions:
-            mask = self.players_df['Position'].isin(pos['accept'])
-            for p in pos['accept']:
-                mask |= self.players_df['Position'].str.contains(p, na=False)
+    print("\n🎯 WHAT THIS GIVES YOU:")
+    print("• Confirmed players only optimization")
+    print("• ALL enrichments (Vegas, Statcast, etc)")
+    print("• Pure data - no fallbacks")
+    print("• Manual player selection support")
+    print("• Detailed progress and logging")
 
-            available = self.players_df[mask & (~self.players_df['Name'].isin(used))]
 
-            if not available.empty:
-                if 'AvgPointsPerGame' in available.columns:
-                    available = available.copy()
-                    available['value'] = available['AvgPointsPerGame'] / available['Salary'] * 1000
-                    player = available.nlargest(3, 'value').sample(1).iloc[0]
-                else:
-                    player = available.sample(1).iloc[0]
-
-                lineup.append({
-                    'position': pos['need'],
-                    'name': player['Name'],
-                    'salary': player['Salary'],
-                    'team': player.get('TeamAbbrev', 'N/A'),
-                    'points': player.get('AvgPointsPerGame', 0)
-                })
-                total += player['Salary']
-                used.add(player['Name'])
-
-        if len(lineup) >= 9:
-            return {
-                'players': lineup,
-                'total_salary': total,
-                'projected_points': sum(p['points'] for p in lineup)
-            }
-        return None
+if __name__ == "__main__":
+    apply_gui_integration()
 
 
 

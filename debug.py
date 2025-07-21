@@ -1,220 +1,157 @@
 #!/usr/bin/env python3
 """
-SIMPLE WORKING OPTIMIZER FIX
-============================
-Replace the broken optimization with working code
+SEARCH GUI CODE
+===============
+Find the exact location where you need to add game_info
 """
 
 import os
 import re
 
 
-def fix_optimization_worker():
-    """Fix the OptimizationWorker to handle SP/RP correctly"""
-    print("🔧 FIXING OPTIMIZATION WORKER")
-    print("=" * 60)
+def search_gui_file():
+    """Search through the GUI file and show relevant code sections"""
+    print("\n🔍 SEARCHING YOUR GUI FILE FOR THE CODE LOCATION")
+    print("=" * 70)
 
     gui_file = 'complete_dfs_gui_debug.py'
 
     if not os.path.exists(gui_file):
         print(f"❌ {gui_file} not found!")
-        return False
+        return
 
-    # Read the file
     with open(gui_file, 'r') as f:
-        content = f.read()
+        lines = f.readlines()
 
-    # Find and replace the generate_lineup method
-    new_generate_lineup = '''    def generate_lineup(self, players_df, lineup_num):
-        """Generate a single lineup with proper SP/RP handling"""
-        try:
-            # MLB positions with proper pitcher handling
-            positions_needed = [
-                {'pos': 'P', 'allowed': ['SP', 'RP'], 'display': 'P'},
-                {'pos': 'P', 'allowed': ['SP', 'RP'], 'display': 'P'},
-                {'pos': 'C', 'allowed': ['C', 'C/1B', '1B/C'], 'display': 'C'},
-                {'pos': '1B', 'allowed': ['1B', 'C/1B', '1B/3B', '1B/OF', '1B/C'], 'display': '1B'},
-                {'pos': '2B', 'allowed': ['2B', '2B/SS', '2B/3B', '2B/OF'], 'display': '2B'},
-                {'pos': '3B', 'allowed': ['3B', '1B/3B', '2B/3B', '3B/SS'], 'display': '3B'},
-                {'pos': 'SS', 'allowed': ['SS', '2B/SS', '3B/SS'], 'display': 'SS'},
-                {'pos': 'OF', 'allowed': ['OF', '1B/OF', '2B/OF'], 'display': 'OF'},
-                {'pos': 'OF', 'allowed': ['OF', '1B/OF', '2B/OF'], 'display': 'OF'},
-                {'pos': 'OF', 'allowed': ['OF', '1B/OF', '2B/OF'], 'display': 'OF'}
-            ]
+    print(f"✅ Loaded {gui_file} ({len(lines)} lines)")
 
-            lineup = []
-            used_players = set()
-            total_salary = 0
-            max_salary = 50000
+    # First, find OptimizationWorker class
+    print("\n📍 STEP 1: Finding OptimizationWorker class...")
 
-            # Log available positions
-            available_positions = players_df['Position'].unique()
-            self.log.emit(f"Available positions: {list(available_positions)}", "DEBUG")
+    worker_start = None
+    for i, line in enumerate(lines):
+        if "class OptimizationWorker" in line:
+            worker_start = i
+            print(f"✅ Found at line {i + 1}")
+            print(f"   {line.strip()}")
+            break
 
-            # Build lineup by position
-            for i, pos_info in enumerate(positions_needed):
-                # Find candidates
-                mask = players_df['Position'].isin(pos_info['allowed'])
-                candidates = players_df[mask & (~players_df['Name'].isin(used_players))]
+    if worker_start is None:
+        print("❌ Could not find OptimizationWorker class")
+        print("\nSearching for alternative patterns...")
 
-                if candidates.empty:
-                    self.log.emit(f"No players available for {pos_info['display']} (allowed: {pos_info['allowed']})", "WARNING")
-                    continue
+        # Try alternative searches
+        for i, line in enumerate(lines):
+            if "QThread" in line and "class" in line:
+                print(f"\nFound QThread class at line {i + 1}:")
+                print(f"   {line.strip()}")
 
-                # Select based on strategy
-                if self.settings['strategy'] == 'value' and 'AvgPointsPerGame' in candidates.columns:
-                    candidates = candidates.copy()
-                    candidates['value'] = candidates['AvgPointsPerGame'] / candidates['Salary'] * 1000
-                    candidates = candidates.sort_values('value', ascending=False)
-                elif self.settings['strategy'] == 'ceiling':
-                    candidates = candidates.sort_values('Salary', ascending=False)
-                elif self.settings['strategy'] == 'safe':
-                    # Mid-range players
-                    candidates = candidates.sort_values('Salary')
-                    if len(candidates) > 6:
-                        candidates = candidates.iloc[len(candidates)//3:2*len(candidates)//3]
-                else:
-                    # Balanced - mix of high and mid players
-                    if len(candidates) > 10:
-                        top_candidates = candidates.nlargest(5, 'Salary')
-                        mid_candidates = candidates.iloc[5:10]
-                        candidates = pd.concat([top_candidates, mid_candidates]).sample(frac=1)
+    # Search for where players are created
+    print("\n📍 STEP 2: Finding where players are created...")
 
-                # Pick a player that fits under salary cap
-                selected = False
-                for _, player in candidates.iterrows():
-                    projected_total = total_salary + player['Salary']
-                    remaining_slots = len(positions_needed) - len(lineup) - 1
+    # Look for UnifiedPlayer creation
+    player_creation_lines = []
+    for i, line in enumerate(lines):
+        if "UnifiedPlayer(" in line:
+            player_creation_lines.append(i)
+            print(f"\n✅ Found UnifiedPlayer creation at line {i + 1}")
 
-                    # Ensure we don't go over budget and can afford remaining positions
-                    if projected_total <= max_salary - (remaining_slots * 2000):  # $2000 min per remaining slot
-                        lineup.append({
-                            'position': pos_info['display'],
-                            'name': player['Name'],
-                            'salary': player['Salary'],
-                            'team': player.get('TeamAbbrev', 'N/A'),
-                            'points': player.get('AvgPointsPerGame', 0)
-                        })
-                        total_salary += player['Salary']
-                        used_players.add(player['Name'])
-                        selected = True
-                        break
+            # Show context (10 lines before and after)
+            start = max(0, i - 5)
+            end = min(len(lines), i + 15)
 
-                if not selected:
-                    self.log.emit(f"Could not find affordable player for {pos_info['display']}", "WARNING")
+            print("\n📄 CODE CONTEXT:")
+            print("   Line | Code")
+            print("   -----|-----")
+            for j in range(start, end):
+                marker = ">>>" if j == i else "   "
+                print(f"   {j + 1:5d} {marker} {lines[j].rstrip()}")
 
-            # Check if lineup is valid
-            if len(lineup) >= 9 and total_salary >= max_salary * self.settings['min_salary'] / 100:
-                self.log.emit(f"Generated lineup: {len(lineup)} players, ${total_salary:,}", "SUCCESS")
-                return {
-                    'players': lineup,
-                    'total_salary': total_salary,
-                    'projected_points': sum(p['points'] for p in lineup)
-                }
-            else:
-                self.log.emit(f"Invalid lineup: {len(lineup)} players, ${total_salary}", "DEBUG")
-                return None
+    # Look for where we're iterating through rows
+    print("\n📍 STEP 3: Finding DataFrame iteration...")
 
-        except Exception as e:
-            self.log.emit(f"Error in generate_lineup: {str(e)}", "ERROR")
-            import traceback
-            self.log.emit(traceback.format_exc(), "DEBUG")
-            return None'''
+    for i, line in enumerate(lines):
+        if "iterrows()" in line or "for idx, row in" in line:
+            print(f"\n✅ Found DataFrame iteration at line {i + 1}")
+            print(f"   {line.strip()}")
 
-    # Find the generate_lineup method and replace it
-    pattern = r'def generate_lineup\(self.*?\n(?=\s{0,4}def|\s{0,4}class|\Z)'
-    match = re.search(pattern, content, re.DOTALL)
+    # Look for display_position assignment
+    print("\n📍 STEP 4: Finding display_position assignment...")
 
-    if match:
-        # Replace the method
-        content = content[:match.start()] + new_generate_lineup + '\n' + content[match.end():]
+    display_pos_lines = []
+    for i, line in enumerate(lines):
+        if "display_position" in line:
+            display_pos_lines.append(i)
+            print(f"\n✅ Found display_position at line {i + 1}")
 
-        # Make sure pandas is imported
-        if 'import pandas as pd' not in content:
-            # Add pandas import after other imports
-            import_section = re.search(r'(import.*?\n)+', content)
-            if import_section:
-                content = content[:import_section.end()] + 'import pandas as pd\n' + content[import_section.end():]
+            # Show context
+            start = max(0, i - 10)
+            end = min(len(lines), i + 5)
 
-        # Write the fixed file
-        with open(gui_file, 'w') as f:
-            f.write(content)
+            print("\n📄 THIS IS WHERE YOU NEED TO ADD game_info:")
+            print("   Line | Code")
+            print("   -----|-----")
+            for j in range(start, end):
+                marker = ">>>" if j == i else "   "
+                print(f"   {j + 1:5d} {marker} {lines[j].rstrip()}")
 
-        print("✅ Fixed generate_lineup method")
-        print("\nThe fix includes:")
-        print("  • Proper SP/RP position handling")
-        print("  • Multi-position player support")
-        print("  • Better salary cap management")
-        print("  • Detailed debug logging")
+            print(f"\n💡 ADD THESE LINES BEFORE LINE {i + 1}:")
+            print("        player.opponent = row.get('Opponent', 'UNK')")
+            print("        player.game_info = row.get('Game Info', '')  # CRITICAL!")
 
-        return True
+    # Search for the run method
+    print("\n📍 STEP 5: Finding the run method...")
+
+    for i, line in enumerate(lines):
+        if "def run" in line and worker_start and i > worker_start:
+            print(f"\n✅ Found run method at line {i + 1}")
+
+            # Look for where players are processed
+            for j in range(i, min(i + 100, len(lines))):
+                if "row.get(" in lines[j]:
+                    print(f"   Processing rows around line {j + 1}")
+
+    # Summary
+    print("\n\n" + "=" * 70)
+    print("📋 SUMMARY - WHERE TO ADD THE CODE:")
+    print("=" * 70)
+
+    if display_pos_lines:
+        line_num = display_pos_lines[0] + 1
+        print(f"\n✅ Add the game_info assignment BEFORE line {line_num}")
+        print(f"   (Before the display_position assignment)")
+
+        print("\n📝 ADD THESE TWO LINES:")
+        print("        player.opponent = row.get('Opponent', 'UNK')")
+        print("        player.game_info = row.get('Game Info', '')")
+
     else:
-        print("❌ Could not find generate_lineup method")
-        print("\n📝 Manual fix required:")
-        print("Replace your generate_lineup method with the code above")
+        print("\n⚠️  Could not find display_position assignment")
+        print("Look for where UnifiedPlayer is created and add:")
+        print("   player.game_info = row.get('Game Info', '')")
+        print("after the player is created")
 
-        return False
+    # Alternative search - look for gui_integration code
+    print("\n\n📍 ALTERNATIVE: Checking if gui_integration.py code is used...")
 
+    gui_integration_found = False
+    for i, line in enumerate(lines):
+        if "game_info = row.get('Game Info'" in line:
+            gui_integration_found = True
+            print(f"✅ game_info assignment already exists at line {i + 1}!")
+            print(f"   {line.strip()}")
+            break
 
-def create_test_script():
-    """Create a test script"""
-    test_code = '''#!/usr/bin/env python3
-"""Test the fixed optimization"""
-
-import pandas as pd
-
-# Load your CSV
-csv_file = "/home/michael/Downloads/DKSalaries(12).csv"
-df = pd.read_csv(csv_file)
-
-print(f"Loaded {len(df)} players")
-print(f"\\nPositions available:")
-for pos, count in df['Position'].value_counts().head(15).items():
-    print(f"  {pos:6}: {count:3} players")
-
-# Test position matching
-print("\\n✅ SP/RP players:")
-pitchers = df[df['Position'].isin(['SP', 'RP'])]
-print(f"Found {len(pitchers)} pitchers")
-
-print("\\n✅ Multi-position players:")
-multi_pos = df[df['Position'].str.contains('/')]
-print(f"Found {len(multi_pos)} multi-position eligible players")
-for pos in multi_pos['Position'].unique()[:10]:
-    print(f"  • {pos}")
-
-print("\\nYour data looks good for optimization!")
-'''
-
-    with open('test_mlb_data.py', 'w') as f:
-        f.write(test_code)
-
-    print("\n✅ Created test_mlb_data.py")
-    print("Run it to verify your data: python test_mlb_data.py")
-
-
-def main():
-    """Main function"""
-    print("🚀 SIMPLE OPTIMIZER FIX")
-    print("=" * 60)
-
-    # Apply the fix
-    if fix_optimization_worker():
-        create_test_script()
-
-        print("\n" + "=" * 60)
-        print("✅ FIX APPLIED!")
-        print("\nYour GUI should now:")
-        print("  • Generate lineups with SP and RP")
-        print("  • Handle multi-position players")
-        print("  • Show detailed debug info")
-        print("  • Work with your MLB data")
-        print("\nTry running the GUI again!")
-    else:
-        print("\n❌ Automatic fix failed")
-        print("Copy the generate_lineup method code above")
-        print("and manually replace it in your GUI file")
+    if gui_integration_found:
+        print("\n✅ YOUR CODE ALREADY HAS game_info ASSIGNMENT!")
+        print("The issue might be elsewhere.")
 
 
 if __name__ == "__main__":
-    main()
+    search_gui_file()
+
+    print("\n\n💡 NEXT STEPS:")
+    print("1. Look at the line numbers shown above")
+    print("2. Find where display_position is assigned")
+    print("3. Add the two lines BEFORE that line")
+    print("4. Save and restart your GUI")

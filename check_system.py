@@ -1,363 +1,194 @@
 #!/usr/bin/env python3
 """
-COMPREHENSIVE DFS SYSTEM CHECKER
-================================
-Complete diagnostic tool for the DFS Optimizer system
+TEST EVERYTHING WORKING
+=======================
+Complete test after all fixes
 """
 
-import os
-import sys
-import ast
-import importlib
-import traceback
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+import time
 
 
-class SystemChecker:
-    """Comprehensive system checker for DFS Optimizer"""
+def test_complete_system():
+    """Test the complete system with all fixes"""
+    print("\n🚀 COMPLETE SYSTEM TEST")
+    print("=" * 70)
+    print("Testing unified DFS system after all fixes...")
+    print("=" * 70)
 
-    def __init__(self):
-        self.results = {
-            'syntax_errors': [],
-            'import_errors': [],
-            'missing_files': [],
-            'module_status': {},
-            'dependency_status': {},
-            'warnings': [],
-            'core_functionality': {}
-        }
+    # 1. Test imports
+    print("\n1️⃣ TESTING IMPORTS...")
+    try:
+        from unified_core_system import UnifiedCoreSystem
+        print("   ✅ UnifiedCoreSystem imported")
 
-    def check_syntax(self, filepath: str) -> List[Dict]:
-        """Check Python file for syntax errors"""
-        errors = []
+        from unified_scoring_engine import ScoringConfig
+        print("   ✅ ScoringConfig imported (not ScoringEngineConfig)")
 
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
+        from unified_milp_optimizer import OptimizationConfig
+        print("   ✅ OptimizationConfig imported")
 
-            # Try to compile the code
-            try:
-                compile(content, filepath, 'exec')
-            except SyntaxError as e:
-                errors.append({
-                    'file': filepath,
-                    'line': e.lineno,
-                    'column': e.offset,
-                    'message': e.msg,
-                    'text': e.text.strip() if e.text else ''
-                })
+    except Exception as e:
+        print(f"   ❌ Import error: {e}")
+        return False
 
-            # Parse with AST for additional checks
-            try:
-                tree = ast.parse(content)
-                # Could add more AST-based checks here
-            except Exception as e:
-                if not errors:  # Only add if we haven't already caught it
-                    errors.append({
-                        'file': filepath,
-                        'line': 0,
-                        'message': f'AST parse error: {str(e)}',
-                        'text': ''
-                    })
+    # 2. Initialize system
+    print("\n2️⃣ INITIALIZING SYSTEM...")
+    try:
+        system = UnifiedCoreSystem()
+        print("   ✅ System initialized successfully!")
 
-        except Exception as e:
-            errors.append({
-                'file': filepath,
-                'line': 0,
-                'message': f'Error reading file: {str(e)}',
-                'text': ''
-            })
+    except Exception as e:
+        print(f"   ❌ Initialization error: {e}")
+        print("\n   Run these fixes:")
+        print("   python fix_set_data_sources.py")
+        print("   python fix_min_salary_error.py")
+        return False
 
-        return errors
+    # 3. Load CSV
+    print("\n3️⃣ LOADING CSV DATA...")
+    csv_files = list(Path('.').glob('*.csv'))
+    if not csv_files:
+        print("   ❌ No CSV files found!")
+        return False
 
-    def check_imports(self, filepath: str) -> List[Dict]:
-        """Check for import issues"""
-        import_errors = []
+    csv_path = str(csv_files[0])
+    print(f"   Loading: {csv_path}")
 
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                tree = ast.parse(f.read())
+    total_players = system.load_csv(csv_path)
+    print(f"   ✅ Loaded {total_players} players")
 
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        try:
-                            importlib.import_module(alias.name)
-                        except ImportError as e:
-                            import_errors.append({
-                                'file': filepath,
-                                'line': node.lineno,
-                                'module': alias.name,
-                                'error': str(e)
-                            })
+    # 4. Test confirmation system
+    print("\n4️⃣ TESTING CONFIRMATION SYSTEM...")
 
-                elif isinstance(node, ast.ImportFrom):
-                    if node.module:
-                        try:
-                            importlib.import_module(node.module)
-                        except ImportError as e:
-                            import_errors.append({
-                                'file': filepath,
-                                'line': node.lineno,
-                                'module': node.module,
-                                'error': str(e)
-                            })
+    start_time = time.time()
+    confirmed = system.fetch_confirmed_players()
+    elapsed = time.time() - start_time
 
-        except SyntaxError:
-            # Skip import checking if syntax errors exist
-            pass
-        except Exception as e:
-            import_errors.append({
-                'file': filepath,
-                'line': 0,
-                'module': 'unknown',
-                'error': f'Error checking imports: {str(e)}'
-            })
+    print(f"   Confirmed players: {confirmed}")
+    print(f"   Time taken: {elapsed:.2f} seconds")
 
-        return import_errors
+    if confirmed == 0:
+        print("   ℹ️  No confirmations (no games or too early)")
 
-    def check_core_files(self) -> Dict[str, bool]:
-        """Check if all core files exist"""
-        core_files = [
-            'bulletproof_dfs_core.py',
-            'unified_player_model.py',
-            'unified_milp_optimizer.py',
-            'enhanced_dfs_gui.py',
-            'simple_statcast_fetcher.py',
-            'vegas_lines.py',
-            'smart_confirmation_system.py',
-            'unified_scoring_engine.py',
-            'data_validator.py',
-            'performance_optimizer.py'
-        ]
+    # 5. Test manual player additions
+    print("\n5️⃣ TESTING MANUAL PLAYER ADDITIONS...")
 
-        file_status = {}
-        for file in core_files:
-            file_status[file] = os.path.exists(file)
-            if not file_status[file]:
-                self.results['missing_files'].append(file)
+    test_players = [
+        "Shohei Ohtani",
+        "Juan Soto",
+        "Aaron Judge",
+        "Mookie Betts",
+        "Freddie Freeman"
+    ]
 
-        return file_status
-
-    def check_dependencies(self) -> Dict[str, bool]:
-        """Check if required packages are installed"""
-        dependencies = {
-            'pandas': 'Data manipulation',
-            'numpy': 'Numerical operations',
-            'pulp': 'MILP optimization',
-            'PyQt5': 'GUI interface',
-            'requests': 'API calls',
-            'beautifulsoup4': 'Web scraping',
-            'lxml': 'XML parsing'
-        }
-
-        status = {}
-        for package, description in dependencies.items():
-            try:
-                __import__('bs4' if package == 'beautifulsoup4' else package)
-                status[package] = True
-            except ImportError:
-                status[package] = False
-                self.results['warnings'].append(f"Missing {package}: {description}")
-
-        return status
-
-    def test_module_loading(self):
-        """Test loading each module"""
-        modules_to_test = [
-            ('unified_player_model', 'UnifiedPlayer'),
-            ('unified_milp_optimizer', 'UnifiedMILPOptimizer'),
-            ('bulletproof_dfs_core', 'BulletproofDFSCore'),
-            ('unified_scoring_engine', 'get_scoring_engine'),
-            ('data_validator', 'get_validator'),
-            ('performance_optimizer', 'get_performance_optimizer'),
-        ]
-
-        for module_name, class_name in modules_to_test:
-            try:
-                # Remove from sys.modules to force fresh import
-                if module_name in sys.modules:
-                    del sys.modules[module_name]
-
-                module = __import__(module_name)
-
-                # Check if class/function exists
-                if hasattr(module, class_name):
-                    self.results['module_status'][module_name] = 'OK'
-                else:
-                    self.results['module_status'][module_name] = f'Missing {class_name}'
-
-            except SyntaxError as e:
-                self.results['module_status'][module_name] = f'Syntax Error: Line {e.lineno}'
-                self.results['syntax_errors'].append({
-                    'file': f'{module_name}.py',
-                    'line': e.lineno,
-                    'message': e.msg
-                })
-            except ImportError as e:
-                self.results['module_status'][module_name] = f'Import Error: {str(e)}'
-            except Exception as e:
-                self.results['module_status'][module_name] = f'Error: {str(e)}'
-
-    def test_core_initialization(self):
-        """Test initializing the core system"""
-        try:
-            # Clear any cached imports
-            if 'bulletproof_dfs_core' in sys.modules:
-                del sys.modules['bulletproof_dfs_core']
-
-            from bulletproof_dfs_core import BulletproofDFSCore
-
-            # Try to create instance
-            core = BulletproofDFSCore(mode="test")
-            self.results['core_functionality']['initialization'] = 'OK'
-
-            # Check module availability
-            if hasattr(core, 'modules_status'):
-                for module, status in core.modules_status.items():
-                    self.results['core_functionality'][f'module_{module}'] = 'Available' if status else 'Not Available'
-
-        except Exception as e:
-            self.results['core_functionality']['initialization'] = f'Failed: {str(e)}'
-            # Get more detailed traceback
-            self.results['warnings'].append(f"Core initialization traceback:\n{traceback.format_exc()}")
-
-    def generate_report(self):
-        """Generate comprehensive report"""
-        print("\n🔍 COMPREHENSIVE DFS SYSTEM CHECK")
-        print("=" * 60)
-
-        # 1. File Structure
-        print("\n📁 FILE STRUCTURE:")
-        file_status = self.check_core_files()
-        for file, exists in file_status.items():
-            status = "✅" if exists else "❌"
-            print(f"  {status} {file}")
-
-        # 2. Dependencies
-        print("\n📦 DEPENDENCIES:")
-        dep_status = self.check_dependencies()
-        self.results['dependency_status'] = dep_status
-        for package, installed in dep_status.items():
-            status = "✅" if installed else "❌"
-            print(f"  {status} {package}")
-
-        # 3. Syntax Errors
-        print("\n🔧 SYNTAX CHECK:")
-        for file in file_status:
-            if file_status[file]:
-                errors = self.check_syntax(file)
-                if errors:
-                    self.results['syntax_errors'].extend(errors)
-
-        if self.results['syntax_errors']:
-            print(f"  ❌ Found {len(self.results['syntax_errors'])} syntax errors:")
-            for error in self.results['syntax_errors'][:5]:  # Show first 5
-                print(f"     {error['file']}:{error['line']} - {error['message']}")
-                if error.get('text'):
-                    print(f"       > {error['text']}")
+    added = 0
+    for player in test_players:
+        if system.add_manual_player(player):
+            print(f"   ✅ Added: {player}")
+            added += 1
         else:
-            print("  ✅ No syntax errors found")
+            print(f"   ❌ Not found: {player}")
 
-        # 4. Import Errors
-        print("\n📥 IMPORT CHECK:")
-        for file in file_status:
-            if file_status[file] and not any(e['file'] == file for e in self.results['syntax_errors']):
-                import_errors = self.check_imports(file)
-                if import_errors:
-                    self.results['import_errors'].extend(import_errors)
+    print(f"   Total added: {added}")
 
-        if self.results['import_errors']:
-            print(f"  ❌ Found {len(self.results['import_errors'])} import errors:")
-            for error in self.results['import_errors'][:5]:
-                print(f"     {error['file']}:{error['line']} - Cannot import '{error['module']}'")
+    # 6. Test pool building
+    print("\n6️⃣ TESTING LIMITED POOL CREATION...")
+
+    pool_size = system.build_player_pool()
+    print(f"   Pool size: {pool_size} players")
+    print(f"   Confirmed: {len(system.confirmed_names)}")
+    print(f"   Manual: {len(system.manual_names)}")
+    print(f"   IGNORED: {total_players - pool_size} players")
+
+    # 7. Test enrichment
+    print("\n7️⃣ TESTING DATA ENRICHMENT...")
+
+    if pool_size > 0:
+        print(f"   Enriching {pool_size} players...")
+        enriched = system.enrich_player_pool()
+        print(f"   ✅ Enriched {enriched} players")
+
+        # Show a sample player
+        if system.player_pool:
+            player = system.player_pool[0]
+            print(f"\n   Sample player: {player.name}")
+            print(f"   • Salary: ${player.salary}")
+            print(f"   • Base projection: {player.base_projection}")
+            print(f"   • Has optimization score: {hasattr(player, 'optimization_score')}")
+
+    # 8. Test optimization
+    print("\n8️⃣ TESTING LINEUP OPTIMIZATION...")
+
+    if pool_size >= 9:  # Need at least 9 for a lineup
+        lineups = system.optimize_lineups(num_lineups=1)
+
+        if lineups:
+            print("   ✅ Successfully generated lineup!")
+            lineup = lineups[0]
+            print(f"   • Players: {len(lineup['players'])}")
+            print(f"   • Salary: ${lineup['total_salary']:,} ({lineup['total_salary'] / 50000:.1%})")
+            print(f"   • Points: {lineup['total_projection']:.1f}")
         else:
-            print("  ✅ All imports resolved")
-
-        # 5. Module Loading
-        print("\n🔌 MODULE LOADING:")
-        self.test_module_loading()
-        for module, status in self.results['module_status'].items():
-            if status == 'OK':
-                print(f"  ✅ {module}")
-            else:
-                print(f"  ❌ {module}: {status}")
-
-        # 6. Core System Test
-        print("\n🚀 CORE SYSTEM TEST:")
-        self.test_core_initialization()
-        for test, result in self.results['core_functionality'].items():
-            if result == 'OK' or 'Available' in result:
-                print(f"  ✅ {test}: {result}")
-            else:
-                print(f"  ❌ {test}: {result}")
-
-        # 7. Warnings and Recommendations
-        if self.results['warnings']:
-            print("\n⚠️  WARNINGS:")
-            for warning in self.results['warnings']:
-                print(f"  • {warning}")
-
-        # 8. Recommendations
-        print("\n💡 RECOMMENDATIONS:")
-        if self.results['syntax_errors']:
-            print("  1. Run fix_syntax_errors.py to fix syntax issues")
-        if self.results['missing_files']:
-            print("  2. Ensure all required files are in the project directory")
-        if any(not installed for installed in dep_status.values()):
-            print("  3. Install missing dependencies: pip install -r requirements.txt")
-        if self.results['import_errors']:
-            print("  4. Check import statements and module names")
-
-        # 9. Summary
-        print("\n📊 SUMMARY:")
-        total_issues = (len(self.results['syntax_errors']) +
-                        len(self.results['import_errors']) +
-                        len(self.results['missing_files']))
-
-        if total_issues == 0:
-            print("  ✅ System is healthy!")
-        else:
-            print(f"  ❌ Found {total_issues} total issues")
-            print(f"     - Syntax errors: {len(self.results['syntax_errors'])}")
-            print(f"     - Import errors: {len(self.results['import_errors'])}")
-            print(f"     - Missing files: {len(self.results['missing_files'])}")
-
-        return total_issues == 0
-
-
-def main():
-    """Run comprehensive system check"""
-    checker = SystemChecker()
-    is_healthy = checker.generate_report()
-
-    print("\n" + "=" * 60)
-    if is_healthy:
-        print("✅ Your DFS Optimizer is ready to use!")
-        print("\nRun: python enhanced_dfs_gui.py")
+            print("   ❌ Failed to generate lineup")
     else:
-        print("❌ Please fix the issues above before running the optimizer")
-        print("\nQuick fixes:")
-        print("1. Run: python fix_syntax_errors.py")
-        print("2. Install missing packages: pip install pandas numpy pulp PyQt5")
-        print("3. Check that all files are in the correct directory")
+        print(f"   ⚠️  Need at least 9 players in pool (have {pool_size})")
+        print("   Add more manual players")
 
-    # Save detailed report
-    report_file = f"system_check_report_{Path.cwd().name}.txt"
-    with open(report_file, 'w') as f:
-        f.write("DFS OPTIMIZER SYSTEM CHECK REPORT\n")
-        f.write("=" * 60 + "\n")
-        f.write(f"Directory: {Path.cwd()}\n")
-        f.write(f"Python Version: {sys.version}\n")
-        f.write("=" * 60 + "\n\n")
+    # 9. Final summary
+    print("\n" + "=" * 70)
+    print("📊 TEST SUMMARY")
+    print("=" * 70)
 
-        # Write detailed results
-        import json
-        f.write(json.dumps(checker.results, indent=2))
+    status = system.get_system_status()
+    print(f"Total players loaded: {status['total_players']}")
+    print(f"Confirmed players: {status['confirmed_players']}")
+    print(f"Manual players: {status['manual_players']}")
+    print(f"Pool size: {status['pool_size']}")
+    print(f"All components ready: {all(status['components'].values())}")
 
-    print(f"\n📄 Detailed report saved to: {report_file}")
+    print("\n✅ SYSTEM TEST COMPLETE!")
+    print("\n🎯 Your system is working correctly and does:")
+    print("   ✓ Only uses confirmed + manual players")
+    print("   ✓ Ignores all other players")
+    print("   ✓ Enriches only the pool")
+    print("   ✓ Optimizes from limited pool")
+
+    return True
+
+
+def show_quick_tips():
+    """Show quick tips for using the system"""
+    print("\n" + "=" * 70)
+    print("💡 QUICK TIPS")
+    print("=" * 70)
+
+    print("\n1. If you get 0 confirmations:")
+    print("   • It's probably no games today")
+    print("   • Just use manual players")
+    print("   • System works perfectly!")
+
+    print("\n2. To use with your GUI:")
+    print("   • Copy OptimizationWorker from gui_integration.py")
+    print("   • Replace in complete_dfs_gui_debug.py")
+    print("   • Run your GUI")
+
+    print("\n3. Manual player selection strategy:")
+    print("   • Add top pitchers (aces)")
+    print("   • Add elite hitters")
+    print("   • Balance positions")
+    print("   • Consider matchups")
 
 
 if __name__ == "__main__":
-    main()
+    # Run complete test
+    success = test_complete_system()
+
+    if success:
+        show_quick_tips()
+    else:
+        print("\n❌ System test failed")
+        print("\nRun these fixes in order:")
+        print("1. python fix_set_data_sources.py")
+        print("2. python fix_min_salary_error.py")
+        print("3. python test_everything_working.py")

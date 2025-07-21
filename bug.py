@@ -1,308 +1,240 @@
 #!/usr/bin/env python3
 """
-COMPLETE FIX FOR DFS OPTIMIZER
-==============================
-Properly integrates with your unified optimization system
+DEBUG CONFIRMATION SYSTEMS
+==========================
+Find out why no games are being detected
 """
 
-import os
-import shutil
+import requests
 from datetime import datetime
+from bs4 import BeautifulSoup
+import json
 
 
-def apply_complete_fix():
-    """Apply the complete fix to your GUI"""
-    print("🚀 COMPLETE DFS OPTIMIZER FIX")
+def debug_mlb_api():
+    """Debug MLB API to see what's happening"""
+    print("\n🔍 DEBUGGING MLB API")
     print("=" * 60)
 
-    gui_file = 'complete_dfs_gui_debug.py'
+    # Try different date formats
+    today = datetime.now().strftime('%Y-%m-%d')
 
-    if not os.path.exists(gui_file):
-        print(f"❌ {gui_file} not found!")
-        return False
+    print(f"Today's date: {today}")
+    print(f"Current time: {datetime.now().strftime('%H:%M:%S')}")
 
-    # Backup
-    backup_file = f"{gui_file}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    shutil.copy(gui_file, backup_file)
-    print(f"✅ Created backup: {backup_file}")
+    # MLB API URL
+    url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}"
 
-    # Read file
-    with open(gui_file, 'r') as f:
-        lines = f.readlines()
+    print(f"\nTrying URL: {url}")
 
-    # Find and replace the OptimizationWorker class
-    print("\n📝 Replacing OptimizationWorker class...")
+    try:
+        response = requests.get(url, timeout=10)
+        print(f"Response status: {response.status_code}")
 
-    # Find the class
-    class_start = None
-    class_end = None
+        if response.status_code == 200:
+            data = response.json()
 
-    for i, line in enumerate(lines):
-        if 'class OptimizationWorker' in line:
-            class_start = i
-            print(f"✅ Found OptimizationWorker at line {i + 1}")
-        elif class_start is not None and line.strip() and not line[0].isspace():
-            # Found next class or function at root level
-            class_end = i
-            break
+            # Check dates
+            dates = data.get('dates', [])
+            print(f"\nDates in response: {len(dates)}")
 
-    if class_start is None:
-        print("❌ Could not find OptimizationWorker class")
-        return False
+            if dates:
+                date_entry = dates[0]
+                games = date_entry.get('games', [])
+                print(f"Games found: {len(games)}")
 
-    if class_end is None:
-        class_end = len(lines)
+                # Show game details
+                for i, game in enumerate(games[:3]):  # First 3 games
+                    print(f"\nGame {i + 1}:")
+                    print(f"  Status: {game.get('status', {}).get('detailedState', 'Unknown')}")
 
-    # Replace with the proper implementation
-    new_worker_class = '''class OptimizationWorker(QThread):
-    """Worker thread that properly uses the unified optimization system"""
+                    # Teams
+                    away = game.get('teams', {}).get('away', {}).get('team', {}).get('name', 'Unknown')
+                    home = game.get('teams', {}).get('home', {}).get('team', {}).get('name', 'Unknown')
+                    print(f"  {away} @ {home}")
 
-    progress = pyqtSignal(int, str)
-    log = pyqtSignal(str, str)
-    result = pyqtSignal(object)
-    error = pyqtSignal(str)
+                    # Game time
+                    game_date = game.get('gameDate', '')
+                    print(f"  Time: {game_date}")
 
-    def __init__(self, players_df, settings, csv_filename=None):
-        super().__init__()
-        self.players_df = players_df
-        self.settings = settings
-        self.csv_filename = csv_filename
+                    # Check for lineups
+                    if 'lineups' in game:
+                        print("  ✅ Has lineups data")
+                    else:
+                        print("  ❌ No lineups data")
 
-    def run(self):
-        """Run optimization using UnifiedMILPOptimizer directly"""
-        try:
-            # Stage 1: Setup
-            self.progress.emit(10, "Initializing optimization...")
-            self.log.emit("Starting unified optimization process", "INFO")
+            else:
+                print("❌ No dates in response")
 
-            # Try to use the unified system
-            try:
-                from unified_milp_optimizer import UnifiedMILPOptimizer
-                from unified_player_model import UnifiedPlayer
+            # Try with hydrate parameter
+            print("\n\nTrying with hydrate parameter...")
+            url2 = f"{url}&hydrate=lineups,probablePitcher"
+            response2 = requests.get(url2, timeout=10)
 
-                optimizer = UnifiedMILPOptimizer()
-                self.log.emit("✓ UnifiedMILPOptimizer loaded", "SUCCESS")
+            if response2.status_code == 200:
+                data2 = response2.json()
+                dates2 = data2.get('dates', [])
+                if dates2:
+                    games2 = dates2[0].get('games', [])
+                    print(f"Games with hydrate: {len(games2)}")
 
-                # Convert DataFrame to UnifiedPlayer objects
-                self.progress.emit(25, "Converting player data...")
-                players = []
+                    # Check first game
+                    if games2:
+                        game = games2[0]
+                        away_lineup = game.get('lineups', {}).get('awayPlayers', [])
+                        home_lineup = game.get('lineups', {}).get('homePlayers', [])
+                        print(f"Away lineup players: {len(away_lineup)}")
+                        print(f"Home lineup players: {len(home_lineup)}")
 
-                for idx, row in self.players_df.iterrows():
-                    player = UnifiedPlayer(
-                        name=row['Name'],
-                        position=row['Position'],
-                        salary=row['Salary'],
-                        team=row.get('TeamAbbrev', 'UNK'),
-                        projection=row.get('AvgPointsPerGame', 0)
-                    )
-                    player.display_position = row['Position']
-                    players.append(player)
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
 
-                self.log.emit(f"✓ Converted {len(players)} players", "SUCCESS")
 
-                # Generate lineups
-                self.progress.emit(50, "Running optimization...")
-                lineups = []
+def debug_rotowire():
+    """Debug Rotowire to see what's happening"""
+    print("\n\n🔍 DEBUGGING ROTOWIRE")
+    print("=" * 60)
 
-                for i in range(self.settings['num_lineups']):
-                    self.progress.emit(50 + 40 * i // self.settings['num_lineups'], 
-                                     f"Generating lineup {i+1}...")
+    url = "https://www.rotowire.com/baseball/daily-lineups.php"
 
-                    try:
-                        lineup_players, score = optimizer.optimize_lineup(
-                            players,
-                            strategy=self.settings['strategy'],
-                            min_salary_pct=self.settings['min_salary'] / 100
-                        )
+    print(f"URL: {url}")
 
-                        if lineup_players:
-                            lineup_data = {
-                                'players': [],
-                                'total_salary': 0,
-                                'projected_points': score
-                            }
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
 
-                            for p in lineup_players:
-                                lineup_data['players'].append({
-                                    'position': p.display_position,
-                                    'name': p.name,
-                                    'salary': p.salary,
-                                    'team': p.team,
-                                    'points': p.projection
-                                })
-                                lineup_data['total_salary'] += p.salary
+        response = requests.get(url, headers=headers, timeout=10)
+        print(f"Response status: {response.status_code}")
+        print(f"Response length: {len(response.text)} bytes")
 
-                            lineups.append(lineup_data)
-                            self.log.emit(f"✓ Lineup {i+1}: {score:.1f} points", "SUCCESS")
-                    except:
-                        pass
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
 
-                if lineups:
-                    self.progress.emit(95, "Finalizing...")
-                    self.progress.emit(100, "Complete!")
-                    self.result.emit(lineups)
-                    return
+            # Debug: Save HTML to file for inspection
+            with open('rotowire_debug.html', 'w') as f:
+                f.write(response.text)
+            print("✅ Saved HTML to rotowire_debug.html for inspection")
 
-            except Exception as e:
-                self.log.emit(f"Unified optimizer not available: {e}", "WARNING")
-
-            # Fallback to simple generation
-            self.log.emit("Using simple lineup generation", "INFO")
-            self.progress.emit(50, "Generating lineups...")
-
-            lineups = []
-            for i in range(self.settings['num_lineups']):
-                lineup = self.generate_simple_lineup(i)
-                if lineup:
-                    lineups.append(lineup)
-                    self.log.emit(f"✓ Generated lineup {i+1}", "SUCCESS")
-
-            self.progress.emit(100, "Complete!")
-            self.result.emit(lineups)
-
-        except Exception as e:
-            self.log.emit(f"Error: {str(e)}", "ERROR")
-            self.error.emit(str(e))
-
-    def generate_simple_lineup(self, lineup_num):
-        """Simple but working lineup generation for MLB"""
-        try:
-            # MLB positions that work with SP/RP
-            positions = [
-                {'need': 'P', 'accept': ['SP', 'RP']},
-                {'need': 'P', 'accept': ['SP', 'RP']},
-                {'need': 'C', 'accept': ['C', 'C/1B', '1B/C']},
-                {'need': '1B', 'accept': ['1B', 'C/1B', '1B/3B', '1B/OF', '1B/C']},
-                {'need': '2B', 'accept': ['2B', '2B/SS', '2B/3B', '2B/OF']},
-                {'need': '3B', 'accept': ['3B', '1B/3B', '2B/3B', '3B/SS']},
-                {'need': 'SS', 'accept': ['SS', '2B/SS', '3B/SS']},
-                {'need': 'OF', 'accept': ['OF', '1B/OF', '2B/OF']},
-                {'need': 'OF', 'accept': ['OF', '1B/OF', '2B/OF']},
-                {'need': 'OF', 'accept': ['OF', '1B/OF', '2B/OF']}
+            # Try different selectors
+            selectors_to_try = [
+                ('div', 'lineup__game'),
+                ('div', 'lineup-card'),
+                ('div', 'lineups-container'),
+                ('div', 'game-box'),
+                ('div', {'class': lambda x: x and 'lineup' in x}),
+                ('div', {'class': lambda x: x and 'game' in x})
             ]
 
-            lineup = []
-            used = set()
-            total_salary = 0
+            for tag, selector in selectors_to_try:
+                if isinstance(selector, dict):
+                    elements = soup.find_all(tag, selector)
+                else:
+                    elements = soup.find_all(tag, class_=selector)
 
-            # Add diversity between lineups
-            if lineup_num > 0:
-                # Skip some top players for variety
-                skip_count = (lineup_num * 3) % 10
-                used.update(self.players_df.nlargest(skip_count, 'Salary')['Name'].tolist())
+                if elements:
+                    print(f"\n✅ Found {len(elements)} elements with {tag}.{selector}")
+                    # Show first element
+                    first = elements[0]
+                    text = first.get_text(strip=True)[:100]
+                    print(f"   Sample text: {text}...")
 
-            for pos in positions:
-                mask = self.players_df['Position'].isin(pos['accept'])
-                available = self.players_df[mask & (~self.players_df['Name'].isin(used))]
+            # Look for any game-related text
+            game_texts = soup.find_all(
+                text=lambda t: t and any(word in t.lower() for word in ['game', 'lineup', 'pitcher', '@', 'vs']))
+            print(f"\nFound {len(game_texts)} game-related text elements")
 
-                if not available.empty:
-                    # Pick based on value
-                    available = available.copy()
-                    if 'AvgPointsPerGame' in available.columns:
-                        available['value'] = available['AvgPointsPerGame'] / available['Salary'] * 1000
-                        player = available.nlargest(3, 'value').sample(1).iloc[0]
-                    else:
-                        player = available.sample(1).iloc[0]
+            if not game_texts:
+                # Check if there's a "no games" message
+                no_games = soup.find_all(text=lambda t: t and 'no games' in t.lower())
+                if no_games:
+                    print("⚠️  Found 'no games' message on page")
 
-                    lineup.append({
-                        'position': pos['need'],
-                        'name': player['Name'],
-                        'salary': player['Salary'],
-                        'team': player.get('TeamAbbrev', 'N/A'),
-                        'points': player.get('AvgPointsPerGame', 0)
-                    })
-                    total_salary += player['Salary']
-                    used.add(player['Name'])
-
-            if len(lineup) >= 9:
-                return {
-                    'players': lineup,
-                    'total_salary': total_salary,
-                    'projected_points': sum(p['points'] for p in lineup)
-                }
-            return None
-
-        except Exception as e:
-            self.log.emit(f"Lineup generation error: {e}", "ERROR")
-            return None
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
-'''
-
-    # Replace the class
-    lines[class_start:class_end] = [new_worker_class]
-
-    # Make sure pandas is imported
-    if 'import pandas as pd' not in ''.join(lines[:50]):
-        # Find imports section
-        for i, line in enumerate(lines[:30]):
-            if 'import' in line:
-                lines.insert(i + 1, 'import pandas as pd\n')
-                break
-
-    # Write the fixed file
-    with open(gui_file, 'w') as f:
-        f.writelines(lines)
-
-    print("✅ Successfully replaced OptimizationWorker")
-
-    return True
-
-
-def explain_architecture():
-    """Explain how the system works"""
-    print("\n📚 UNDERSTANDING YOUR DFS OPTIMIZER ARCHITECTURE")
+def check_dfs_slate_times():
+    """Check if this is a late slate issue"""
+    print("\n\n🕐 CHECKING SLATE TIMING")
     print("=" * 60)
 
-    print("\n1️⃣ SYSTEM COMPONENTS:")
-    print("   • BulletproofDFSCore: Main coordinator (doesn't optimize)")
-    print("   • UnifiedMILPOptimizer: The actual optimization engine")
-    print("   • UnifiedPlayer: Player data model")
-    print("   • Unified Scoring Engine: Calculates player scores")
-    print("   • Smart Confirmation: Checks for confirmed lineups")
+    current_time = datetime.now()
+    print(f"Current time: {current_time.strftime('%I:%M %p')}")
+    print(f"Current date: {current_time.strftime('%A, %B %d, %Y')}")
 
-    print("\n2️⃣ CORRECT FLOW:")
-    print("   1. Load CSV data")
-    print("   2. Convert to UnifiedPlayer objects")
-    print("   3. (Optional) Enrich with stats via core.enrich_player_data()")
-    print("   4. (Optional) Check confirmations")
-    print("   5. Pass players to UnifiedMILPOptimizer.optimize_lineup()")
-    print("   6. Get optimized lineup back")
+    print("\n💡 Possible issues:")
+    print("1. Late slate games might not have lineups posted yet")
+    print("2. Some sites only post lineups 2-3 hours before first pitch")
+    print("3. API might be filtering out late games")
+    print("4. Could be using wrong timezone")
 
-    print("\n3️⃣ YOUR DATA IS PERFECT:")
-    print("   • 150 pitchers (55 SP + 95 RP)")
-    print("   • All fielding positions")
-    print("   • Multi-position eligibility")
-    print("   • The optimizer just needs proper position handling")
+    print("\n📝 For DFS slates:")
+    print("• Main slate: Usually has lineups by 4-5 PM ET")
+    print("• Late slate: Lineups often not until 7-8 PM ET")
+    print("• Night slate: Sometimes lineups very late")
+
+
+def manual_lineup_entry():
+    """Show how to manually enter known lineups"""
+    print("\n\n💡 MANUAL LINEUP ENTRY")
+    print("=" * 60)
+
+    print("Since confirmations aren't working, you can:")
+    print("\n1. Create a manual confirmation file:")
+
+    manual_confirmations = {
+        "teams": {
+            "LAD": {
+                "lineup": [
+                    "Mookie Betts",
+                    "Shohei Ohtani",
+                    "Freddie Freeman",
+                    "Will Smith",
+                    "Max Muncy",
+                    "Teoscar Hernandez",
+                    "Chris Taylor",
+                    "Miguel Rojas",
+                    "James Outman"
+                ],
+                "pitcher": "Tyler Glasnow"
+            },
+            # Add more teams...
+        }
+    }
+
+    print(json.dumps(manual_confirmations, indent=2))
+
+    print("\n2. Or just use manual player selection in the GUI")
+    print("3. Or wait until closer to game time for lineups")
 
 
 def main():
-    """Main fix function"""
-    print("🔧 DFS OPTIMIZER COMPLETE FIX")
-    print("=" * 60)
+    """Run all debug checks"""
+    print("🔧 DEBUGGING CONFIRMATION SYSTEMS")
+    print("=" * 70)
 
-    # Apply the fix
-    if apply_complete_fix():
-        explain_architecture()
+    # Debug MLB API
+    debug_mlb_api()
 
-        print("\n✅ FIX COMPLETE!")
-        print("\nWhat this fixes:")
-        print("  • Uses UnifiedMILPOptimizer correctly")
-        print("  • Handles SP/RP positions properly")
-        print("  • Falls back to simple generation if needed")
-        print("  • Shows progress and debug info")
-        print("  • Generates multiple diverse lineups")
+    # Debug Rotowire
+    debug_rotowire()
 
-        print("\n🚀 Next steps:")
-        print("1. Run your GUI: python complete_dfs_gui_debug.py")
-        print("2. Load your CSV")
-        print("3. Click Generate Lineups")
-        print("4. Watch the debug console for details")
+    # Check timing
+    check_dfs_slate_times()
 
-    else:
-        print("\n❌ Automatic fix failed")
-        print("Manual fix: Copy the OptimizationWorker class from above")
-        print("and replace it in your complete_dfs_gui_debug.py file")
+    # Show manual option
+    manual_lineup_entry()
+
+    print("\n\n📊 SUMMARY")
+    print("=" * 70)
+    print("Run this script to see what data is available")
+    print("Check rotowire_debug.html to see the actual page")
+    print("If it's a late slate, lineups might not be posted yet")
 
 
 if __name__ == "__main__":
