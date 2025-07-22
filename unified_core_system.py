@@ -36,11 +36,14 @@ class UnifiedCoreSystem:
     """
 
     def __init__(self):
-        """Initialize the unified core system"""
-        self.all_players: Dict[str, UnifiedPlayer] = {}  # All players by name
-        self.confirmed_names: Set[str] = set()  # Confirmed player names
-        self.manual_names: Set[str] = set()  # Manual selection names
-        self.player_pool: List[UnifiedPlayer] = []  # Final pool for optimization
+        '''Initialize the unified core system'''
+        self.all_players: Dict[str, UnifiedPlayer] = {}
+        self.confirmed_names: Set[str] = set()
+        self.manual_names: Set[str] = set()
+        self.player_pool: List[UnifiedPlayer] = []
+
+        # ADD THIS LINE:
+        self.logger = logger  # Use the module-level logger
 
         # Configuration
         self.salary_cap = 50000
@@ -139,24 +142,31 @@ class UnifiedCoreSystem:
         print("=" * 60)
 
     def load_csv(self, csv_path: str) -> int:
-        """
-        Load all players from CSV
-
-        Returns:
-            Number of players loaded
-        """
         print(f"\n📂 Loading CSV: {csv_path}")
 
         df = pd.read_csv(csv_path)
         self.all_players.clear()
 
+        POSITION_MAP = {
+            'SP': 'P',
+            'RP': 'P',
+            'P': 'P',
+            'C': 'C',
+            '1B': '1B',
+            '2B': '2B',
+            '3B': '3B',
+            'SS': 'SS',
+            'OF': 'OF',
+            'UTIL': 'UTIL'
+        }
+
         for idx, row in df.iterrows():
-            # Parse positions correctly
             pos_str = str(row.get('Position', ''))
-            positions = pos_str.split('/') if '/' in pos_str else [pos_str]
+            raw_positions = pos_str.split('/') if '/' in pos_str else [pos_str]
+
+            positions = [POSITION_MAP.get(p.strip(), p.strip()) for p in raw_positions]
             primary = positions[0]
 
-            # Create player
             player = UnifiedPlayer(
                 id=str(row.get('ID', f"{row['Name']}_{idx}")),
                 name=row['Name'],
@@ -167,15 +177,31 @@ class UnifiedCoreSystem:
                 base_projection=float(row.get('AvgPointsPerGame', 0))
             )
 
-            # Store additional data
-            player.opponent = row.get('Opponent', 'UNK')
-            player.game_info = row.get('Game Info', '')
             player.display_position = pos_str
 
-            # Add to dictionary by name
+            player.opponent = row.get('Opponent', '')
+            player.game_info = row.get('Game Info', '')
+            player.is_home = '@' not in row.get('Game Info', '')
+
+            if 'DFF Proj' in row:
+                player.dff_projection = float(row.get('DFF Proj', 0))
+            if 'DFF L5 Avg' in row:
+                player.dff_l5_avg = float(row.get('DFF L5 Avg', 0))
+
             self.all_players[player.name] = player
 
         print(f"✅ Loaded {len(self.all_players)} total players")
+
+        position_counts = {}
+        for player in self.all_players.values():
+            pos = player.primary_position
+            position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        print("\n📊 Position breakdown (after mapping):")
+        for pos in sorted(position_counts.keys()):
+            count = position_counts[pos]
+            print(f"   {pos}: {count} players")
+
         return len(self.all_players)
 
     def fetch_confirmed_players(self) -> int:
@@ -361,36 +387,24 @@ class UnifiedCoreSystem:
         return len(self.player_pool)
 
     def enrich_player_pool(self) -> int:
-        """
-        Enrich the player pool with ALL available data
-
-        Returns:
-            Number of players enriched
-        """
         if not self.player_pool:
-            print("❌ No players in pool to enrich!")
             return 0
 
         print(f"\n🔄 Enriching {len(self.player_pool)} players with ALL data sources...")
 
-        # 1. Fetch Vegas data for all teams
         print("\n📊 Fetching Vegas lines...")
         vegas_data = {}
         try:
-            # Get unique games
             games = set()
             for player in self.player_pool:
                 if hasattr(player, 'game_info') and player.game_info:
                     games.add(player.game_info)
 
-            # Fetch vegas data for each game
             for game in games:
                 try:
-                    # Parse teams from game info (format: "TEA@TEB 07:10PM ET")
                     teams = game.split()[0].split('@')
                     if len(teams) == 2:
                         away_team, home_team = teams
-                        # Fetch lines
                         lines = self.vegas.fetch_lines(home_team, away_team)
                         if lines:
                             vegas_data[home_team] = lines
@@ -402,84 +416,223 @@ class UnifiedCoreSystem:
         except Exception as e:
             logger.error(f"Vegas fetch error: {e}")
 
-        # 2. Fetch Statcast data
         print("\n⚾ Fetching Statcast data...")
         statcast_data = {}
         try:
-            # Get all player IDs for batch fetch
-            player_names = [p.name for p in self.player_pool]
+            if hasattr(self.statcast, 'fetch_statcast_batch'):
+                statcast_results = self.statcast.fetch_statcast_batch(
+                    self.player_pool
+                )
 
-            # Batch fetch recent stats
-            statcast_results = self.statcast.fetch_batch_stats(
-                player_names,
-                lookback_days=14,  # Last 2 weeks
-                priority_players=list(self.confirmed_names)
-            )
-
-            for name, stats in statcast_results.items():
-                if stats:
-                    statcast_data[name] = stats
+                for name, stats in statcast_results.items():
+                    if stats is not None:
+                        statcast_data[name] = stats
+            else:
+                for player in self.player_pool[:20]:
+                    try:
+                        data = self.statcast.fetch_player_data(player.name)
+                        if data is not None:
+                            statcast_data[player.name] = data
+                    except:
+                        pass
 
             print(f"   ✅ Fetched Statcast data for {len(statcast_data)} players")
         except Exception as e:
             logger.error(f"Statcast fetch error: {e}")
+            print(f"   ⚠️  Statcast error: {str(e)}")
 
-        # 3. Apply enrichments to each player
         enriched_count = 0
         for player in self.player_pool:
-            try:
-                # Vegas enrichment
-                if player.team in vegas_data:
-                    player.vegas_total = vegas_data[player.team].get('total', 0)
-                    player.vegas_team_total = vegas_data[player.team].get('team_total', 0)
-                    player.vegas_opponent_total = vegas_data[player.team].get('opponent_total', 0)
+            enriched = False
 
-                # Statcast enrichment
-                if player.name in statcast_data:
-                    stats = statcast_data[player.name]
-                    player.recent_avg = stats.get('avg', 0)
-                    player.recent_ops = stats.get('ops', 0)
-                    player.recent_woba = stats.get('woba', 0)
-                    player.recent_xwoba = stats.get('xwoba', 0)
-                    player.recent_hard_hit_rate = stats.get('hard_hit_rate', 0)
-                    player.recent_barrel_rate = stats.get('barrel_rate', 0)
+            if player.team in vegas_data:
+                player.apply_vegas_data(vegas_data[player.team])
+                enriched = True
 
+            if player.name in statcast_data:
+                player.apply_statcast_data(statcast_data[player.name])
+                enriched = True
+
+            if enriched:
                 enriched_count += 1
-
-            except Exception as e:
-                logger.error(f"Error enriching {player.name}: {e}")
 
         print(f"\n✅ Enriched {enriched_count}/{len(self.player_pool)} players")
 
-        # 4. Calculate scores using unified scoring engine
         print("\n📈 Calculating player scores...")
         for player in self.player_pool:
             try:
-                # Get comprehensive score from engine
-                score_data = self.scoring_engine.calculate_score(player)
+                final_score = self.scoring_engine.calculate_score(player)
 
-                # Apply all score components
-                player.base_score = score_data.get('base_score', player.base_projection)
-                player.recent_form_score = score_data.get('recent_form_score', player.base_score)
-                player.vegas_score = score_data.get('vegas_score', player.base_score)
-                player.matchup_score = score_data.get('matchup_score', player.base_score)
-                player.park_score = score_data.get('park_score', player.base_score)
+                player.optimization_score = final_score
+                player.enhanced_score = final_score
 
-                # Final optimization score
-                player.optimization_score = score_data.get('final_score', player.base_score)
-                player.enhanced_score = player.optimization_score
-
-                # Boost for confirmed players
                 if player.is_confirmed:
                     player.optimization_score *= 1.05
 
             except Exception as e:
                 logger.error(f"Error scoring {player.name}: {e}")
                 player.optimization_score = player.base_projection
+                player.enhanced_score = player.base_projection
 
         print("   ✅ All players scored")
 
         return enriched_count
+
+    def _call_optimizer(self, players, strategy, min_salary_val, existing_lineups=None):
+        base_kwargs = {
+            'players': players,
+            'strategy': strategy
+        }
+
+        if existing_lineups is not None:
+            base_kwargs['existing_lineups'] = existing_lineups
+
+        try:
+            kwargs = {**base_kwargs, 'min_salary_usage': min_salary_val}
+            return self.optimizer.optimize_lineup(**kwargs)
+        except TypeError as e:
+            if 'min_salary_usage' in str(e):
+                try:
+                    kwargs = {**base_kwargs, 'min_salary_pct': min_salary_val}
+                    return self.optimizer.optimize_lineup(**kwargs)
+                except TypeError as e2:
+                    if 'min_salary_pct' in str(e2):
+                        try:
+                            return self.optimizer.optimize_lineup(**base_kwargs)
+                        except Exception as e3:
+                            print(f"   ❌ Optimization error: {e3}")
+                            raise e3
+                    else:
+                        raise e2
+            else:
+                raise e
+
+    def _call_optimizer(self, players, strategy, min_salary_val, existing_lineups=None):
+        """
+        Wrapper to handle parameter name differences between different optimizer implementations.
+        """
+        base_kwargs = {
+            'players': players,
+            'strategy': strategy
+        }
+
+        if existing_lineups is not None:
+            base_kwargs['existing_lineups'] = existing_lineups
+
+        # Try with min_salary_usage first
+        try:
+            kwargs = {**base_kwargs, 'min_salary_usage': min_salary_val}
+            return self.optimizer.optimize_lineup(**kwargs)
+        except TypeError as e:
+            if 'min_salary_usage' in str(e):
+                # Try with min_salary_pct instead
+                try:
+                    kwargs = {**base_kwargs, 'min_salary_pct': min_salary_val}
+                    return self.optimizer.optimize_lineup(**kwargs)
+                except TypeError as e2:
+                    print(f"   ❌ Parameter error: {e2}")
+                    # Try without min_salary parameter
+                    try:
+                        return self.optimizer.optimize_lineup(**base_kwargs)
+                    except Exception as e3:
+                        print(f"   ❌ Even basic call failed: {e3}")
+                        raise e2
+            else:
+                raise
+
+    def optimize_showdown_lineups(
+            self,
+            num_lineups: int = 1,
+            strategy: str = "balanced",
+            min_unique_players: int = 2
+    ) -> List[Dict]:
+        if not self.player_pool:
+            print("❌ No players in pool!")
+            return []
+
+        print(f"\n🎰 Optimizing {num_lineups} SHOWDOWN lineups...")
+        print(f"   Strategy: {strategy}")
+        print(f"   Pool size: {len(self.player_pool)} players")
+
+        util_players = []
+        seen_names = set()
+
+        for player in self.player_pool:
+            if player.name in seen_names:
+                continue
+
+            if hasattr(player, 'display_position') and 'CPT' in player.display_position:
+                continue
+
+            util_players.append(player)
+            seen_names.add(player.name)
+
+        print(f"   Unique UTIL players: {len(util_players)}")
+
+        if len(util_players) < 6:
+            print(f"❌ Not enough unique players for showdown: {len(util_players)} (need 6)")
+            return []
+
+        lineups = []
+        used_captains = set()
+
+        for i in range(num_lineups):
+            print(f"\n   Lineup {i + 1}/{num_lineups}...")
+
+            if i > 0 and min_unique_players > 0:
+                for player in util_players:
+                    if player.name in used_captains:
+                        if not hasattr(player, 'original_score'):
+                            player.original_score = player.optimization_score
+                        player.optimization_score = player.original_score * 0.7
+
+            lineup_players, score = self._optimize_showdown_lineup(
+                util_players,
+                strategy=strategy
+            )
+
+            for player in util_players:
+                if hasattr(player, 'original_score'):
+                    player.optimization_score = player.original_score
+
+            if lineup_players and len(lineup_players) == 6:
+                captain = None
+                for p in lineup_players:
+                    if getattr(p, 'assigned_position', '') == 'CPT':
+                        captain = p
+                        used_captains.add(p.name)
+                        break
+
+                total_salary = 0
+                for p in lineup_players:
+                    if getattr(p, 'assigned_position', '') == 'CPT':
+                        total_salary += int(p.salary * 1.5)
+                    else:
+                        total_salary += p.salary
+
+                lineup_dict = {
+                    'players': lineup_players,
+                    'total_salary': total_salary,
+                    'total_projection': score,
+                    'strategy': strategy,
+                    'pool_size': len(util_players),
+                    'type': 'showdown'
+                }
+
+                lineups.append(lineup_dict)
+
+                print(f"   ✅ Score: {score:.1f} pts")
+                print(f"   💰 Salary: ${total_salary:,} ({total_salary / self.salary_cap:.1%})")
+
+                if captain:
+                    print(f"   👑 Captain: {captain.name} (${int(captain.salary * 1.5):,})")
+
+        for player in util_players:
+            if hasattr(player, 'original_score'):
+                delattr(player, 'original_score')
+
+        print(f"\n✅ Generated {len(lineups)} showdown lineups")
+        return lineups
 
     def optimize_lineups(
             self,
@@ -487,22 +640,12 @@ class UnifiedCoreSystem:
             strategy: str = "balanced",
             min_unique_players: int = 3
     ) -> List[Dict]:
-        """
-        Generate optimized lineups from the player pool
-
-        Args:
-            num_lineups: Number of lineups to generate
-            strategy: Optimization strategy
-            min_unique_players: Minimum unique players between lineups
-
-        Returns:
-            List of lineup dictionaries
-        """
+        """Generate optimized lineups from the player pool"""
         if not self.player_pool:
             print("❌ No players in pool!")
             return []
 
-        print(f"\n🎯 Optimizing {num_lineups} lineups...")
+        print(f"\\n🎯 Optimizing {num_lineups} lineups...")
         print(f"   Strategy: {strategy}")
         print(f"   Pool size: {len(self.player_pool)} players")
 
@@ -510,28 +653,48 @@ class UnifiedCoreSystem:
         used_players = set()
 
         for i in range(num_lineups):
-            print(f"\n   Lineup {i + 1}/{num_lineups}...")
+            print(f"\\n   Lineup {i + 1}/{num_lineups}...")
 
             # Enforce uniqueness
             if i > 0 and min_unique_players > 0:
-                # Temporarily reduce scores of used players
                 for player in self.player_pool:
                     if player.name in used_players:
                         player.temp_score = player.optimization_score
-                        player.optimization_score *= 0.8  # 20% penalty
+                        player.optimization_score *= 0.8
 
-            # Run optimization
-            lineup_players, score = self.optimizer.optimize_lineup(
-                self.player_pool,
-                strategy=strategy,
-                min_salary_usage=self.min_salary_usage  # Fixed: was min_salary_pct
-            )
+            try:
+                # Use wrapper for parameter compatibility
+                result = self._call_optimizer(
+                    players=self.player_pool,
+                    strategy=strategy,
+                    min_salary_val=self.min_salary_usage,
+                    existing_lineups=lineups if i > 0 else None
+                )
 
-            # Restore original scores
+                # Handle return types
+                if isinstance(result, tuple) and len(result) == 2:
+                    lineup_players, score = result
+                elif isinstance(result, list):
+                    lineup_players = result
+                    score = sum(p.optimization_score for p in lineup_players)
+                else:
+                    raise ValueError(f"Unexpected return type: {type(result)}")
+
+            except Exception as e:
+                print(f"   ❌ Optimization failed: {str(e)}")
+                # Restore scores
+                if i > 0:
+                    for player in self.player_pool:
+                        if hasattr(player, 'temp_score'):
+                            player.optimization_score = player.temp_score
+                continue
+
+            # Restore scores
             if i > 0:
                 for player in self.player_pool:
                     if hasattr(player, 'temp_score'):
                         player.optimization_score = player.temp_score
+                        delattr(player, 'temp_score')
 
             if lineup_players:
                 # Track used players
@@ -549,12 +712,10 @@ class UnifiedCoreSystem:
 
                 lineups.append(lineup_dict)
 
-                # Display lineup
                 print(f"   ✅ Score: {score:.1f} pts")
-                print(
-                    f"   💰 Salary: ${lineup_dict['total_salary']:,} ({lineup_dict['total_salary'] / self.salary_cap:.1%})")
+                print(f"   💰 Salary: ${lineup_dict['total_salary']:,}")
 
-        print(f"\n✅ Generated {len(lineups)} lineups")
+        print(f"\\n✅ Generated {len(lineups)} lineups")
         return lineups
 
     def get_system_status(self) -> Dict:

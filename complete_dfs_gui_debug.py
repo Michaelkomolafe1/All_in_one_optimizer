@@ -604,40 +604,6 @@ class OptimizationWorker(QThread):
             self.error.emit(str(e))
 
 
-def apply_gui_integration():
-    """Apply the integration to complete_dfs_gui_debug.py"""
-    import shutil
-    from datetime import datetime
-
-    print("\n🔧 APPLYING GUI INTEGRATION")
-    print("=" * 60)
-
-    gui_file = 'complete_dfs_gui_debug.py'
-
-    # Backup
-    backup = f"{gui_file}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    try:
-        shutil.copy(gui_file, backup)
-        print(f"✅ Created backup: {backup}")
-    except:
-        print("⚠️  Could not create backup")
-
-    print("\n📋 MANUAL INTEGRATION STEPS:")
-    print("1. Copy the OptimizationWorker class above")
-    print("2. Replace the existing OptimizationWorker in your GUI")
-    print("3. Make sure unified_core_system.py is in the same directory")
-    print("4. Run your GUI!")
-
-    print("\n🎯 WHAT THIS GIVES YOU:")
-    print("• Confirmed players only optimization")
-    print("• ALL enrichments (Vegas, Statcast, etc)")
-    print("• Pure data - no fallbacks")
-    print("• Manual player selection support")
-    print("• Detailed progress and logging")
-
-
-if __name__ == "__main__":
-    apply_gui_integration()
 
 
 
@@ -965,3 +931,20 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def apply_gui_integration():
+    """Apply the integration to complete_dfs_gui_debug.py"""
+    print("\n🔧 GUI INTEGRATION READY")
+    print("=" * 60)
+    print("\n✅ Unified Core System Integration Active")
+    print("\n📋 The GUI is configured to use:")
+    print("  • Unified Core System")
+    print("  • Confirmed players only")
+    print("  • ALL data enrichments")
+    print("  • Manual player selection")
+    print("\nRun the GUI directly - no backup needed!")
+
+
+# Call if running directly
+if __name__ == "__main__":
+    apply_gui_integration()

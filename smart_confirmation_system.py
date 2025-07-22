@@ -355,6 +355,7 @@ class UniversalSmartConfirmation:
                     return True
 
         return False
+        return False
 
     def _names_match(self, name1: str, name2: str) -> bool:
         """Fuzzy name matching"""

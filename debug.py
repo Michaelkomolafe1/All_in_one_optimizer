@@ -1,127 +1,196 @@
 #!/usr/bin/env python3
 """
-VERIFY COMPLETE LINEUP SYSTEM
-=============================
-Test that we can get all lineups with correct team codes
+COMPLETE METHOD REPLACEMENTS WITH CONTEXT
+=========================================
+Shows exactly where each method goes in unified_core_system.py
 """
 
-import requests
-from datetime import datetime
+print("\n📄 COMPLETE METHOD REPLACEMENTS FOR unified_core_system.py")
+print("=" * 70)
 
+# ===========================================================================
+# METHOD 1: _call_optimizer (Add this new method to the class)
+# ===========================================================================
+print("\n1️⃣ ADD THIS NEW METHOD TO UnifiedCoreSystem CLASS:")
+print("-" * 70)
 
-def verify_complete_system():
-    """Verify we can extract all lineups with correct team codes"""
-    print("\n✅ VERIFYING COMPLETE LINEUP EXTRACTION")
-    print("=" * 60)
+method_1 = '''    def _call_optimizer(self, players, strategy, min_salary_val, existing_lineups=None):
+        """
+        Call the optimizer with correct parameters
+        Note: UnifiedMILPOptimizer doesn't use min_salary parameter
+        """
+        try:
+            # The optimize_lineup method only accepts: players, strategy, manual_selections
+            lineup_players, score = self.optimizer.optimize_lineup(
+                players=players,
+                strategy=strategy,
+                manual_selections=""  # Empty string for no manual selections
+            )
+            return lineup_players, score
+        except Exception as e:
+            print(f"   ❌ Optimization error: {e}")
+            raise'''
 
-    today = datetime.now().strftime('%Y-%m-%d')
-    url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}&hydrate=probablePitcher,lineups"
+print(method_1)
 
-    confirmed_lineups = {}
-    confirmed_pitchers = {}
+# ===========================================================================
+# METHOD 2: Complete enrich_player_pool replacement
+# ===========================================================================
+print("\n\n2️⃣ REPLACE THE ENTIRE enrich_player_pool METHOD:")
+print("-" * 70)
 
-    try:
-        resp = requests.get(url, timeout=10)
-        data = resp.json()
-        games = data.get('dates', [{}])[0].get('games', [])
+method_2 = '''    def enrich_player_pool(self) -> int:
+        """
+        Enrich player pool with all available data sources
 
-        print(f"Processing {len(games)} games...\n")
+        Returns:
+            Number of players enriched
+        """
+        if not self.player_pool:
+            return 0
 
-        for game in games:
-            teams = game.get('teams', {})
+        print(f"\\n🔄 Enriching {len(self.player_pool)} players with ALL data sources...")
 
-            # Get team abbreviations
-            away_abbr = teams.get('away', {}).get('team', {}).get('abbreviation', '')
-            home_abbr = teams.get('home', {}).get('team', {}).get('abbreviation', '')
+        # 1. Fetch Vegas data for all teams
+        print("\\n📊 Fetching Vegas lines...")
+        vegas_data = {}
+        try:
+            # Get unique games
+            games = set()
+            for player in self.player_pool:
+                if hasattr(player, 'game_info') and player.game_info:
+                    games.add(player.game_info)
 
-            # Get pitchers
-            away_pitcher = teams.get('away', {}).get('probablePitcher', {})
-            home_pitcher = teams.get('home', {}).get('probablePitcher', {})
+            # Fetch vegas data for each game
+            for game in games:
+                try:
+                    # Parse teams from game info (format: "TEA@TEB 07:10PM ET")
+                    teams = game.split()[0].split('@')
+                    if len(teams) == 2:
+                        away_team, home_team = teams
+                        # Fetch lines
+                        lines = self.vegas.fetch_lines(home_team, away_team)
+                        if lines:
+                            vegas_data[home_team] = lines
+                            vegas_data[away_team] = lines
+                except:
+                    continue
 
-            if away_pitcher:
-                confirmed_pitchers[away_abbr] = away_pitcher.get('fullName', '')
-            if home_pitcher:
-                confirmed_pitchers[home_abbr] = home_pitcher.get('fullName', '')
+            print(f"   ✅ Fetched Vegas data for {len(vegas_data)} teams")
+        except Exception as e:
+            logger.error(f"Vegas fetch error: {e}")
 
-            # Get lineups from game.lineups
-            lineups = game.get('lineups', {})
-            if lineups:
-                # Away lineup
-                away_players = lineups.get('awayPlayers', [])
-                if away_players and away_abbr:
-                    confirmed_lineups[away_abbr] = []
-                    for player in away_players:
-                        confirmed_lineups[away_abbr].append({
-                            'name': player.get('fullName', ''),
-                            'position': player.get('primaryPosition', {}).get('abbreviation', '')
-                        })
+        # 2. Fetch Statcast data
+        print("\\n⚾ Fetching Statcast data...")
+        statcast_data = {}
+        try:
+            # Use the correct method name: fetch_statcast_batch
+            if hasattr(self.statcast, 'fetch_statcast_batch'):
+                # Batch fetch with correct method
+                statcast_results = self.statcast.fetch_statcast_batch(
+                    self.player_pool  # Pass player objects, not just names
+                )
 
-                # Home lineup
-                home_players = lineups.get('homePlayers', [])
-                if home_players and home_abbr:
-                    confirmed_lineups[home_abbr] = []
-                    for player in home_players:
-                        confirmed_lineups[home_abbr].append({
-                            'name': player.get('fullName', ''),
-                            'position': player.get('primaryPosition', {}).get('abbreviation', '')
-                        })
-
-        # Show results
-        print("📊 RESULTS:")
-        print(f"Teams with lineups: {len(confirmed_lineups)}")
-        print(f"Teams with pitchers: {len(confirmed_pitchers)}")
-        print(f"Total players: {sum(len(lineup) for lineup in confirmed_lineups.values())}")
-
-        # Show sample teams
-        print("\n📋 Sample Teams with Lineups:")
-        for team in sorted(confirmed_lineups.keys())[:10]:
-            lineup = confirmed_lineups[team]
-            pitcher = confirmed_pitchers.get(team, 'TBD')
-            print(f"\n{team} ({len(lineup)} players) - SP: {pitcher}")
-            # Show first 3 batters
-            for i, player in enumerate(lineup[:3]):
-                print(f"  {i + 1}. {player['name']} ({player['position']})")
-
-        # Check against your slate teams
-        print("\n🎯 Checking Your Slate Teams:")
-        your_slate_teams = ['ARI', 'ATH', 'ATL', 'CHC', 'COL', 'CWS', 'HOU',
-                            'KC', 'LAA', 'LAD', 'MIL', 'MIN', 'NYM', 'NYY',
-                            'SEA', 'SF', 'STL', 'TB', 'TEX', 'TOR']
-
-        matches = 0
-        for team in your_slate_teams:
-            if team in confirmed_lineups:
-                matches += 1
-                print(f"  ✅ {team}: {len(confirmed_lineups[team])} players")
+                for name, stats in statcast_results.items():
+                    if stats is not None:
+                        statcast_data[name] = stats
             else:
-                # Check if it's ATH -> OAK
-                if team == 'ATH' and 'OAK' in confirmed_lineups:
-                    matches += 1
-                    print(f"  ✅ {team} (as OAK): {len(confirmed_lineups['OAK'])} players")
-                else:
-                    print(f"  ❌ {team}: Not found")
+                # Individual fetch as backup
+                for player in self.player_pool[:20]:  # Limit to avoid rate limits
+                    try:
+                        data = self.statcast.fetch_player_data(player.name)
+                        if data is not None:
+                            statcast_data[player.name] = data
+                    except:
+                        pass
 
-        print(f"\nMatched {matches}/{len(your_slate_teams)} of your slate teams")
+            print(f"   ✅ Fetched Statcast data for {len(statcast_data)} players")
+        except Exception as e:
+            logger.error(f"Statcast fetch error: {e}")
+            print(f"   ⚠️  Statcast error: {str(e)}")
 
-    except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
+        # 3. Apply enrichments to players
+        enriched_count = 0
+        for player in self.player_pool:
+            enriched = False
 
+            # Apply Vegas data
+            if player.team in vegas_data:
+                player.apply_vegas_data(vegas_data[player.team])
+                enriched = True
 
-if __name__ == "__main__":
-    verify_complete_system()
+            # Apply Statcast data
+            if player.name in statcast_data:
+                player.apply_statcast_data(statcast_data[player.name])
+                enriched = True
 
-    print("\n\n🎯 NEXT STEPS:")
-    print("=" * 60)
-    print("""
-1. Add the lineup extraction code to smart_confirmation_system.py
-2. The code needs to:
-   - Get team abbreviations from teams.away.team.abbreviation
-   - Check for lineups in game.lineups.awayPlayers/homePlayers
-   - Store them in self.confirmed_lineups[team_abbr]
-3. Restart your GUI
-4. You'll have 270+ confirmed players!
+            if enriched:
+                enriched_count += 1
 
-Your optimizer will finally work with real confirmed lineups!
+        print(f"\\n✅ Enriched {enriched_count}/{len(self.player_pool)} players")
+
+        # 4. Calculate scores using unified scoring engine
+        print("\\n📈 Calculating player scores...")
+        for player in self.player_pool:
+            try:
+                # The scoring engine returns a float, not a dict
+                final_score = self.scoring_engine.calculate_score(player)
+
+                # Set the score directly
+                player.optimization_score = final_score
+                player.enhanced_score = final_score
+
+                # Boost for confirmed players
+                if player.is_confirmed:
+                    player.optimization_score *= 1.05
+
+            except Exception as e:
+                logger.error(f"Error scoring {player.name}: {e}")
+                # Use base projection as fallback
+                player.optimization_score = player.base_projection
+                player.enhanced_score = player.base_projection
+
+        print("   ✅ All players scored")
+
+        return enriched_count'''
+
+print(method_2)
+
+# ===========================================================================
+# METHOD 3: Updated optimize_lineups to use _call_optimizer
+# ===========================================================================
+print("\n\n3️⃣ UPDATE optimize_lineups METHOD (find the line that calls optimize_lineup):")
+print("-" * 70)
+print("Find this section in optimize_lineups:")
+print()
+print("            # Run optimization")
+print("            lineup_players, score = self.optimizer.optimize_lineup(")
+print("                self.player_pool,")
+print("                strategy=strategy,")
+print("                min_salary_usage=self.min_salary_usage")
+print("            )")
+print()
+print("Replace it with:")
+print()
+
+method_3 = '''            # Use the wrapper to handle optimization
+            lineup_players, score = self._call_optimizer(
+                players=self.player_pool,
+                strategy=strategy,
+                min_salary_val=self.min_salary_usage,
+                existing_lineups=lineups if i > 0 else None
+            )'''
+
+print(method_3)
+
+print("\n\n" + "=" * 70)
+print("IMPLEMENTATION CHECKLIST")
+print("=" * 70)
+print("""
+1. ✅ Add the _call_optimizer method to the class
+2. ✅ Replace the entire enrich_player_pool method
+3. ✅ Update the optimize_lineup call in optimize_lineups to use _call_optimizer
+4. ✅ Add position mapping in load_csv (SP → P)
+
+After these changes, your optimizer will work correctly!
 """)

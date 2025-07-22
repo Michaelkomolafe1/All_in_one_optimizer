@@ -256,35 +256,7 @@ class UnifiedScoringEngine:
 
         return components
 
-    def calculate_score(self, player: Any) -> float:
-        """
-        ENHANCED: Main entry point with better error handling and validation
-        """
-        # Generate cache key
-        cache_key = self._generate_cache_key(player)
 
-        # Check cache first
-        if cache_key in self._cache:
-            cached_score, timestamp = self._cache[cache_key]
-            if (datetime.now() - timestamp).seconds < 300:  # 5 min cache
-                logger.debug(f"Cache hit for {player.name}")
-                # Ensure player object has the cached score
-                player.enhanced_score = cached_score
-                return cached_score
-
-        # Calculate fresh score
-        self._calculation_count += 1
-        logger.debug(
-            f"Calculating score for {player.name} (calculation #{self._calculation_count})"
-        )
-
-        # Get base score with validation
-        base_score = self._get_base_score(player)
-        if base_score <= 0:
-            logger.warning(f"No valid base score for {player.name}")
-            player.enhanced_score = 0.0
-            self._store_audit_trail(player, 0.0, [], 0.0)
-            return 0.0
 
         # Collect score components
         components = self._collect_components(player, base_score)
@@ -394,7 +366,7 @@ class UnifiedScoringEngine:
 
         # Log detailed scoring for high-value players
         if final_score > 20:
-            logger.info(f"SCORE DETAILS: {player.name} scored {final_score:.1f} with components: {[f"{c.name}:{c.multiplier:.2f}" for c in components]}")
+            logger.info(f"SCORE DETAILS:  scored {final_score:.1f} with components: {[f"{c.name}:{c.multiplier:.2f}" for c in components]}")
 
         return final_score
 
@@ -407,25 +379,33 @@ class UnifiedScoringEngine:
         return {k: v / total for k, v in weights.items()}
 
     def _calculate_recent_form(self, player: Any, base_score: float) -> Optional[float]:
-        """Calculate recent form multiplier with validation"""
-        # Check for recent performance data
-        if hasattr(player, "_recent_performance") and player._recent_performance:
-            form_score = player._recent_performance.get("form_score", 1.0)
-            return self._apply_bounds(form_score, "recent_form")
+        try:
+            if hasattr(player, "_recent_performance") and player._recent_performance is not None:
+                if isinstance(player._recent_performance, (int, float)):
+                    return self._apply_bounds(float(player._recent_performance), "recent_form")
 
-        # Check for DFF L5 average
-        if hasattr(player, "dff_l5_avg") and player.dff_l5_avg and base_score > 0:
-            ratio = player.dff_l5_avg / base_score
-            return self._apply_bounds(ratio, "recent_form")
+                elif isinstance(player._recent_performance, dict):
+                    form_score = player._recent_performance.get("form_score", 1.0)
+                    return self._apply_bounds(float(form_score), "recent_form")
 
-        # Check for recent scores array
-        if hasattr(player, "recent_scores") and len(player.recent_scores) >= 3:
-            avg_recent = np.mean(player.recent_scores[-5:])
-            if base_score > 0:
-                ratio = avg_recent / base_score
-                return self._apply_bounds(ratio, "recent_form")
+            if hasattr(player, "dff_l5_avg") and player.dff_l5_avg and base_score > 0:
+                ratio = float(player.dff_l5_avg) / float(base_score)
+                multiplier = 0.7 + (min(max(ratio, 0), 2.0) * 0.3)
+                return self._apply_bounds(multiplier, "recent_form")
 
-        return None
+            if hasattr(player, "recent_scores") and player.recent_scores and len(player.recent_scores) >= 3:
+                avg_recent = sum(player.recent_scores[-5:]) / len(player.recent_scores[-5:])
+                if base_score > 0:
+                    ratio = avg_recent / base_score
+                    multiplier = 0.7 + (min(max(ratio, 0), 2.0) * 0.3)
+                    return self._apply_bounds(multiplier, "recent_form")
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Error in recent form calculation: {e}")
+            return None
+
 
     def validate_scoring_logic(self):
         """
