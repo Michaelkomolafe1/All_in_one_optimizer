@@ -1,157 +1,127 @@
 #!/usr/bin/env python3
 """
-SEARCH GUI CODE
-===============
-Find the exact location where you need to add game_info
+VERIFY COMPLETE LINEUP SYSTEM
+=============================
+Test that we can get all lineups with correct team codes
 """
 
-import os
-import re
+import requests
+from datetime import datetime
 
 
-def search_gui_file():
-    """Search through the GUI file and show relevant code sections"""
-    print("\n🔍 SEARCHING YOUR GUI FILE FOR THE CODE LOCATION")
-    print("=" * 70)
+def verify_complete_system():
+    """Verify we can extract all lineups with correct team codes"""
+    print("\n✅ VERIFYING COMPLETE LINEUP EXTRACTION")
+    print("=" * 60)
 
-    gui_file = 'complete_dfs_gui_debug.py'
+    today = datetime.now().strftime('%Y-%m-%d')
+    url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}&hydrate=probablePitcher,lineups"
 
-    if not os.path.exists(gui_file):
-        print(f"❌ {gui_file} not found!")
-        return
+    confirmed_lineups = {}
+    confirmed_pitchers = {}
 
-    with open(gui_file, 'r') as f:
-        lines = f.readlines()
+    try:
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+        games = data.get('dates', [{}])[0].get('games', [])
 
-    print(f"✅ Loaded {gui_file} ({len(lines)} lines)")
+        print(f"Processing {len(games)} games...\n")
 
-    # First, find OptimizationWorker class
-    print("\n📍 STEP 1: Finding OptimizationWorker class...")
+        for game in games:
+            teams = game.get('teams', {})
 
-    worker_start = None
-    for i, line in enumerate(lines):
-        if "class OptimizationWorker" in line:
-            worker_start = i
-            print(f"✅ Found at line {i + 1}")
-            print(f"   {line.strip()}")
-            break
+            # Get team abbreviations
+            away_abbr = teams.get('away', {}).get('team', {}).get('abbreviation', '')
+            home_abbr = teams.get('home', {}).get('team', {}).get('abbreviation', '')
 
-    if worker_start is None:
-        print("❌ Could not find OptimizationWorker class")
-        print("\nSearching for alternative patterns...")
+            # Get pitchers
+            away_pitcher = teams.get('away', {}).get('probablePitcher', {})
+            home_pitcher = teams.get('home', {}).get('probablePitcher', {})
 
-        # Try alternative searches
-        for i, line in enumerate(lines):
-            if "QThread" in line and "class" in line:
-                print(f"\nFound QThread class at line {i + 1}:")
-                print(f"   {line.strip()}")
+            if away_pitcher:
+                confirmed_pitchers[away_abbr] = away_pitcher.get('fullName', '')
+            if home_pitcher:
+                confirmed_pitchers[home_abbr] = home_pitcher.get('fullName', '')
 
-    # Search for where players are created
-    print("\n📍 STEP 2: Finding where players are created...")
+            # Get lineups from game.lineups
+            lineups = game.get('lineups', {})
+            if lineups:
+                # Away lineup
+                away_players = lineups.get('awayPlayers', [])
+                if away_players and away_abbr:
+                    confirmed_lineups[away_abbr] = []
+                    for player in away_players:
+                        confirmed_lineups[away_abbr].append({
+                            'name': player.get('fullName', ''),
+                            'position': player.get('primaryPosition', {}).get('abbreviation', '')
+                        })
 
-    # Look for UnifiedPlayer creation
-    player_creation_lines = []
-    for i, line in enumerate(lines):
-        if "UnifiedPlayer(" in line:
-            player_creation_lines.append(i)
-            print(f"\n✅ Found UnifiedPlayer creation at line {i + 1}")
+                # Home lineup
+                home_players = lineups.get('homePlayers', [])
+                if home_players and home_abbr:
+                    confirmed_lineups[home_abbr] = []
+                    for player in home_players:
+                        confirmed_lineups[home_abbr].append({
+                            'name': player.get('fullName', ''),
+                            'position': player.get('primaryPosition', {}).get('abbreviation', '')
+                        })
 
-            # Show context (10 lines before and after)
-            start = max(0, i - 5)
-            end = min(len(lines), i + 15)
+        # Show results
+        print("📊 RESULTS:")
+        print(f"Teams with lineups: {len(confirmed_lineups)}")
+        print(f"Teams with pitchers: {len(confirmed_pitchers)}")
+        print(f"Total players: {sum(len(lineup) for lineup in confirmed_lineups.values())}")
 
-            print("\n📄 CODE CONTEXT:")
-            print("   Line | Code")
-            print("   -----|-----")
-            for j in range(start, end):
-                marker = ">>>" if j == i else "   "
-                print(f"   {j + 1:5d} {marker} {lines[j].rstrip()}")
+        # Show sample teams
+        print("\n📋 Sample Teams with Lineups:")
+        for team in sorted(confirmed_lineups.keys())[:10]:
+            lineup = confirmed_lineups[team]
+            pitcher = confirmed_pitchers.get(team, 'TBD')
+            print(f"\n{team} ({len(lineup)} players) - SP: {pitcher}")
+            # Show first 3 batters
+            for i, player in enumerate(lineup[:3]):
+                print(f"  {i + 1}. {player['name']} ({player['position']})")
 
-    # Look for where we're iterating through rows
-    print("\n📍 STEP 3: Finding DataFrame iteration...")
+        # Check against your slate teams
+        print("\n🎯 Checking Your Slate Teams:")
+        your_slate_teams = ['ARI', 'ATH', 'ATL', 'CHC', 'COL', 'CWS', 'HOU',
+                            'KC', 'LAA', 'LAD', 'MIL', 'MIN', 'NYM', 'NYY',
+                            'SEA', 'SF', 'STL', 'TB', 'TEX', 'TOR']
 
-    for i, line in enumerate(lines):
-        if "iterrows()" in line or "for idx, row in" in line:
-            print(f"\n✅ Found DataFrame iteration at line {i + 1}")
-            print(f"   {line.strip()}")
+        matches = 0
+        for team in your_slate_teams:
+            if team in confirmed_lineups:
+                matches += 1
+                print(f"  ✅ {team}: {len(confirmed_lineups[team])} players")
+            else:
+                # Check if it's ATH -> OAK
+                if team == 'ATH' and 'OAK' in confirmed_lineups:
+                    matches += 1
+                    print(f"  ✅ {team} (as OAK): {len(confirmed_lineups['OAK'])} players")
+                else:
+                    print(f"  ❌ {team}: Not found")
 
-    # Look for display_position assignment
-    print("\n📍 STEP 4: Finding display_position assignment...")
+        print(f"\nMatched {matches}/{len(your_slate_teams)} of your slate teams")
 
-    display_pos_lines = []
-    for i, line in enumerate(lines):
-        if "display_position" in line:
-            display_pos_lines.append(i)
-            print(f"\n✅ Found display_position at line {i + 1}")
-
-            # Show context
-            start = max(0, i - 10)
-            end = min(len(lines), i + 5)
-
-            print("\n📄 THIS IS WHERE YOU NEED TO ADD game_info:")
-            print("   Line | Code")
-            print("   -----|-----")
-            for j in range(start, end):
-                marker = ">>>" if j == i else "   "
-                print(f"   {j + 1:5d} {marker} {lines[j].rstrip()}")
-
-            print(f"\n💡 ADD THESE LINES BEFORE LINE {i + 1}:")
-            print("        player.opponent = row.get('Opponent', 'UNK')")
-            print("        player.game_info = row.get('Game Info', '')  # CRITICAL!")
-
-    # Search for the run method
-    print("\n📍 STEP 5: Finding the run method...")
-
-    for i, line in enumerate(lines):
-        if "def run" in line and worker_start and i > worker_start:
-            print(f"\n✅ Found run method at line {i + 1}")
-
-            # Look for where players are processed
-            for j in range(i, min(i + 100, len(lines))):
-                if "row.get(" in lines[j]:
-                    print(f"   Processing rows around line {j + 1}")
-
-    # Summary
-    print("\n\n" + "=" * 70)
-    print("📋 SUMMARY - WHERE TO ADD THE CODE:")
-    print("=" * 70)
-
-    if display_pos_lines:
-        line_num = display_pos_lines[0] + 1
-        print(f"\n✅ Add the game_info assignment BEFORE line {line_num}")
-        print(f"   (Before the display_position assignment)")
-
-        print("\n📝 ADD THESE TWO LINES:")
-        print("        player.opponent = row.get('Opponent', 'UNK')")
-        print("        player.game_info = row.get('Game Info', '')")
-
-    else:
-        print("\n⚠️  Could not find display_position assignment")
-        print("Look for where UnifiedPlayer is created and add:")
-        print("   player.game_info = row.get('Game Info', '')")
-        print("after the player is created")
-
-    # Alternative search - look for gui_integration code
-    print("\n\n📍 ALTERNATIVE: Checking if gui_integration.py code is used...")
-
-    gui_integration_found = False
-    for i, line in enumerate(lines):
-        if "game_info = row.get('Game Info'" in line:
-            gui_integration_found = True
-            print(f"✅ game_info assignment already exists at line {i + 1}!")
-            print(f"   {line.strip()}")
-            break
-
-    if gui_integration_found:
-        print("\n✅ YOUR CODE ALREADY HAS game_info ASSIGNMENT!")
-        print("The issue might be elsewhere.")
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
-    search_gui_file()
+    verify_complete_system()
 
-    print("\n\n💡 NEXT STEPS:")
-    print("1. Look at the line numbers shown above")
-    print("2. Find where display_position is assigned")
-    print("3. Add the two lines BEFORE that line")
-    print("4. Save and restart your GUI")
+    print("\n\n🎯 NEXT STEPS:")
+    print("=" * 60)
+    print("""
+1. Add the lineup extraction code to smart_confirmation_system.py
+2. The code needs to:
+   - Get team abbreviations from teams.away.team.abbreviation
+   - Check for lineups in game.lineups.awayPlayers/homePlayers
+   - Store them in self.confirmed_lineups[team_abbr]
+3. Restart your GUI
+4. You'll have 270+ confirmed players!
+
+Your optimizer will finally work with real confirmed lineups!
+""")

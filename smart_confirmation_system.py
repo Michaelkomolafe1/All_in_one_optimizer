@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-DROP-IN REPLACEMENT FOR smart_confirmation_system.py
-===================================================
-This file can directly replace your existing smart_confirmation_system.py
-Maintains the same interface but with modern, efficient implementation
+UNIVERSAL SMART CONFIRMATION SYSTEM
+===================================
+Works with any CSV file and handles all edge cases
 """
 
 import logging
 import requests
-from unified_data_system import UnifiedDataSystem
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -18,453 +16,350 @@ import time
 logger = logging.getLogger(__name__)
 
 
-class OptimizedConfirmationMixin:
+class UniversalSmartConfirmation:
     """
-    Mixin to add optimized confirmation workflow
-    """
-
-    def _optimize_confirmation_workflow(self, csv_players, confirmed_lineups):
-        """Apply workflow optimizations to speed up confirmation matching"""
-
-        # OPTIMIZATION 1: Pre-index confirmed lineups by team
-        if self.verbose:
-            print("🔧 Optimizing confirmation workflow...")
-
-        lineup_by_team = {}
-        for team, lineup in confirmed_lineups.items():
-            team_norm = self.data_system.normalize_team(team)
-            if team_norm not in lineup_by_team:
-                lineup_by_team[team_norm] = []
-
-            # OPTIMIZATION 2: Pre-normalize lineup names
-            for player in lineup:
-                normalized_name = player['name'].lower().strip()
-                player['_normalized_name'] = normalized_name
-                lineup_by_team[team_norm].append(player)
-
-        # OPTIMIZATION 3: Create exact match lookup
-        exact_match_lookup = {}
-        for team, lineup in lineup_by_team.items():
-            exact_match_lookup[team] = {player['_normalized_name']: player for player in lineup}
-
-        # OPTIMIZATION 4: Group CSV players by team
-        csv_by_team = {}
-        for player in csv_players:
-            if hasattr(player, 'team'):
-                team_norm = self.data_system.normalize_team(player.team)
-            else:
-                team_norm = self.data_system.normalize_team(player.get('team', ''))
-
-            if team_norm not in csv_by_team:
-                csv_by_team[team_norm] = []
-            csv_by_team[team_norm].append(player)
-
-        return lineup_by_team, exact_match_lookup, csv_by_team
-
-    def apply_confirmations_optimized(self, csv_players, confirmed_lineups, confirmed_pitchers):
-        """Optimized version of confirmation application"""
-        start_time = time.time()
-
-        # Apply workflow optimizations
-        lineup_by_team, exact_match_lookup, csv_by_team = self._optimize_confirmation_workflow(
-            csv_players, confirmed_lineups
-        )
-
-        confirmed_count = 0
-        total_comparisons = 0
-
-        # OPTIMIZATION 5: Only process teams with both CSV players AND confirmed lineups
-        for team in csv_by_team:
-            if team in lineup_by_team:
-                csv_players_for_team = csv_by_team[team]
-                exact_matches_for_team = exact_match_lookup[team]
-                lineup_players_for_team = lineup_by_team[team]
-
-                for csv_player in csv_players_for_team:
-                    player_name = csv_player.name if hasattr(csv_player, 'name') else csv_player['name']
-                    player_name_norm = player_name.lower().strip()
-
-                    # OPTIMIZATION 6: Try exact match first
-                    if player_name_norm in exact_matches_for_team:
-                        lineup_player = exact_matches_for_team[player_name_norm]
-
-                        # Mark player as confirmed
-                        if hasattr(csv_player, 'is_confirmed'):
-                            csv_player.is_confirmed = True
-                            csv_player.add_confirmation_source("mlb_lineup")
-                            if 'order' in lineup_player:
-                                csv_player.batting_order = lineup_player['order']
-                        else:
-                            csv_player['is_confirmed'] = True
-
-                        confirmed_count += 1
-                        total_comparisons += 1
-
-                        if self.verbose:
-                            print(f"   ✅ {player_name} (exact match)")
-
-                    else:
-                        # OPTIMIZATION 7: Complex matching only if needed
-                        for lineup_player in lineup_players_for_team:
-                            total_comparisons += 1
-
-                            # Use existing excellent name matching
-                            if self.data_system.match_player_names(player_name, lineup_player['name']):
-                                # Mark player as confirmed
-                                if hasattr(csv_player, 'is_confirmed'):
-                                    csv_player.is_confirmed = True
-                                    csv_player.add_confirmation_source("mlb_lineup")
-                                    if 'order' in lineup_player:
-                                        csv_player.batting_order = lineup_player['order']
-                                else:
-                                    csv_player['is_confirmed'] = True
-
-                                confirmed_count += 1
-
-                                if self.verbose:
-                                    print(f"   ✅ {player_name} → {lineup_player['name']} (fuzzy match)")
-                                break
-
-        # Apply pitcher confirmations
-        pitcher_count = self._apply_pitcher_confirmations_optimized(csv_players, confirmed_pitchers)
-
-        elapsed_time = time.time() - start_time
-
-        if self.verbose:
-            print(f"\n⚡ Optimized confirmation completed:")
-            print(f"   Time: {elapsed_time * 1000:.1f}ms")
-            print(f"   Comparisons: {total_comparisons:,}")
-            print(f"   Rate: {total_comparisons / elapsed_time:,.0f} comparisons/sec")
-            print(f"   Confirmed: {confirmed_count} players, {pitcher_count} pitchers")
-
-        return confirmed_count + pitcher_count
-
-    def _apply_pitcher_confirmations_optimized(self, csv_players, confirmed_pitchers):
-        """Optimized pitcher confirmation"""
-
-        # Pre-normalize pitcher names
-        pitcher_exact_lookup = {}
-        for team, pitcher_info in confirmed_pitchers.items():
-            team_norm = self.data_system.normalize_team(team)
-            pitcher_name_norm = pitcher_info['name'].lower().strip()
-            pitcher_exact_lookup[team_norm] = {
-                'normalized_name': pitcher_name_norm,
-                'original_name': pitcher_info['name'],
-                'info': pitcher_info
-            }
-
-        pitcher_count = 0
-
-        for csv_player in csv_players:
-            # Only check pitchers
-            if hasattr(csv_player, 'primary_position'):
-                is_pitcher = csv_player.primary_position == 'P'
-                player_team = csv_player.team
-                player_name = csv_player.name
-            else:
-                is_pitcher = csv_player.get('position') == 'P'
-                player_team = csv_player.get('team', '')
-                player_name = csv_player.get('name', '')
-
-            if is_pitcher:
-                team_norm = self.data_system.normalize_team(player_team)
-                player_name_norm = player_name.lower().strip()
-
-                # Try exact match first
-                if team_norm in pitcher_exact_lookup:
-                    pitcher_data = pitcher_exact_lookup[team_norm]
-
-                    if player_name_norm == pitcher_data['normalized_name']:
-                        # Exact match
-                        if hasattr(csv_player, 'is_confirmed'):
-                            csv_player.is_confirmed = True
-                            csv_player.add_confirmation_source("mlb_starter")
-                        else:
-                            csv_player['is_confirmed'] = True
-
-                        pitcher_count += 1
-
-                        if self.verbose:
-                            print(f"   ⚾ {player_name} (pitcher exact match)")
-
-                    else:
-                        # Try fuzzy match
-                        if self.data_system.match_player_names(player_name, pitcher_data['original_name']):
-                            if hasattr(csv_player, 'is_confirmed'):
-                                csv_player.is_confirmed = True
-                                csv_player.add_confirmation_source("mlb_starter")
-                            else:
-                                csv_player['is_confirmed'] = True
-
-                            pitcher_count += 1
-
-                            if self.verbose:
-                                print(f"   ⚾ {player_name} → {pitcher_data['original_name']} (pitcher fuzzy match)")
-
-        return pitcher_count
-
-
-class SmartConfirmationSystem(OptimizedConfirmationMixin):
-    """
-    Modern replacement for existing SmartConfirmationSystem
-    Maintains same interface but with better performance and reliability
+    Universal confirmation system that works with any CSV
+    Handles all team variations and API quirks
     """
 
-    def __init__(self, csv_players: List = None, verbose: bool = False):
+    # Team name variations mapping
+    TEAM_VARIATIONS = {
+        'ATH': ['OAK', 'ATH'],  # Athletics
+        'OAK': ['OAK', 'ATH'],
+        'CHW': ['CWS', 'CHW'],  # White Sox
+        'CWS': ['CWS', 'CHW'],
+        'WSH': ['WAS', 'WSH'],  # Nationals
+        'WAS': ['WAS', 'WSH'],
+    }
+
+    def __init__(self, csv_players: List = None, verbose: bool = True):
         self.verbose = verbose
         self.csv_players = csv_players or []
-        self.data_system = UnifiedDataSystem()
         self.confirmed_lineups = {}
         self.confirmed_pitchers = {}
-
-        # Modern additions
-        self._cache = {}
-        self._cache_timestamps = {}
-        self._cache_ttl = 7200  # 2 hours in seconds
-        self._lock = threading.Lock()
         self._session = requests.Session()
-        self._session.timeout = 15
+        self._session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        self._lock = threading.Lock()
 
-        # Extract teams from CSV for smart filtering
-        self.csv_teams = self._extract_teams_from_players()
+        # Build smart team set with variations
+        self.csv_teams = self._build_team_set()
 
-        if self.verbose and self.csv_teams:
-            print(f"📊 CSV teams detected: {sorted(self.csv_teams)}")
+        if self.verbose:
+            print(f"🎯 Universal Smart Confirmation System initialized")
+            print(f"📋 Tracking teams: {sorted(self.csv_teams)}")
 
-    def _extract_teams_from_players(self) -> Set[str]:
-        """Extract team abbreviations from CSV players"""
+    def _build_team_set(self) -> Set[str]:
+        """Build comprehensive team set with all variations"""
         teams = set()
-        if not self.csv_players:
-            return teams
 
-        for player in self.csv_players:
-            try:
+        if self.csv_players:
+            for player in self.csv_players:
+                team = None
+
+                # Extract team from different formats
                 if hasattr(player, 'team'):
-                    teams.add(player.team)
+                    team = player.team
                 elif isinstance(player, dict):
-                    team = player.get('team') or player.get('TeamAbbrev', '')
-                    if team:
-                        teams.add(team)
-            except Exception:
-                continue
+                    team = player.get('team') or player.get('TeamAbbrev')
+
+                if team:
+                    team = team.upper().strip()
+                    teams.add(team)
+
+                    # Add variations
+                    if team in self.TEAM_VARIATIONS:
+                        teams.update(self.TEAM_VARIATIONS[team])
 
         return teams
 
-    def _is_cache_valid(self, key: str) -> bool:
-        """Check if cache entry is still valid"""
-        if key not in self._cache_timestamps:
-            return False
-
-        age = time.time() - self._cache_timestamps[key]
-        return age < self._cache_ttl
-
-    def _get_from_cache(self, key: str):
-        """Get value from cache if valid"""
-        if self._is_cache_valid(key):
-            return self._cache.get(key)
-        return None
-
-    def _set_cache(self, key: str, value):
-        """Set cache value with timestamp"""
-        with self._lock:
-            self._cache[key] = value
-            self._cache_timestamps[key] = time.time()
-
-    def _invalidate_cache(self):
-        """Clear all cache entries"""
-        with self._lock:
-            self._cache.clear()
-            self._cache_timestamps.clear()
-
     def get_all_confirmations(self) -> Tuple[int, int]:
         """
-        Main method to get all confirmations
-        Returns (lineup_count, pitcher_count)
+        Main entry point - fetches all confirmations
+        Returns: (lineup_count, pitcher_count)
         """
         if self.verbose:
-            print("🔍 SMART CONFIRMATION SYSTEM - MODERN MODE")
-            print("=" * 50)
+            print("\n🔍 FETCHING CONFIRMATIONS - UNIVERSAL MODE")
+            print("=" * 60)
 
-        # Generate cache key based on teams and current day
-        today = datetime.now().strftime('%Y-%m-%d')
-        cache_key = f"confirmations_{today}_{'_'.join(sorted(self.csv_teams))}"
+        # Fetch fresh data
+        self._fetch_confirmations()
 
-        # Check cache first
-        cached_data = self._get_from_cache(cache_key)
-        if cached_data:
-            if self.verbose:
-                print("📋 Using cached confirmation data")
-            self.confirmed_lineups = cached_data['lineups']
-            self.confirmed_pitchers = cached_data['pitchers']
-        else:
-            # Fetch fresh data
-            if self.verbose:
-                print("🌐 Fetching fresh confirmation data")
-            self._fetch_fresh_confirmations(today)
-
-            # Cache the results
-            cache_data = {
-                'lineups': self.confirmed_lineups.copy(),
-                'pitchers': self.confirmed_pitchers.copy()
-            }
-            self._set_cache(cache_key, cache_data)
-
-        # Calculate counts
+        # Calculate totals
         lineup_count = sum(len(lineup) for lineup in self.confirmed_lineups.values())
         pitcher_count = len(self.confirmed_pitchers)
 
         if self.verbose:
-            print(f"📊 Found lineups for {len(self.confirmed_lineups)} teams")
-            print(f"⚾ Found pitchers for {len(self.confirmed_pitchers)} teams")
-            print(f"👥 Total confirmed players: {lineup_count}")
+            print(f"\n📊 CONFIRMATION TOTALS:")
+            print(f"   Teams with lineups: {len(self.confirmed_lineups)}")
+            print(f"   Total players: {lineup_count}")
+            print(f"   Starting pitchers: {pitcher_count}")
 
         return lineup_count, pitcher_count
 
-    def _fetch_fresh_confirmations(self, date: str):
-        """Fetch fresh confirmation data from MLB API"""
+    def _fetch_confirmations(self):
+        """Fetch confirmations from MLB API with universal handling"""
         try:
-            # Reset current data
-            self.confirmed_lineups = {}
-            self.confirmed_pitchers = {}
+            today = datetime.now().strftime('%Y-%m-%d')
 
-            # Get today's games with lineups and probable pitchers
-            url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={date}&hydrate=lineups,probablePitcher"
+            # CRITICAL: Include all necessary hydrations
+            url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}&hydrate=lineups,probablePitcher,team"
 
-            response = self._session.get(url)
+            if self.verbose:
+                print(f"🌐 Fetching from MLB API...")
+                print(f"   URL: {url}")
+
+            response = self._session.get(url, timeout=10)
             if response.status_code != 200:
-                if self.verbose:
-                    print(f"❌ MLB API returned status {response.status_code}")
+                print(f"❌ API returned status {response.status_code}")
                 return
 
             data = response.json()
-            if not data.get('dates'):
-                if self.verbose:
-                    print("❌ No games found for today")
+            dates = data.get('dates', [])
+
+            if not dates:
+                print("❌ No games found for today")
                 return
 
-            # Process games in parallel for better performance
-            games = []
-            for date_entry in data['dates']:
-                games.extend(date_entry.get('games', []))
-
-            if not games:
-                if self.verbose:
-                    print("❌ No games in schedule")
-                return
-
-            # Use thread pool for concurrent processing
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [executor.submit(self._process_game, game) for game in games]
-
-                processed = 0
-                for future in as_completed(futures):
-                    try:
-                        future.result()
-                        processed += 1
-                    except Exception as e:
-                        if self.verbose:
-                            print(f"⚠️ Error processing game: {e}")
+            games = dates[0].get('games', [])
 
             if self.verbose:
-                print(f"🎯 Processed {processed}/{len(games)} games")
+                print(f"📅 Found {len(games)} games today")
+
+            # Process each game
+            games_processed = 0
+            for game in games:
+                if self._process_game_universal(game):
+                    games_processed += 1
+
+            if self.verbose:
+                print(f"✅ Processed {games_processed} games with relevant teams")
 
         except Exception as e:
+            logger.error(f"Error fetching confirmations: {e}")
             if self.verbose:
-                print(f"❌ Error fetching confirmations: {e}")
+                print(f"❌ Error: {e}")
 
-    def _process_game(self, game: Dict):
-        """Process a single game for lineups and pitchers"""
+    def _process_game_universal(self, game: Dict) -> bool:
+        """
+        Process a game with universal handling
+        Returns True if game was processed
+        """
         try:
-            # Process lineups
-            lineups = game.get('lineups', {})
-            for team_side in ['home', 'away']:
-                team_data = game.get('teams', {}).get(team_side, {})
-                team_abbr = team_data.get('team', {}).get('abbreviation', '')
+            teams_data = game.get('teams', {})
+            game_processed = False
 
-                # Only process teams we care about
-                if team_abbr not in self.csv_teams:
-                    continue
+            # Get game info
+            away_data = teams_data.get('away', {})
+            home_data = teams_data.get('home', {})
 
-                # Process lineup
-                lineup = lineups.get(team_side, {}).get('lineup', [])
-                if lineup:
-                    lineup_players = []
-                    for i, player_data in enumerate(lineup):
-                        player = player_data.get('player', {})
-                        position = player_data.get('position', {}).get('abbreviation', '')
+            away_team = away_data.get('team', {})
+            home_team = home_data.get('team', {})
 
-                        lineup_players.append({
-                            'name': player.get('fullName', ''),
-                            'position': position,
-                            'order': i + 1,
-                            'team': team_abbr,
-                            'source': 'mlb_api'
-                        })
+            away_abbr = away_team.get('abbreviation', '')
+            home_abbr = home_team.get('abbreviation', '')
 
-                    if lineup_players:
-                        with self._lock:
-                            self.confirmed_lineups[team_abbr] = lineup_players
+            # Skip if no team abbreviations
+            if not away_abbr or not home_abbr:
+                return False
 
-                # Process probable pitcher
-                probable_pitcher = team_data.get('probablePitcher')
-                if probable_pitcher:
-                    pitcher_info = {
-                        'name': probable_pitcher.get('fullName', ''),
-                        'team': team_abbr,
-                        'source': 'mlb_api'
-                    }
+            # Smart filtering: Process if ANY team is relevant
+            process_away = self._should_process_team(away_abbr)
+            process_home = self._should_process_team(home_abbr)
 
-                    with self._lock:
-                        self.confirmed_pitchers[team_abbr] = pitcher_info
+            if not process_away and not process_home:
+                return False
+
+            if self.verbose:
+                status = game.get('status', {}).get('detailedState', 'Unknown')
+                print(f"\n🎮 Processing: {away_abbr}@{home_abbr} ({status})")
+
+            # Check ALL possible lineup locations
+            lineups_found = False
+
+            # Location 1: game.lineups (most common for in-progress games)
+            game_lineups = game.get('lineups', {})
+            if game_lineups:
+                # Away lineup
+                if process_away:
+                    away_players = game_lineups.get('awayPlayers', [])
+                    if away_players:
+                        self._store_lineup(away_abbr, away_players, 'game.lineups')
+                        lineups_found = True
+
+                # Home lineup
+                if process_home:
+                    home_players = game_lineups.get('homePlayers', [])
+                    if home_players:
+                        self._store_lineup(home_abbr, home_players, 'game.lineups')
+                        lineups_found = True
+
+            # Location 2: teams.away/home.players (pre-game lineups)
+            if not lineups_found:
+                if process_away:
+                    away_players = away_data.get('players', {})
+                    if away_players:
+                        self._store_lineup_from_dict(away_abbr, away_players, 'teams.players')
+                        lineups_found = True
+
+                if process_home:
+                    home_players = home_data.get('players', {})
+                    if home_players:
+                        self._store_lineup_from_dict(home_abbr, home_players, 'teams.players')
+                        lineups_found = True
+
+            # Always check for pitchers
+            if process_away:
+                away_pitcher = away_data.get('probablePitcher', {})
+                if away_pitcher:
+                    self._store_pitcher(away_abbr, away_pitcher)
+
+            if process_home:
+                home_pitcher = home_data.get('probablePitcher', {})
+                if home_pitcher:
+                    self._store_pitcher(home_abbr, home_pitcher)
+
+            return lineups_found or bool(away_pitcher) or bool(home_pitcher)
 
         except Exception as e:
+            logger.error(f"Error processing game: {e}")
             if self.verbose:
-                print(f"⚠️ Error processing game: {e}")
+                print(f"   ❌ Error: {e}")
+            return False
+
+    def _should_process_team(self, team_abbr: str) -> bool:
+        """
+        Determine if a team should be processed
+        Universal mode: process all if no CSV teams specified
+        """
+        if not self.csv_teams:
+            return True  # Process all teams if no CSV loaded
+
+        # Check team and its variations
+        if team_abbr in self.csv_teams:
+            return True
+
+        # Check variations
+        variations = self.TEAM_VARIATIONS.get(team_abbr, [])
+        for variant in variations:
+            if variant in self.csv_teams:
+                return True
+
+        return False
+
+    def _store_lineup(self, team_abbr: str, players: List[Dict], source: str):
+        """Store lineup from game.lineups format"""
+        with self._lock:
+            if team_abbr not in self.confirmed_lineups:
+                self.confirmed_lineups[team_abbr] = []
+
+            for i, player in enumerate(players):
+                player_info = {
+                    'name': player.get('fullName', ''),
+                    'id': player.get('id'),
+                    'position': player.get('primaryPosition', {}).get('abbreviation', ''),
+                    'order': i + 1,
+                    'team': team_abbr,
+                    'source': source
+                }
+                self.confirmed_lineups[team_abbr].append(player_info)
+
+            if self.verbose:
+                print(f"   ✅ {team_abbr}: {len(players)} players from {source}")
+
+    def _store_lineup_from_dict(self, team_abbr: str, players_dict: Dict, source: str):
+        """Store lineup from teams.players format"""
+        with self._lock:
+            if team_abbr not in self.confirmed_lineups:
+                self.confirmed_lineups[team_abbr] = []
+
+            order = 1
+            for player_id, player_data in players_dict.items():
+                player_info = {
+                    'name': player_data.get('fullName', ''),
+                    'id': player_id,
+                    'position': player_data.get('primaryPosition', {}).get('abbreviation', ''),
+                    'order': order,
+                    'team': team_abbr,
+                    'source': source
+                }
+                self.confirmed_lineups[team_abbr].append(player_info)
+                order += 1
+
+            if self.verbose:
+                print(f"   ✅ {team_abbr}: {len(players_dict)} players from {source}")
+
+    def _store_pitcher(self, team_abbr: str, pitcher_data: Dict):
+        """Store pitcher information"""
+        with self._lock:
+            pitcher_info = {
+                'name': pitcher_data.get('fullName', ''),
+                'id': pitcher_data.get('id'),
+                'team': team_abbr,
+                'source': 'mlb_api'
+            }
+            self.confirmed_pitchers[team_abbr] = pitcher_info
+
+            if self.verbose:
+                print(f"   ⚾ {team_abbr}: {pitcher_info['name']} (SP)")
 
     def is_player_confirmed(self, player_name: str, team: str = None) -> Tuple[bool, Optional[int]]:
-        """
-        Check if player is confirmed in actual lineup
-        Returns (is_confirmed, batting_order)
-        """
-        if not team or team not in self.confirmed_lineups:
+        """Check if player is confirmed"""
+        if not team:
             return False, None
 
-        lineup = self.confirmed_lineups[team]
-        player_name_lower = player_name.lower().strip()
+        # Check team and variations
+        teams_to_check = [team]
+        if team in self.TEAM_VARIATIONS:
+            teams_to_check.extend(self.TEAM_VARIATIONS[team])
 
-        for lineup_player in lineup:
-            lineup_name = lineup_player.get('name', '').lower().strip()
+        for check_team in teams_to_check:
+            if check_team in self.confirmed_lineups:
+                lineup = self.confirmed_lineups[check_team]
+                player_name_lower = player_name.lower().strip()
 
-            # Try exact match first
-            if player_name_lower == lineup_name:
-                return True, lineup_player.get('order', 1)
+                for lineup_player in lineup:
+                    lineup_name = lineup_player.get('name', '').lower().strip()
 
-            # Try partial matching
-            if self._names_match(player_name_lower, lineup_name):
-                return True, lineup_player.get('order', 1)
+                    # Exact match
+                    if player_name_lower == lineup_name:
+                        return True, lineup_player.get('order', 1)
+
+                    # Fuzzy match
+                    if self._names_match(player_name_lower, lineup_name):
+                        return True, lineup_player.get('order', 1)
 
         return False, None
 
     def is_pitcher_confirmed(self, pitcher_name: str, team: str = None) -> bool:
         """Check if pitcher is confirmed starter"""
-        if not team or team not in self.confirmed_pitchers:
+        if not team:
             return False
 
-        confirmed_pitcher = self.confirmed_pitchers[team]
-        pitcher_name_lower = pitcher_name.lower().strip()
-        confirmed_name = confirmed_pitcher.get('name', '').lower().strip()
+        # Check team and variations
+        teams_to_check = [team]
+        if team in self.TEAM_VARIATIONS:
+            teams_to_check.extend(self.TEAM_VARIATIONS[team])
 
-        # Try exact match first
-        if pitcher_name_lower == confirmed_name:
-            return True
+        for check_team in teams_to_check:
+            if check_team in self.confirmed_pitchers:
+                confirmed_pitcher = self.confirmed_pitchers[check_team]
+                pitcher_name_lower = pitcher_name.lower().strip()
+                confirmed_name = confirmed_pitcher.get('name', '').lower().strip()
 
-        # Try partial matching
-        return self._names_match(pitcher_name_lower, confirmed_name)
+                if pitcher_name_lower == confirmed_name:
+                    return True
+
+                if self._names_match(pitcher_name_lower, confirmed_name):
+                    return True
+
+        return False
 
     def _names_match(self, name1: str, name2: str) -> bool:
-        """Enhanced name matching logic"""
-        # Remove common suffixes/prefixes
-        for suffix in [' jr.', ' sr.', ' iii', ' ii']:
+        """Fuzzy name matching"""
+        # Remove common suffixes
+        for suffix in [' jr.', ' sr.', ' jr', ' sr', ' iii', ' ii']:
             name1 = name1.replace(suffix, '')
             name2 = name2.replace(suffix, '')
 
@@ -472,119 +367,29 @@ class SmartConfirmationSystem(OptimizedConfirmationMixin):
         if name1 in name2 or name2 in name1:
             return True
 
-        # Check individual name parts
-        parts1 = set(name1.split())
-        parts2 = set(name2.split())
+        # Last name match
+        parts1 = name1.split()
+        parts2 = name2.split()
 
-        # If they share most parts, consider it a match
-        common_parts = parts1.intersection(parts2)
-        min_parts = min(len(parts1), len(parts2))
-
-        if min_parts > 0 and len(common_parts) >= min_parts * 0.7:
-            return True
+        if len(parts1) >= 2 and len(parts2) >= 2:
+            if parts1[-1] == parts2[-1]:  # Last names match
+                # Check if first names start with same letter
+                if parts1[0][0] == parts2[0][0]:
+                    return True
 
         return False
 
-    def update_csv_players(self, players):
-        """Update CSV players list"""
-        self.csv_players = players
-        self.csv_teams = self._extract_teams_from_players()
 
-        # Invalidate cache when players change
-        self._invalidate_cache()
-
-        if self.verbose:
-            print(f"📊 Updated CSV teams: {sorted(self.csv_teams)}")
-
-    def invalidate_cache(self):
-        """Manually invalidate all cached data"""
-        self._invalidate_cache()
-        if self.verbose:
-            print("🗑️ Confirmation cache invalidated")
-
-    def get_cache_stats(self) -> Dict:
-        """Get cache statistics for debugging"""
-        return {
-            'cache_entries': len(self._cache),
-            'cache_age_seconds': min(
-                [time.time() - ts for ts in self._cache_timestamps.values()]) if self._cache_timestamps else 0,
-            'cache_ttl_seconds': self._cache_ttl,
-            'teams_monitored': len(self.csv_teams)
-        }
-
-    def __del__(self):
-        """Cleanup resources"""
-        if hasattr(self, '_session'):
-            self._session.close()
-
-
-# Backwards compatibility alias
-class SmartConfirmation(SmartConfirmationSystem):
-    """Alias for backwards compatibility"""
-
-
-# Factory function for easy creation
-def create_confirmation_system(csv_players=None, verbose=False, cache_ttl_hours=2):
-    """
-    Factory function to create a SmartConfirmationSystem
-
-    Args:
-        csv_players: List of player objects
-        verbose: Enable verbose logging
-        cache_ttl_hours: Cache time-to-live in hours
-
-    Returns:
-        SmartConfirmationSystem instance
-    """
-    system = SmartConfirmationSystem(csv_players, verbose)
-    system._cache_ttl = cache_ttl_hours * 3600  # Convert to seconds
-    return system
-
+# For drop-in replacement compatibility
+SmartConfirmationSystem = UniversalSmartConfirmation
 
 if __name__ == "__main__":
-    # Test the system
-    print("Testing Modern Smart Confirmation System...")
+    print("🧪 TESTING UNIVERSAL SMART CONFIRMATION")
+    print("=" * 60)
 
-    # Create test system
-    system = SmartConfirmationSystem(verbose=True)
-
-    # Test fetching confirmations
+    # Test with no CSV (should get all teams)
+    system = UniversalSmartConfirmation(verbose=True)
     lineup_count, pitcher_count = system.get_all_confirmations()
 
-    print(f"\nResults:")
-    print(f"  Lineups found: {lineup_count}")
-    print(f"  Pitchers found: {pitcher_count}")
-
-    # Test cache stats
-    stats = system.get_cache_stats()
-    print(f"\nCache Stats: {stats}")
-    def get_all_confirmations_batch(self) -> Tuple[Dict[str, List], Dict[str, str]]:
-        """Get all confirmations in one batched operation"""
-        logger.info("PERFORMANCE: Batch fetching all lineup confirmations")
-
-        lineups = {}
-        pitchers = {}
-
-        # Fetch all team lineups at once (simulated batch operation)
-        # In reality, this would be a single API call for all games
-
-        teams = set()
-        for source in self.sources:
-            # Collect all teams that need checking
-            # This is where you'd optimize the actual fetching
-            pass
-
-        # Return cached results if recent
-        if hasattr(self, '_confirmation_cache'):
-            cache_data, cache_time = self._confirmation_cache
-            if (datetime.now() - cache_time).seconds < 300:  # 5 min
-                return cache_data
-
-        # Otherwise fetch and cache
-        result = self._fetch_all_confirmations()
-        self._confirmation_cache = (result, datetime.now())
-
-        return result
-
-
-    print("\n✅ Test completed!")
+    print(f"\n✅ Found {lineup_count} total players, {pitcher_count} pitchers")
+    print(f"✅ Teams with lineups: {sorted(system.confirmed_lineups.keys())}")

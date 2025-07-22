@@ -218,12 +218,13 @@ class FileLoadPanel(QWidget):
 
 
 class OptimizationPanel(QWidget):
-    """Panel for optimization settings"""
+    """Panel for optimization settings - confirmed players + manual only"""
 
     optimize_clicked = pyqtSignal(dict)
 
     def __init__(self):
         super().__init__()
+        self.manual_players = []
         self.init_ui()
 
     def init_ui(self):
@@ -266,6 +267,48 @@ class OptimizationPanel(QWidget):
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
 
+        # Manual Player Selection
+        manual_group = QGroupBox("Manual Player Selection")
+        manual_layout = QVBoxLayout()
+
+        # Input section
+        input_layout = QHBoxLayout()
+        self.manual_input = QLineEdit()
+        self.manual_input.setPlaceholderText("Enter exact player name...")
+        self.manual_input.returnPressed.connect(self.add_manual_player)
+        input_layout.addWidget(self.manual_input)
+
+        add_btn = QPushButton("Add")
+        add_btn.clicked.connect(self.add_manual_player)
+        add_btn.setMaximumWidth(60)
+        input_layout.addWidget(add_btn)
+
+        manual_layout.addLayout(input_layout)
+
+        # Current manual players
+        self.manual_list = QListWidget()
+        self.manual_list.setMaximumHeight(120)
+        manual_layout.addWidget(self.manual_list)
+
+        # List controls
+        controls_layout = QHBoxLayout()
+        remove_btn = QPushButton("Remove")
+        remove_btn.clicked.connect(self.remove_selected_player)
+        clear_btn = QPushButton("Clear All")
+        clear_btn.clicked.connect(self.clear_all_players)
+        controls_layout.addWidget(remove_btn)
+        controls_layout.addWidget(clear_btn)
+        manual_layout.addLayout(controls_layout)
+
+        manual_group.setLayout(manual_layout)
+        layout.addWidget(manual_group)
+
+        # Status
+        self.status_label = QLabel("Only confirmed + manual players will be used")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(self.status_label)
+
         # Optimize button
         self.optimize_btn = QPushButton("🚀 Generate Lineups")
         self.optimize_btn.setEnabled(False)
@@ -292,16 +335,50 @@ class OptimizationPanel(QWidget):
         layout.addStretch()
         self.setLayout(layout)
 
+    def add_manual_player(self):
+        """Add exact player name to manual selection"""
+        player_name = self.manual_input.text().strip()
+        if player_name and player_name not in self.manual_players:
+            self.manual_players.append(player_name)
+            self.manual_list.addItem(player_name)
+            self.manual_input.clear()
+            self.update_status()
+
+    def remove_selected_player(self):
+        """Remove selected player"""
+        current_row = self.manual_list.currentRow()
+        if current_row >= 0:
+            player_name = self.manual_list.takeItem(current_row).text()
+            self.manual_players.remove(player_name)
+            self.update_status()
+
+    def clear_all_players(self):
+        """Clear all manual players"""
+        self.manual_players.clear()
+        self.manual_list.clear()
+        self.update_status()
+
+    def update_status(self):
+        """Update status based on manual players"""
+        count = len(self.manual_players)
+        if count > 0:
+            self.status_label.setText(f"{count} manual player(s) selected")
+        else:
+            self.status_label.setText("Only confirmed players will be used")
+
+    def enable_optimization(self, enabled=True):
+        """Enable optimization button"""
+        self.optimize_btn.setEnabled(enabled)
+
     def on_optimize(self):
+        """Emit settings with manual players only"""
         settings = {
             'strategy': self.strategy_combo.currentText(),
             'num_lineups': self.lineups_spin.value(),
-            'min_salary': self.min_salary_slider.value()
+            'min_salary': self.min_salary_slider.value(),
+            'manual_players': self.manual_players.copy()
         }
         self.optimize_clicked.emit(settings)
-
-    def enable_optimization(self, enabled=True):
-        self.optimize_btn.setEnabled(enabled)
 
 class ProgressTracker(QWidget):
     """Progress tracking widget"""
@@ -406,16 +483,35 @@ class OptimizationWorker(QThread):
                         self.log.emit(f"   ❌ Not found: {player_name}", "WARNING")
 
             # Build player pool
+            # Build player pool
             self.progress.emit(40, "Building player pool...")
+
+            # Add manual players first
+            manual_players = self.settings.get('manual_players', [])
+            if manual_players:
+                self.log.emit(f"Adding {len(manual_players)} manual players...", "INFO")
+                added_count = 0
+                for player_name in manual_players:
+                    if system.add_manual_player(player_name):
+                        added_count += 1
+                        self.log.emit(f"   ✅ Added: {player_name}", "SUCCESS")
+                    else:
+                        self.log.emit(f"   ❌ Not found in CSV: {player_name}", "WARNING")
+
+                if added_count == 0 and len(manual_players) > 0:
+                    self.log.emit("❌ No manual players found in CSV", "ERROR")
+
+            # Build final pool (confirmed + manual only)
             pool_size = system.build_player_pool()
 
+            # Strict check - no fallbacks
             if pool_size == 0:
-                self.log.emit("❌ No players in pool!", "ERROR")
-                self.log.emit("Add manual selections or wait for confirmed lineups", "WARNING")
-                self.error.emit("No players available for optimization")
+                self.log.emit("❌ No players available", "ERROR")
+                self.log.emit("No confirmed lineups found and no valid manual players", "ERROR")
+                self.error.emit("No confirmed players found. Add valid manual players or wait for lineups.")
                 return
 
-            self.log.emit(f"✅ Player pool: {pool_size} players", "SUCCESS")
+            self.log.emit(f"✅ Final pool: {pool_size} players (confirmed + manual)", "SUCCESS")
 
             # Show pool breakdown
             status = system.get_system_status()
@@ -456,8 +552,7 @@ class OptimizationWorker(QThread):
             for i, lineup in enumerate(lineups, 1):
                 self.progress.emit(70 + (25 * i // num_lineups), f"Processing lineup {i}...")
 
-                player.opponent = row.get('Opponent', 'UNK')
-                player.game_info = row.get('Game Info', '')
+
 
                 gui_lineup = {
                     'players': [],

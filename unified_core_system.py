@@ -196,29 +196,52 @@ class UnifiedCoreSystem:
 
         print("\n📋 Identifying slate games from CSV...")
         import re
+
         for player in self.all_players.values():
             if hasattr(player, 'game_info') and player.game_info:
-                # Parse game info
-                match = re.match(r'([A-Z]+)@([A-Z]+)\s+(\d{1,2}:\d{2}(?:PM|AM|pm|am))', str(player.game_info).replace('ET', '').strip())
-                if match:
-                    away = match.group(1)
-                    home = match.group(2)
-                    time = match.group(3)
-                    game_key = f"{away}@{home}"
-                    slate_games[game_key] = {'time': time, 'away': away, 'home': home}
-                    slate_teams.add(away)
-                    slate_teams.add(home)
-                    slate_teams.add(player.team)  # Also add player's team
+                # Parse game info with date format: "HOU@ARI 07/21/2025 09:40PM ET"
+                game_str = str(player.game_info).strip()
+
+                # Extract just the teams (simpler approach)
+                if '@' in game_str:
+                    parts = game_str.split()
+                    if parts:
+                        teams_part = parts[0]  # "HOU@ARI"
+                        if '@' in teams_part:
+                            away, home = teams_part.split('@')
+                            game_key = f"{away}@{home}"
+
+                            if game_key not in slate_games:
+                                # Extract time if available
+                                time = None
+                                if len(parts) >= 3:
+                                    time = parts[2].replace('ET', '').strip()
+
+                                slate_games[game_key] = {
+                                    'away': away,
+                                    'home': home,
+                                    'time': time,
+                                    'game_info': game_str
+                                }
+                                slate_teams.add(away)
+                                slate_teams.add(home)
+
+                # Also add player's team
+                if hasattr(player, 'team') and player.team:
+                    slate_teams.add(player.team)
 
         print(f"   Found {len(slate_games)} games in slate")
         print(f"   Teams: {sorted(slate_teams)}")
+
+        # Initialize counts
+        lineup_count = 0
+        pitcher_count = 0
 
         if self._using_enhanced:
             # Enhanced system returns lineups and pitchers directly
             confirmed_lineups, confirmed_pitchers = self.confirmation_system.fetch_all_confirmations()
 
             # Filter to only slate teams
-            lineup_count = 0
             for team, lineup_data in confirmed_lineups.items():
                 if team in slate_teams:  # Only process slate teams
                     for player_info in lineup_data:
@@ -228,7 +251,6 @@ class UnifiedCoreSystem:
                             lineup_count += 1
 
             # Process pitchers
-            pitcher_count = 0
             for team, pitcher_info in confirmed_pitchers.items():
                 if team in slate_teams:  # Only process slate teams
                     pitcher_name = pitcher_info.get('name', '')
