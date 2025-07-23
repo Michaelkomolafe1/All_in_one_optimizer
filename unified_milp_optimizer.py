@@ -291,25 +291,27 @@ class UnifiedMILPOptimizer:
         return filtered
 
     def calculate_player_scores(self, players: List) -> List:
-        """Calculate enhanced scores for all players using available data"""
+        """
+        Use scores from pure data engine - NO MODIFICATIONS
+
+        The pure data scoring engine has already calculated final scores.
+        This method now just ensures optimization_score is set.
+        """
         for player in players:
-            # Start with base projection or existing score
-            base_score = getattr(player, 'enhanced_score', None)
-            if base_score is None:
-                base_score = getattr(player, 'base_projection', 0)
-
-            # Apply park factor if available
-            if hasattr(player, 'team') and player.team in self.park_factors:
-                park_factor = self.park_factors[player.team]
-                if player.primary_position != 'P':
-                    # Hitters benefit from hitter-friendly parks
-                    base_score *= park_factor
-                else:
-                    # Pitchers benefit from pitcher-friendly parks
-                    base_score *= (2.0 - park_factor)
-
-            # Set the enhanced score
-            player.enhanced_score = base_score
+            # Simply use the score that was already calculated by pure data engine
+            if hasattr(player, 'optimization_score') and player.optimization_score > 0:
+                # Score already set, nothing to do
+                pass
+            elif hasattr(player, 'enhanced_score'):
+                # Copy enhanced_score to optimization_score
+                player.optimization_score = player.enhanced_score
+            elif hasattr(player, 'pure_data_score'):
+                # If using pure_data_score attribute
+                player.optimization_score = player.pure_data_score
+            else:
+                # No valid score found
+                player.optimization_score = 0
+                logger.warning(f"No valid score for {player.name}")
 
         return players
 

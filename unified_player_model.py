@@ -10,7 +10,6 @@ from __future__ import annotations  # MUST BE FIRST IMPORT!
 import copy
 from typing import Dict, List, Optional
 
-from unified_scoring_engine import get_scoring_engine
 
 # For park factors if not available elsewhere
 PARK_FACTORS = {
@@ -150,16 +149,61 @@ class UnifiedPlayer:
         self.data_quality_score = quality_points / max_points if max_points > 0 else 0
 
     def calculate_enhanced_score(self):
-        """Calculate enhanced score using unified scoring engine"""
-        engine = get_scoring_engine()
-        self.enhanced_score = engine.calculate_score(self)
+        """Calculate enhanced score using pure data scoring engine"""
+        # Import pure engine, NOT the old one
+        from pure_data_scoring_engine import get_pure_scoring_engine
+
+        # Get the pure engine
+        engine = get_pure_scoring_engine()
+
+        # Calculate score with pure data engine
+        score = engine.calculate_score(self)
+        self.enhanced_score = score
+        self.optimization_score = score  # Direct assignment for MILP
 
         # Set data quality based on available components
         if hasattr(self, "_score_audit"):
-            self.data_quality_score = len(self._score_audit.get("components", {})) / 5.0
+            # Handle the audit structure correctly
+            self.data_quality_score = self._score_audit.get("data_completeness", 0)
 
         # Mark as calculated
         self._score_calculated = True
+
+    def calculate_data_quality(self):
+        """Calculate data quality score (0-1)"""
+        quality_points = 0
+        max_points = 0
+
+        # Check data availability
+        data_checks = [
+            (self.base_projection > 0, 2),  # Base projection
+            (self._vegas_data is not None, 3),  # Vegas is important
+            (self._recent_performance is not None, 3),  # Recent form crucial
+            (self._statcast_data is not None, 2),  # Statcast valuable
+            (self.batting_order is not None, 1),  # Batting order helpful
+            (self._park_factors is not None, 1),  # Park factors
+            (len(self.recent_scores) >= 3, 2),  # Recent game scores
+            (self.dff_l5_avg is not None, 2),  # DFF recent average
+        ]
+
+        for has_data, points in data_checks:
+            max_points += points
+            if has_data:
+                quality_points += points
+
+        self.data_quality_score = quality_points / max_points if max_points > 0 else 0
+
+    def calculate_player_scores(self, players: List) -> List:
+        """
+        Use scores from pure data engine - NO MODIFICATIONS
+        The pure data scoring engine has already calculated final scores.
+        """
+        for player in players:
+            # Simply ensure optimization_score is set
+            if not hasattr(player, 'optimization_score') or player.optimization_score == 0:
+                player.optimization_score = getattr(player, 'enhanced_score', 0)
+
+        return players
 
     def _calculate_recent_performance(self) -> Optional[float]:
         """

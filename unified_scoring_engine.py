@@ -6,7 +6,7 @@ Replaces the scattered scoring logic across multiple files with one
 consistent, validated, and efficient implementation.
 """
 
-from unified_config_manager import get_config_manager
+
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -17,9 +17,7 @@ import numpy as np
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
-from logging_config import get_logger
-logger = get_logger(__name__)
-
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ScoringConfig:
@@ -104,12 +102,25 @@ class UnifiedScoringEngine:
     def __init__(self, config: Optional[ScoringConfig] = None):
         """Initialize with configuration"""
         self.config = config or ScoringConfig()
-        # Load park factors
-        from park_factors import PARK_FACTORS
-        self.park_factors = {team: data['factor'] for team, data in PARK_FACTORS.items()}
+
+        # Load park factors - with error handling
+        self.park_factors = {}
+        try:
+            from park_factors import PARK_FACTORS
+            self.park_factors = {team: data['factor'] for team, data in PARK_FACTORS.items()}
+        except ImportError:
+            logger.warning("Could not load park factors, using defaults")
+            # Default park factors if file doesn't exist
+            self.park_factors = {
+                'COL': 1.15, 'TEX': 1.10, 'CIN': 1.08, 'BAL': 1.05,
+                'NYY': 1.02, 'LAD': 0.95, 'SF': 0.92, 'SEA': 0.90
+            }
+        except Exception as e:
+            logger.warning(f"Error loading park factors: {e}")
+            self.park_factors = {}
+
         self._cache = {}
         self._calculation_count = 0
-
 
         logger.info("Unified Scoring Engine initialized")
         logger.debug(f"Weights: {self.config.weights}")
@@ -754,22 +765,30 @@ class UnifiedScoringEngine:
 
 # Convenience functions
 def load_config_from_file(filepath: str) -> ScoringConfig:
-    """Load configuration from unified config system"""
+    """Load configuration from file or return default"""
     try:
-        # Use unified config manager
-        config_manager = get_config_manager()
+        # If you have a JSON config file, you could load it here
+        import json
+        from pathlib import Path
 
-        # Get scoring configuration
-        scoring_config = config_manager.export_for_module('scoring_engine')
+        config_path = Path(filepath)
+        if config_path.exists() and config_path.suffix == '.json':
+            with open(config_path, 'r') as f:
+                config_data = json.load(f)
 
-        return ScoringConfig(
-            weights=scoring_config.get('weights', {}),
-            bounds=scoring_config.get('bounds', {}),
-            validation=scoring_config.get('validation', {})
-        )
+            # Extract scoring config if present
+            if 'scoring' in config_data:
+                scoring_config = config_data['scoring']
+                return ScoringConfig(
+                    weights=scoring_config.get('weights', {}),
+                    bounds=scoring_config.get('bounds', {}),
+                    validation=scoring_config.get('validation', {})
+                )
     except Exception as e:
-        logger.warning(f"Could not load config: {e}")
-        return ScoringConfig()
+        logger.warning(f"Could not load config from {filepath}: {e}")
+
+    # Return default config
+    return ScoringConfig()
 
 
 # Global engine instance (singleton pattern)

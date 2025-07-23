@@ -17,6 +17,7 @@ from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
 from unified_scoring_engine import get_scoring_engine, ScoringConfig
 from cash_optimization_config import apply_contest_config
 from cash_optimization_config import apply_contest_config, get_contest_description
+from pure_data_scoring_engine import get_pure_scoring_engine, PureDataScoringConfig
 
 # Data enrichment imports
 from simple_statcast_fetcher import FastStatcastFetcher
@@ -58,11 +59,18 @@ class UnifiedCoreSystem:
         # Initialize ALL components
         self._initialize_components()
 
-
-        print("\n✅ Unified Core System Ready!")
-        print("   • Confirmed players only")
-        print("   • ALL enrichments active")
-        print("   • Pure data approach")
+        print("📊 Initializing Pure Data Scoring Engine...")
+        scoring_config = PureDataScoringConfig(
+            weights={
+                "base": 0.35,
+                "recent_form": 0.25,
+                "vegas": 0.20,
+                "matchup": 0.15,
+                "batting_order": 0.05
+            }
+        )
+        self.scoring_engine = get_pure_scoring_engine(scoring_config)
+        print("   ✅ Pure scoring with fixed weights")
 
     def _initialize_components(self):
         """Initialize all system components"""
@@ -101,19 +109,19 @@ class UnifiedCoreSystem:
         print("   ✅ Ready for betting data")
 
         # 4. Scoring Engine - With ALL factors
-        print("\n📊 Initializing Unified Scoring Engine...")
-        scoring_config = ScoringConfig(
+        print("\n📊 Initializing Pure Data Scoring Engine...")
+        from pure_data_scoring_engine import get_pure_scoring_engine, PureDataScoringConfig
+        scoring_config = PureDataScoringConfig(
             weights={
-                'base': 0.35,  # Trust DK projections more for cash
-                'recent_form': 0.25,  # Consistency matters
-                'vegas': 0.20,  # Game environment
-                'matchup': 0.10,  # Less weight on variance
-                'park': 0.05,
-                'batting_order': 0.05,
-                'confirmed_boost': 0.00  # Already handled separately
+                "base": 0.35,
+                "recent_form": 0.25,
+                "vegas": 0.20,
+                "matchup": 0.15,
+                "batting_order": 0.05
             }
         )
-        self.scoring_engine = get_scoring_engine(scoring_config)
+        self.scoring_engine = get_pure_scoring_engine(scoring_config)
+        print("   ✅ Pure data scoring with fixed weights")
 
         # Connect data sources to scoring engine if method exists
         if hasattr(self.scoring_engine, 'set_data_sources'):
@@ -494,15 +502,32 @@ class UnifiedCoreSystem:
             logger.debug(f"Could not get cache stats: {e}")
 
         # Score all players
-        print("\n📈 Calculating player scores...")
+        print("\n📈 Calculating pure data scores...")
         score_start = time.time()
+
+        scored = 0
+        missing_data = []
 
         for player in self.player_pool:
             try:
-                player.calculate_enhanced_score()
+                # Use the pure data scoring engine directly
+                score = self.scoring_engine.calculate_score(player)
+                player.enhanced_score = score
+                player.optimization_score = score  # Direct assignment
+
+                if score > 0:
+                    scored += 1
+                else:
+                    missing_data.append(player.name)
+
             except Exception as e:
                 logger.error(f"Error scoring {player.name}: {e}")
-                player.enhanced_score = player.base_projection
+                player.enhanced_score = 0
+                player.optimization_score = 0
+
+        print(f"   Scored {scored}/{len(self.player_pool)} players")
+        if missing_data:
+            print(f"   ⚠️ {len(missing_data)} players with insufficient data")
 
         score_elapsed = time.time() - score_start
         print(f"   Scored all players in {score_elapsed:.1f}s")
