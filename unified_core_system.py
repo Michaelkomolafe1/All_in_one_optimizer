@@ -18,6 +18,10 @@ from unified_scoring_engine import get_scoring_engine, ScoringConfig
 from cash_optimization_config import apply_contest_config
 from cash_optimization_config import apply_contest_config, get_contest_description
 from pure_data_scoring_engine import get_pure_scoring_engine, PureDataScoringConfig
+from hybrid_scoring_system import get_hybrid_scoring_system
+from weather_integration import get_weather_integration
+from showdown_optimizer import ShowdownOptimizer, is_showdown_slate
+
 
 # Data enrichment imports
 from simple_statcast_fetcher import FastStatcastFetcher
@@ -42,107 +46,85 @@ class UnifiedCoreSystem:
     def __init__(self):
         '''Initialize the unified core system'''
 
-
-
+        # Core data structures
         self.all_players: Dict[str, UnifiedPlayer] = {}
         self.confirmed_names: Set[str] = set()
         self.manual_names: Set[str] = set()
         self.player_pool: List[UnifiedPlayer] = []
 
-        # ADD THIS LINE:
-        self.logger = logger  # Use the module-level logger
-
-        # Configuration
+        # System configuration
+        self.logger = logger
         self.salary_cap = 50000
         self.min_salary_usage = 0.95
 
         # Initialize ALL components
         self._initialize_components()
 
-        print("📊 Initializing Pure Data Scoring Engine...")
-        scoring_config = PureDataScoringConfig(
-            weights={
-                "base": 0.35,
-                "recent_form": 0.25,
-                "vegas": 0.20,
-                "matchup": 0.15,
-                "batting_order": 0.05
-            }
-        )
-        self.scoring_engine = get_pure_scoring_engine(scoring_config)
-        print("   ✅ Pure scoring with fixed weights")
-
     def _initialize_components(self):
         """Initialize all system components"""
         print("\n🚀 INITIALIZING UNIFIED CORE SYSTEM")
         print("=" * 60)
 
-        # 1. Confirmation System - CRITICAL
+        # 1. Confirmation System
         print("📋 Initializing Confirmation System...")
         try:
-            # Try to use enhanced system with Rotowire
             from rotowire_pitcher_system import EnhancedConfirmationSystem
             self.confirmation_system = EnhancedConfirmationSystem(verbose=True)
             print("   ✅ Using Enhanced Confirmation System")
             print("   ✅ MLB API + Rotowire for pitchers")
             self._using_enhanced = True
         except ImportError:
-            # Fallback to smart confirmation only
             self.confirmation_system = SmartConfirmationSystem(verbose=True)
             print("   ✅ Using Smart Confirmation System")
             print("   ⚠️  No Rotowire backup for pitchers")
             self._using_enhanced = False
 
-        # 2. Statcast Fetcher - For enrichment
+        # 2. Statcast Fetcher
         print("\n⚾ Initializing Statcast Fetcher...")
         self.statcast = FastStatcastFetcher(max_workers=10)
         print("   ✅ Ready for player statistics")
 
-        # 3. Vegas Lines - For game context
+        # 3. Vegas Lines
         print("\n🎰 Initializing Vegas Lines...")
         try:
-            # Try with cache_ttl first
             self.vegas = VegasLines(cache_ttl=300)
         except TypeError:
-            # Fall back to no parameters
             self.vegas = VegasLines()
         print("   ✅ Ready for betting data")
 
-        # 4. Scoring Engine - With ALL factors
-        print("\n📊 Initializing Pure Data Scoring Engine...")
-        from pure_data_scoring_engine import get_pure_scoring_engine, PureDataScoringConfig
-        scoring_config = PureDataScoringConfig(
-            weights={
-                "base": 0.35,
-                "recent_form": 0.25,
-                "vegas": 0.20,
-                "matchup": 0.15,
-                "batting_order": 0.05
-            }
+        # 4. Weather Integration
+        print("\n🌦️ Initializing Weather Integration...")
+        self.weather = get_weather_integration()
+        print("   ✅ Ready for weather data")
+        print("   📍 Using free weather service (wttr.in)")
+
+        # 5. Hybrid Scoring System (REPLACES pure scoring)
+        print("\n🎯 Initializing Hybrid Scoring System...")
+        self.scoring_engine = get_hybrid_scoring_system()
+        print("   ✅ Contest-specific scoring ready")
+        print("   • Cash/Small GPPs: Dynamic scoring")
+        print("   • Large GPPs: Enhanced pure scoring")
+
+        # Connect data sources to scoring engine
+        self.scoring_engine.set_data_sources(
+            statcast_fetcher=self.statcast,
+            vegas_client=self.vegas,
+            confirmation_system=self.confirmation_system
         )
-        self.scoring_engine = get_pure_scoring_engine(scoring_config)
-        print("   ✅ Pure data scoring with fixed weights")
 
-        # Connect data sources to scoring engine if method exists
-        if hasattr(self.scoring_engine, 'set_data_sources'):
-            self.scoring_engine.set_data_sources(
-                statcast_fetcher=self.statcast,
-                vegas_client=self.vegas,
-                confirmation_system=self.confirmation_system
-            )
-            print("   ✅ Scoring engine connected to all data sources")
-        else:
-            print("   ✅ Scoring engine initialized (standalone mode)")
+        # Also set weather on enhanced engine
+        if hasattr(self.scoring_engine, 'enhanced_engine'):
+            self.scoring_engine.enhanced_engine.weather_integration = self.weather
 
-        # 5. MILP Optimizer
+        # 6. MILP Optimizer
         print("\n🎯 Initializing MILP Optimizer...")
         optimizer_config = OptimizationConfig(
             salary_cap=self.salary_cap,
-            min_salary_usage=self.min_salary_usage  # Fixed: was min_salary_pct
+            min_salary_usage=self.min_salary_usage
         )
         self.optimizer = UnifiedMILPOptimizer(optimizer_config)
 
-        # Connect data sources to optimizer if method exists
+        # Connect data sources to optimizer
         if hasattr(self.optimizer, 'set_data_sources'):
             self.optimizer.set_data_sources(
                 statcast_fetcher=self.statcast,
@@ -152,9 +134,210 @@ class UnifiedCoreSystem:
         else:
             print("   ✅ Optimizer ready")
 
+        # 7. Showdown Optimizer
+        print("\n🎪 Initializing Showdown Optimizer...")
+        self.showdown_optimizer = ShowdownOptimizer(salary_cap=self.salary_cap)
+        print("   ✅ Ready for showdown contests")
+
         print("\n" + "=" * 60)
-        print("✅ ALL SYSTEMS INITIALIZED - PURE DATA MODE")
+        print("✅ ALL SYSTEMS INITIALIZED - HYBRID SCORING MODE")
         print("=" * 60)
+
+    def _get_util_players(self) -> List:
+        """Extract unique UTIL players (no CPT entries)"""
+        util_players = []
+        seen_names = set()
+
+        for player in self.player_pool:
+            # Skip if already seen
+            if player.name in seen_names:
+                continue
+
+            # Skip CPT entries
+            if (hasattr(player, 'display_position') and 'CPT' in player.display_position) or \
+                    (hasattr(player, 'roster_position') and 'CPT' in player.roster_position) or \
+                    '(CPT)' in player.name:
+                continue
+
+            util_players.append(player)
+            seen_names.add(player.name)
+
+        return util_players
+
+    def _get_util_players(self) -> List:
+        """Extract unique UTIL players (no CPT entries)"""
+        util_players = []
+        seen_names = set()
+
+        for player in self.player_pool:
+            # Skip if already seen
+            if player.name in seen_names:
+                continue
+
+            # Skip CPT entries
+            if (hasattr(player, 'display_position') and 'CPT' in player.display_position) or \
+                    (hasattr(player, 'roster_position') and 'CPT' in player.roster_position) or \
+                    '(CPT)' in player.name:
+                continue
+
+            util_players.append(player)
+            seen_names.add(player.name)
+
+        return util_players
+
+    def _show_captain_candidates(self, players: List, top_n: int = 5):
+        """Display top captain candidates by score"""
+        sorted_players = sorted(
+            players,
+            key=lambda p: getattr(p, 'optimization_score', 0),
+            reverse=True
+        )[:top_n]
+
+        print("\n🌟 Top Captain Candidates:")
+        for i, player in enumerate(sorted_players, 1):
+            score = getattr(player, 'optimization_score', 0)
+            captain_score = score * 1.5
+            print(f"   {i}. {player.name} ({player.team}): "
+                  f"{score:.1f} pts → CPT: {captain_score:.1f} pts")
+
+    def _apply_diversity_penalty(self, used_players: set, penalty: float = 0.8):
+        """Apply penalty to used players for diversity"""
+        for player in self.player_pool:
+            if player.name in used_players:
+                if not hasattr(player, 'temp_score'):
+                    player.temp_score = player.optimization_score
+                player.optimization_score *= penalty
+
+    def _restore_diversity_scores(self):
+        """Restore original scores after diversity penalty"""
+        for player in self.player_pool:
+            if hasattr(player, 'temp_score'):
+                player.optimization_score = player.temp_score
+                delattr(player, 'temp_score')
+
+    def _apply_captain_penalty(self, players: List, used_captains: set, penalty: float = 0.7):
+        """Apply penalty to previously used captains"""
+        for player in players:
+            if player.name in used_captains:
+                if not hasattr(player, 'original_score'):
+                    player.original_score = player.optimization_score
+                player.optimization_score *= penalty
+
+    def _restore_captain_scores(self, players: List):
+        """Restore original scores after captain penalty"""
+        for player in players:
+            if hasattr(player, 'original_score'):
+                player.optimization_score = player.original_score
+                delattr(player, 'original_score')
+
+    def _create_lineup_dict(self, players: List, score: float,
+                            strategy: str, contest_type: str) -> Dict:
+        """Create standard lineup dictionary"""
+        lineup_dict = {
+            'players': players,
+            'total_salary': sum(p.salary for p in players),
+            'total_projection': score,
+            'strategy': strategy,
+            'contest_type': contest_type,
+            'pool_size': len(self.player_pool),
+            'type': 'classic'
+        }
+
+        return lineup_dict
+
+    def _create_showdown_lineup_dict(self, captain, utilities: List,
+                                     total_score: float, strategy: str) -> Dict:
+        """Create showdown lineup dictionary"""
+        captain_salary = int(captain.salary * 1.5)
+        util_salaries = sum(p.salary for p in utilities)
+        total_salary = captain_salary + util_salaries
+
+        lineup_dict = {
+            'captain': captain,
+            'utilities': utilities,
+            'players': [captain] + utilities,  # For compatibility
+            'total_salary': total_salary,
+            'total_projection': total_score,
+            'captain_salary': captain_salary,
+            'strategy': strategy,
+            'type': 'showdown'
+        }
+
+        return lineup_dict
+
+    def _analyze_lineup(self, lineup_dict: Dict, contest_type: str):
+        """Analyze and display lineup information"""
+        players = lineup_dict['players']
+        total_salary = lineup_dict['total_salary']
+        score = lineup_dict['total_projection']
+
+        print(f"   ✅ Score: {score:.1f} pts")
+        print(f"   💰 Salary: ${total_salary:,} ({total_salary / self.salary_cap * 100:.1f}%)")
+
+        # Check for stacks
+        team_counts = {}
+        for player in players:
+            if player.primary_position != 'P':
+                team_counts[player.team] = team_counts.get(player.team, 0) + 1
+
+        stacks = [team for team, count in team_counts.items() if count >= 3]
+        if stacks:
+            lineup_dict['stacks'] = stacks
+            print(f"   🔥 Stack(s): {', '.join(stacks)}")
+
+        # Cash game pitcher-hitter warnings
+        if contest_type == 'cash':
+            self._check_pitcher_hitter_correlation(players)
+
+    def _check_pitcher_hitter_correlation(self, players: List):
+        """Check for negative pitcher-hitter correlation in cash games"""
+        for pitcher in players:
+            if pitcher.primary_position == 'P':
+                opp_team = getattr(pitcher, 'opponent', None)
+                if opp_team:
+                    opp_hitters = [p.name for p in players
+                                   if p.primary_position != 'P' and p.team == opp_team]
+                    if opp_hitters:
+                        print(f"   ⚠️  {pitcher.name} facing {len(opp_hitters)} hitter(s): "
+                              f"{', '.join(opp_hitters)}")
+
+    def _display_showdown_summary(self, lineup_dict: Dict):
+        """Display showdown lineup summary"""
+        captain = lineup_dict['captain']
+        total_salary = lineup_dict['total_salary']
+        total_score = lineup_dict['total_projection']
+
+        print(f"   ✅ Score: {total_score:.1f} pts")
+        print(f"   💰 Salary: ${total_salary:,} ({total_salary / self.salary_cap * 100:.1f}%)")
+        print(f"   👑 Captain: {captain.name} ({captain.team}) - "
+              f"${lineup_dict['captain_salary']:,}")
+
+    def _optimize_showdown_lineup(self, players: List, strategy: str) -> Dict:
+        """
+        Run showdown optimization using the ShowdownOptimizer
+
+        This method should interface with your showdown_optimizer.py
+        """
+        if hasattr(self, 'showdown_optimizer'):
+            # Use the dedicated showdown optimizer
+            lineups = self.showdown_optimizer.optimize_showdown(
+                players=players,
+                num_lineups=1,
+                min_salary_usage=0.95
+            )
+
+            if lineups and len(lineups) > 0:
+                lineup = lineups[0]
+                return {
+                    'success': True,
+                    'captain': lineup['captain'],
+                    'utilities': lineup['utilities'],
+                    'total_score': lineup['total_score']
+                }
+
+        # Fallback or error
+        print("   ❌ Showdown optimizer not available")
+        return {'success': False}
 
     def load_csv(self, csv_path: str) -> int:
         print(f"\n📂 Loading CSV: {csv_path}")
@@ -564,92 +747,86 @@ class UnifiedCoreSystem:
             self,
             num_lineups: int = 1,
             strategy: str = "balanced",
-            min_unique_players: int = 2
+            min_unique_players: int = 2,
+            contest_type: str = "gpp"
     ) -> List[Dict]:
+        """
+        Generate optimized showdown lineups (1 Captain + 5 Utilities)
+
+        Args:
+            num_lineups: Number of lineups to generate
+            strategy: Optimization strategy
+            min_unique_players: Minimum unique players between lineups
+            contest_type: Contest type (usually gpp for showdown)
+
+        Returns:
+            List of showdown lineup dictionaries
+        """
         if not self.player_pool:
             print("❌ No players in pool!")
             return []
 
         print(f"\n🎰 Optimizing {num_lineups} SHOWDOWN lineups...")
         print(f"   Strategy: {strategy}")
+        print(f"   Contest Type: {contest_type}")
         print(f"   Pool size: {len(self.player_pool)} players")
 
-        util_players = []
-        seen_names = set()
-
-        for player in self.player_pool:
-            if player.name in seen_names:
-                continue
-
-            if hasattr(player, 'display_position') and 'CPT' in player.display_position:
-                continue
-
-            util_players.append(player)
-            seen_names.add(player.name)
-
+        # Filter to unique UTIL players only (no CPT entries)
+        util_players = self._get_util_players()
         print(f"   Unique UTIL players: {len(util_players)}")
 
         if len(util_players) < 6:
             print(f"❌ Not enough unique players for showdown: {len(util_players)} (need 6)")
             return []
 
+        # Set scoring for showdown
+        slate_size = len(util_players)
+        scoring_method = self.scoring_engine.set_contest_type(contest_type, slate_size)
+        print(f"   Scoring Method: {scoring_method.upper()}")
+
+        # Calculate scores
+        print(f"\n📊 Calculating scores for showdown players...")
+        for player in util_players:
+            score = self.scoring_engine.calculate_score(player)
+            player.enhanced_score = score
+            player.optimization_score = score
+
+        # Show top captain candidates
+        self._show_captain_candidates(util_players)
+
+        # Generate lineups
         lineups = []
         used_captains = set()
 
         for i in range(num_lineups):
             print(f"\n   Lineup {i + 1}/{num_lineups}...")
 
+            # Apply diversity penalty for used captains
             if i > 0 and min_unique_players > 0:
-                for player in util_players:
-                    if player.name in used_captains:
-                        if not hasattr(player, 'original_score'):
-                            player.original_score = player.optimization_score
-                        player.optimization_score = player.original_score * 0.7
+                self._apply_captain_penalty(util_players, used_captains, penalty=0.7)
 
-            lineup_players, score = self._optimize_showdown_lineup(
-                util_players,
-                strategy=strategy
-            )
+            # Optimize showdown lineup
+            lineup_result = self._optimize_showdown_lineup(util_players, strategy)
 
-            for player in util_players:
-                if hasattr(player, 'original_score'):
-                    player.optimization_score = player.original_score
+            # Restore scores
+            self._restore_captain_scores(util_players)
 
-            if lineup_players and len(lineup_players) == 6:
-                captain = None
-                for p in lineup_players:
-                    if getattr(p, 'assigned_position', '') == 'CPT':
-                        captain = p
-                        used_captains.add(p.name)
-                        break
+            if lineup_result and lineup_result.get('success'):
+                captain = lineup_result['captain']
+                utilities = lineup_result['utilities']
 
-                total_salary = 0
-                for p in lineup_players:
-                    if getattr(p, 'assigned_position', '') == 'CPT':
-                        total_salary += int(p.salary * 1.5)
-                    else:
-                        total_salary += p.salary
+                # Track captain
+                used_captains.add(captain.name)
 
-                lineup_dict = {
-                    'players': lineup_players,
-                    'total_salary': total_salary,
-                    'total_projection': score,
-                    'strategy': strategy,
-                    'pool_size': len(util_players),
-                    'type': 'showdown'
-                }
+                # Create showdown lineup dictionary
+                lineup_dict = self._create_showdown_lineup_dict(
+                    captain, utilities, lineup_result['total_score'], strategy
+                )
 
                 lineups.append(lineup_dict)
 
-                print(f"   ✅ Score: {score:.1f} pts")
-                print(f"   💰 Salary: ${total_salary:,} ({total_salary / self.salary_cap:.1%})")
-
-                if captain:
-                    print(f"   👑 Captain: {captain.name} (${int(captain.salary * 1.5):,})")
-
-        for player in util_players:
-            if hasattr(player, 'original_score'):
-                delattr(player, 'original_score')
+                # Display lineup summary
+                self._display_showdown_summary(lineup_dict)
 
         print(f"\n✅ Generated {len(lineups)} showdown lineups")
         return lineups
@@ -661,17 +838,46 @@ class UnifiedCoreSystem:
             min_unique_players: int = 3,
             contest_type: str = "cash"
     ) -> List[Dict]:
-        """Generate optimized lineups from the player pool"""
+        """
+        Generate optimized lineups from the player pool
+
+        Auto-detects showdown slates and routes appropriately
+
+        Args:
+            num_lineups: Number of lineups to generate
+            strategy: Optimization strategy (balanced, ceiling, safe, etc.)
+            min_unique_players: Minimum unique players between lineups
+            contest_type: Type of contest (cash, gpp, showdown)
+
+        Returns:
+            List of lineup dictionaries
+        """
         if not self.player_pool:
             print("❌ No players in pool!")
             return []
 
+        # AUTO-DETECT SHOWDOWN SLATES
+        if is_showdown_slate(self.player_pool) or contest_type == 'showdown':
+            print("\n🎪 Showdown slate detected! Switching to showdown optimization...")
+            return self.optimize_showdown_lineups(
+                num_lineups=num_lineups,
+                strategy=strategy,
+                min_unique_players=min_unique_players,
+                contest_type=contest_type
+            )
+
+        # REGULAR OPTIMIZATION
         print(f"\n🎯 Optimizing {num_lineups} lineups...")
         print(f"   Strategy: {strategy}")
         print(f"   Contest Type: {contest_type}")
         print(f"   Pool size: {len(self.player_pool)} players")
 
-        # Apply contest-specific configuration using the new config file
+        # Set scoring engine mode based on contest type
+        slate_size = len(self.player_pool)
+        scoring_method = self.scoring_engine.set_contest_type(contest_type, slate_size)
+        print(f"   Scoring Method: {scoring_method.upper()}")
+
+        # Apply contest-specific configuration
         from cash_optimization_config import apply_contest_config, get_contest_description
         contest_config = apply_contest_config(self.optimizer, contest_type)
 
@@ -680,113 +886,57 @@ class UnifiedCoreSystem:
         for line in get_contest_description(contest_type).split('\n'):
             print(f"   {line}")
 
-        # Apply scoring weight overrides if the engine supports it
-        if hasattr(self.scoring_engine, 'config') and hasattr(self.scoring_engine.config, 'weights'):
-            # Save original weights
-            original_weights = self.scoring_engine.config.weights.copy()
+        # Calculate scores with the selected engine
+        print(f"\n📊 Calculating scores with {scoring_method} engine...")
+        for player in self.player_pool:
+            score = self.scoring_engine.calculate_score(player)
+            player.enhanced_score = score
+            player.optimization_score = score
 
-            # Apply contest-specific weights
-            for weight_name, weight_value in contest_config.weight_overrides.items():
-                if weight_name in self.scoring_engine.config.weights:
-                    self.scoring_engine.config.weights[weight_name] = weight_value
-
-            # Recalculate all scores with new weights
-            print(f"\n📊 Recalculating scores with {contest_type} weights...")
-            for player in self.player_pool:
-                player.calculate_enhanced_score()
-
+        # Generate lineups
         lineups = []
         used_players = set()
 
         for i in range(num_lineups):
             print(f"\n   Lineup {i + 1}/{num_lineups}...")
 
-            # Enforce uniqueness
+            # Apply diversity penalty for used players
             if i > 0 and min_unique_players > 0:
-                for player in self.player_pool:
-                    if player.name in used_players:
-                        player.temp_score = player.optimization_score
-                        player.optimization_score *= 0.8
+                self._apply_diversity_penalty(used_players, penalty=0.8)
 
             try:
-                # Use wrapper for parameter compatibility
+                # Run optimization
                 lineup_players, score = self._call_optimizer(
                     players=self.player_pool,
                     strategy=strategy,
-                    min_salary_val=self.optimizer.config.min_salary_usage  # Use config value
+                    min_salary_val=self.optimizer.config.min_salary_usage
                 )
+
+                # Restore original scores
+                self._restore_diversity_scores()
+
+                if lineup_players:
+                    # Track used players
+                    for p in lineup_players:
+                        used_players.add(p.name)
+
+                    # Create lineup dictionary
+                    lineup_dict = self._create_lineup_dict(
+                        lineup_players, score, strategy, contest_type
+                    )
+
+                    # Add lineup analysis
+                    self._analyze_lineup(lineup_dict, contest_type)
+
+                    lineups.append(lineup_dict)
 
             except Exception as e:
                 print(f"   ❌ Optimization failed: {str(e)}")
-                # Restore scores
-                if i > 0:
-                    for player in self.player_pool:
-                        if hasattr(player, 'temp_score'):
-                            player.optimization_score = player.temp_score
+                self._restore_diversity_scores()
                 continue
 
-            # Restore scores
-            if i > 0:
-                for player in self.player_pool:
-                    if hasattr(player, 'temp_score'):
-                        player.optimization_score = player.temp_score
-                        delattr(player, 'temp_score')
-
-            if lineup_players:
-                # Track used players
-                for p in lineup_players:
-                    used_players.add(p.name)
-
-                # Create lineup dict
-                lineup_dict = {
-                    'players': lineup_players,
-                    'total_salary': sum(p.salary for p in lineup_players),
-                    'total_projection': score,
-                    'strategy': strategy,
-                    'contest_type': contest_type,
-                    'pool_size': len(self.player_pool)
-                }
-
-                # Add contest-specific metadata
-                lineup_dict['contest_config'] = {
-                    'max_opposing_hitters': contest_config.max_opposing_hitters,
-                    'min_salary_usage': contest_config.min_salary_usage,
-                    'max_players_per_team': contest_config.max_players_per_team
-                }
-
-                # Check for stacks
-                team_counts = {}
-                for player in lineup_players:
-                    if player.primary_position != 'P':
-                        team_counts[player.team] = team_counts.get(player.team, 0) + 1
-
-                stacks = [team for team, count in team_counts.items() if count >= 3]
-                if stacks:
-                    lineup_dict['stacks'] = stacks
-                    print(f"   🔥 Stack(s): {', '.join(stacks)}")
-
-                lineups.append(lineup_dict)
-
-                print(f"   ✅ Score: {score:.1f} pts")
-                print(f"   💰 Salary: ${lineup_dict['total_salary']:,} ({lineup_dict['total_salary'] / 500:.1f}%)")
-
-                # Show pitcher-hitter correlation info for cash games
-                if contest_type == 'cash':
-                    for pitcher in lineup_players:
-                        if pitcher.primary_position == 'P':
-                            opp_team = getattr(pitcher, 'opponent', None)
-                            if opp_team:
-                                opp_hitters = [p.name for p in lineup_players
-                                               if p.primary_position != 'P' and p.team == opp_team]
-                                if opp_hitters:
-                                    print(f"   ⚠️  {pitcher.name} facing {len(opp_hitters)} hitter(s) from {opp_team}")
-
-        # Restore original scoring weights if we changed them
-        if 'original_weights' in locals():
-            self.scoring_engine.config.weights = original_weights
-            # Optionally recalculate scores with original weights
-            # for player in self.player_pool:
-            #     player.calculate_enhanced_score()
+        # Final cleanup
+        self._restore_diversity_scores()
 
         print(f"\n✅ Generated {len(lineups)} lineups")
         return lineups

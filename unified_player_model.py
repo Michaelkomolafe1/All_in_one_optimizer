@@ -149,25 +149,42 @@ class UnifiedPlayer:
         self.data_quality_score = quality_points / max_points if max_points > 0 else 0
 
     def calculate_enhanced_score(self):
-        """Calculate enhanced score using pure data scoring engine"""
-        # Import pure engine, NOT the old one
-        from pure_data_scoring_engine import get_pure_scoring_engine
+        """Calculate enhanced score using hybrid scoring system"""
+        # Import the hybrid system
+        from hybrid_scoring_system import get_hybrid_scoring_system
 
-        # Get the pure engine
-        engine = get_pure_scoring_engine()
+        # Get the hybrid scoring system
+        engine = get_hybrid_scoring_system()
 
-        # Calculate score with pure data engine
+        # Calculate score with appropriate engine (dynamic or enhanced pure)
         score = engine.calculate_score(self)
         self.enhanced_score = score
         self.optimization_score = score  # Direct assignment for MILP
 
         # Set data quality based on available components
         if hasattr(self, "_score_audit"):
-            # Handle the audit structure correctly
-            self.data_quality_score = self._score_audit.get("data_completeness", 0)
+            audit = self._score_audit
+
+            # For dynamic scoring, check weight redistribution
+            if audit.get("scoring_method") == "weighted_sum_v2":
+                components = audit.get("components", {})
+                active_components = sum(1 for comp in components.values()
+                                        if comp.get("contribution", 0) > 0)
+                total_components = 5  # base, recent, vegas, matchup, order
+                self.data_quality_score = active_components / total_components
+
+            # For enhanced pure, check data completeness
+            elif audit.get("scoring_method") == "enhanced_pure":
+                self.data_quality_score = audit.get("data_completeness", 0)
+            else:
+                self.data_quality_score = 0.2  # Default
+        else:
+            self.data_quality_score = 0.2  # Base only
 
         # Mark as calculated
         self._score_calculated = True
+
+        return score
 
     def calculate_data_quality(self):
         """Calculate data quality score (0-1)"""
