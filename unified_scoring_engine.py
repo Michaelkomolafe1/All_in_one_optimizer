@@ -612,25 +612,23 @@ class UnifiedScoringEngine:
         # Only return if we made adjustments based on real data
         return self._apply_bounds(mult, "matchup") if adjustments > 0 else None
 
-    def _calculate_park_multiplier(self, player: Any) -> Optional[float]:
-        """Calculate park factor multiplier"""
-        park_factors = getattr(player, "_park_factors", None)
-        if not park_factors:
+    def _calculate_park_environment(self) -> Optional[float]:
+        """Calculate park factor multiplier - SINGLE APPLICATION POINT"""
+
+        # Check if already applied
+        if hasattr(self.player, '_park_factor_applied'):
             return None
 
-        if isinstance(park_factors, dict):
-            factor = park_factors.get("factor", 1.0)
+        park_factor = self.park_factors.get(self.player.team, 1.0)
+
+        # Mark as applied
+        self.player._park_factor_applied = True
+
+        # Return adjustment factor
+        if self.player.primary_position == 'P':
+            return 2.0 - park_factor  # Inverse for pitchers
         else:
-            try:
-                factor = float(park_factors)
-            except:
-                return None
-
-        # Invert for pitchers
-        if player.primary_position == "P":
-            factor = 2.0 - factor
-
-        return self._apply_bounds(factor, "park")
+            return park_factor
 
     def _calculate_batting_order_multiplier(self, player: Any) -> Optional[float]:
         """Calculate batting order multiplier"""

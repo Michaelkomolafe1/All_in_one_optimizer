@@ -538,7 +538,8 @@ class OptimizationWorker(QThread):
             lineups = system.optimize_lineups(
                 num_lineups=num_lineups,
                 strategy=strategy,
-                min_unique_players=3
+                min_unique_players=3,
+                contest_type='cash'  # Or get from GUI combo box
             )
 
             if not lineups:

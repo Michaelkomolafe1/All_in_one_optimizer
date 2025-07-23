@@ -40,6 +40,13 @@ class OptimizationConfig:
     max_hitters_vs_pitcher: int = 4
     correlation_boost: float = 0.05
 
+    # PITCHER-HITTER CORRELATION CONTROL
+    # 0 = No opposing hitters allowed (strictest - best for cash)
+    # 1 = Allow 1 elite hitter (balanced - good for most cases)
+    # 2 = Allow 2 hitters (loose - for small slates)
+    # 999 = No constraint (maximum points potential)
+    max_opposing_hitters: int = 1  # Default: balanced approach
+
     # Optimization settings
     timeout_seconds: int = 30
     use_correlation: bool = True
@@ -380,7 +387,11 @@ class UnifiedMILPOptimizer:
         return lineup, total_score
 
     def _run_milp_optimization(self, players: List) -> Tuple[List, float]:
-        """Run the actual MILP optimization"""
+        """
+        Run the actual MILP optimization
+
+        Enhanced with configurable pitcher-hitter constraint for maximum flexibility
+        """
         if not players:
             return [], 0
 
@@ -452,6 +463,42 @@ class UnifiedMILPOptimizer:
             if getattr(player, 'is_manual_selected', False):
                 prob += player_vars[i] == 1
 
+        # 7. PITCHER-HITTER CORRELATION CONSTRAINT (Configurable)
+        # Default: Allow up to 1 hitter from opposing team (balanced approach)
+        # Set to 0 for strict cash games, 999 for no constraint (max points)
+        max_opposing_hitters = getattr(self.config, 'max_opposing_hitters', 1)
+
+        if max_opposing_hitters < 999:  # Only apply if not disabled
+            # Find all pitchers and their opponents
+            for p_idx, pitcher in enumerate(players):
+                if pitcher.primary_position == 'P':
+                    # Get pitcher's opponent team
+                    opp_team = getattr(pitcher, 'opponent', None)
+                    if opp_team:
+                        # Find all hitters from the opposing team
+                        opp_hitter_indices = [
+                            h_idx for h_idx, hitter in enumerate(players)
+                            if hitter.primary_position != 'P' and
+                               getattr(hitter, 'team', None) == opp_team
+                        ]
+
+                        if opp_hitter_indices:
+                            # Add constraint: If pitcher is selected, limit opposing hitters
+                            # This uses Big-M method: allows all hitters if pitcher not selected
+                            constraint_name = f"pitcher_{p_idx}_vs_{opp_team}_hitters"
+
+                            prob += (
+                                pulp.lpSum([player_vars[h] for h in opp_hitter_indices])
+                                <= max_opposing_hitters +
+                                (len(opp_hitter_indices) * (1 - player_vars[p_idx])),
+                                constraint_name
+                            )
+
+                            logger.debug(
+                                f"Added constraint: {pitcher.name} vs {opp_team} "
+                                f"({len(opp_hitter_indices)} hitters, max allowed: {max_opposing_hitters})"
+                            )
+
         # Solve
         try:
             # Use optimized solver settings
@@ -481,6 +528,23 @@ class UnifiedMILPOptimizer:
                 ))
 
                 logger.info(f"Optimization successful: {len(lineup)} players, score: {total_score:.2f}")
+
+                # Log correlation info
+                if max_opposing_hitters < 999:
+                    # Check if we have pitcher-hitter conflicts
+                    for pitcher in lineup:
+                        if pitcher.primary_position == 'P':
+                            opp_team = getattr(pitcher, 'opponent', None)
+                            if opp_team:
+                                opp_hitters = [
+                                    h.name for h in lineup
+                                    if h.primary_position != 'P' and getattr(h, 'team', None) == opp_team
+                                ]
+                                if opp_hitters:
+                                    logger.info(
+                                        f"  ⚠️  Correlation: {pitcher.name} with {len(opp_hitters)} "
+                                        f"opposing hitter(s) from {opp_team}: {', '.join(opp_hitters)}"
+                                    )
 
                 # Log the final lineup
                 logger.info(
