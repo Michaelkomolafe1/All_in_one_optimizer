@@ -15,11 +15,14 @@ import pandas as pd
 from unified_player_model import UnifiedPlayer
 from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
 from unified_scoring_engine import get_scoring_engine, ScoringConfig
+from cash_optimization_config import apply_contest_config
+from cash_optimization_config import apply_contest_config, get_contest_description
 
 # Data enrichment imports
 from simple_statcast_fetcher import FastStatcastFetcher
 from smart_confirmation_system import SmartConfirmationSystem
 from vegas_lines import VegasLines
+
 
 # Configure logging
 logging.basicConfig(
@@ -392,219 +395,126 @@ class UnifiedCoreSystem:
 
     def enrich_player_pool(self) -> int:
         """
-        Enrich player pool with all available data sources
+        Enrich player pool with all available data sources IN PARALLEL
         """
         if not self.player_pool:
             return 0
 
         print(f"\n🔄 Enriching {len(self.player_pool)} players with ALL data sources...")
 
-        # 1. Fetch Vegas data for all teams
-        print("\n📊 Fetching Vegas lines...")
-        vegas_data = {}
-        try:
-            # First, get all vegas lines (this populates self.vegas.lines)
-            self.vegas.get_vegas_lines()
+        # Import parallel fetcher
+        from parallel_data_fetcher import ParallelDataFetcher
+        import time
+        import pandas as pd
 
-            # Process Vegas data with proper error handling
-            for player in self.player_pool:
-                if hasattr(player, 'team') and player.team:
-                    try:
-                        # Get team data from Vegas lines
-                        team_data = self.vegas.lines.get(player.team)
+        # Create parallel fetcher with all data sources
+        fetcher = ParallelDataFetcher(
+            confirmation_system=self.confirmation_system,
+            vegas_client=self.vegas,
+            statcast_fetcher=self.statcast,
+            max_workers=10
+        )
 
-                        if team_data is not None:
-                            # Handle different data structures
-                            if isinstance(team_data, dict):
-                                # Proper dictionary structure
-                                vegas_data[player.team] = team_data
-                                player.vegas_data = team_data
-                                player.implied_total = team_data.get('total', 9.0) / 2
+        # Track timing
+        start_time = time.time()
 
-                                # Also get player-specific Vegas data
-                                try:
-                                    player_vegas = self.vegas.get_player_vegas_data(player)
-                                    if player_vegas:
-                                        player.vegas_multiplier = player_vegas.get('vegas_multiplier', 1.0)
-                                except Exception:
-                                    player.vegas_multiplier = 1.0
+        # Fetch all data in parallel
+        print("⚡ Starting parallel data enrichment...")
+        results = fetcher.enrich_players_parallel(self.player_pool)
 
-                            elif isinstance(team_data, (int, float)):
-                                # Handle legacy format (just the total as a number)
-                                vegas_dict = {
-                                    'total': float(team_data),
-                                    'home': True,  # Default, we don't know
-                                    'opponent': 'UNK'
-                                }
-                                vegas_data[player.team] = vegas_dict
-                                player.vegas_data = vegas_dict
-                                player.implied_total = float(team_data) / 2
-                                player.vegas_multiplier = 1.0
+        # Calculate timing
+        elapsed = time.time() - start_time
 
-                    except Exception as e:
-                        logger.debug(f"Error processing Vegas data for {player.name}: {e}")
-                        continue
-
-            print(f"   ✅ Fetched Vegas data for {len(vegas_data)} teams")
-
-        except Exception as e:
-            logger.error(f"Vegas fetch error: {e}")
-            print(f"   ⚠️  Vegas error: {str(e)}")
-
-        # 2. Fetch Statcast data
-        print("\n⚾ Fetching Statcast data...")
-        statcast_data = {}
-        statcast_metrics = {}  # Store extracted metrics
-        try:
-            # Use the correct method name: fetch_statcast_batch
-            if hasattr(self.statcast, 'fetch_statcast_batch'):
-                # Batch fetch with correct method
-                statcast_results = self.statcast.fetch_statcast_batch(
-                    self.player_pool  # Pass player objects, not just names
-                )
-
-                # Process each player's data
-                for player_name, data in statcast_results.items():
-                    if data is not None and not data.empty:
-                        statcast_data[player_name] = data
-
-                        # Find the player object to get position
-                        player_obj = next((p for p in self.player_pool if p.name == player_name), None)
-                        if player_obj:
-                            # Extract metrics using the statcast fetcher's method
-                            metrics = self.statcast.extract_key_metrics(data, player_obj.primary_position)
-                            if metrics:
-                                statcast_metrics[player_name] = metrics
-            else:
-                # Individual fetch as backup
-                for player in self.player_pool[:20]:  # Limit to avoid rate limits
-                    try:
-                        data = self.statcast.fetch_player_data(player.name, player.primary_position)
-                        if data is not None and not data.empty:
-                            statcast_data[player.name] = data
-                            metrics = self.statcast.extract_key_metrics(data, player.primary_position)
-                            if metrics:
-                                statcast_metrics[player.name] = metrics
-                    except Exception as e:
-                        logger.debug(f"Failed to fetch statcast for {player.name}: {e}")
-
-            print(f"   ✅ Fetched Statcast data for {len(statcast_data)} players")
-
-        except Exception as e:
-            logger.error(f"Statcast fetch error: {e}")
-            print(f"   ⚠️  Statcast error: {str(e)}")
-
-        # 3. Apply enrichment data to players
+        # Count successful enrichments
         enriched_count = 0
-        for player in self.player_pool:
-            enriched = False
+        vegas_count = 0
+        statcast_count = 0
+        confirmation_count = 0
 
-            # Apply raw statcast data (DataFrame)
-            if player.name in statcast_data:
-                player.statcast_data = statcast_data[player.name]
-                enriched = True
+        for player_name, result in results.items():
+            # Check Vegas data
+            if result.vegas_data:
+                vegas_count += 1
 
-            # Apply extracted statcast metrics
-            if player.name in statcast_metrics:
-                player.statcast_metrics = statcast_metrics[player.name]
-                enriched = True
+            # Check Statcast data (handle DataFrame properly)
+            if result.statcast_data is not None:
+                # If it's a DataFrame, check if it's not empty
+                if isinstance(result.statcast_data, pd.DataFrame):
+                    if not result.statcast_data.empty:
+                        statcast_count += 1
+                else:
+                    # If it's not a DataFrame but not None, count it
+                    statcast_count += 1
 
-            # Check if we enriched with Vegas data
-            if hasattr(player, 'vegas_data'):
-                enriched = True
+            # Check confirmation data
+            if result.confirmation_data:
+                confirmation_count += 1
 
-            # Mark as enriched
-            if enriched:
+            # Count as enriched if any data exists
+            has_data = False
+            if result.vegas_data:
+                has_data = True
+            if result.statcast_data is not None:
+                if isinstance(result.statcast_data, pd.DataFrame):
+                    if not result.statcast_data.empty:
+                        has_data = True
+                else:
+                    has_data = True
+            if result.confirmation_data:
+                has_data = True
+
+            if has_data:
                 enriched_count += 1
-                player._is_enriched = True
 
-        print(f"\n✅ Enriched {enriched_count}/{len(self.player_pool)} players")
+        # Print detailed results
+        print(f"\n✅ Enrichment complete in {elapsed:.1f}s")
+        print(f"   Total enriched: {enriched_count}/{len(self.player_pool)} players")
+        print(f"   Vegas data: {vegas_count} players")
+        print(f"   Statcast data: {statcast_count} players")
+        print(f"   Confirmations: {confirmation_count} players")
 
-        # 4. Score all players
+        # Calculate performance metrics
+        players_per_second = len(self.player_pool) / elapsed if elapsed > 0 else 0
+        print(f"   Performance: {players_per_second:.1f} players/second")
+
+        # Show cache statistics if available
+        try:
+            from enhanced_caching_system import get_cache_manager
+            cache_manager = get_cache_manager()
+
+            print("\n📊 Cache Statistics:")
+            all_stats = cache_manager.get_all_stats()
+
+            for cache_name, stats in all_stats.items():
+                if stats['total_requests'] > 0:
+                    print(f"   {cache_name}: {stats['size']} items, "
+                          f"{stats['hit_rate']:.1%} hit rate, "
+                          f"{stats['hits']}/{stats['total_requests']} hits")
+        except Exception as e:
+            logger.debug(f"Could not get cache stats: {e}")
+
+        # Score all players
         print("\n📈 Calculating player scores...")
+        score_start = time.time()
+
         for player in self.player_pool:
             try:
-                # Base score from projection
-                score = player.base_projection
-
-                # Vegas boost (if available and valid)
-                if hasattr(player, 'implied_total') and player.implied_total > 0:
-                    if player.implied_total >= 5.0:
-                        score *= 1.15
-                    elif player.implied_total >= 4.5:
-                        score *= 1.10
-                    elif player.implied_total >= 4.0:
-                        score *= 1.05
-                    else:
-                        score *= 1.00
-
-                # Apply vegas multiplier if available
-                if hasattr(player, 'vegas_multiplier') and player.vegas_multiplier > 0:
-                    score *= player.vegas_multiplier
-
-                # Statcast boost (if available) - using extracted metrics
-                if hasattr(player, 'statcast_metrics') and player.statcast_metrics:
-                    metrics = player.statcast_metrics
-
-                    if player.primary_position == 'P':
-                        # Pitcher boosts
-                        whiff_rate = metrics.get('whiff_rate', 0)
-                        if whiff_rate > 30:
-                            score *= 1.15
-                        elif whiff_rate > 25:
-                            score *= 1.10
-                        elif whiff_rate > 20:
-                            score *= 1.05
-
-                        # Velocity boost
-                        avg_velo = metrics.get('avg_velocity', 0)
-                        if avg_velo > 95:
-                            score *= 1.05
-
-                    else:
-                        # Batter boosts based on multiple metrics
-                        boost_multiplier = 1.0
-
-                        # Barrel rate boost
-                        barrel_rate = metrics.get('barrel_rate', 0)
-                        if barrel_rate > 12:
-                            boost_multiplier *= 1.10
-                        elif barrel_rate > 8:
-                            boost_multiplier *= 1.05
-
-                        # Exit velocity boost
-                        avg_ev = metrics.get('avg_exit_velocity', 0)
-                        if avg_ev > 91:
-                            boost_multiplier *= 1.05
-                        elif avg_ev > 89:
-                            boost_multiplier *= 1.03
-
-                        # xWOBA boost
-                        xwoba = metrics.get('xwoba', 0)
-                        if xwoba > 0.370:
-                            boost_multiplier *= 1.10
-                        elif xwoba > 0.340:
-                            boost_multiplier *= 1.05
-                        elif xwoba > 0.320:
-                            boost_multiplier *= 1.02
-
-                        # Cap total boost at 1.20
-                        score *= min(boost_multiplier, 1.20)
-
-                # Set optimization score
-                player.optimization_score = score
-                player.enhanced_score = score
-
-                # Confirmation boost
-                if hasattr(player, 'is_confirmed') and player.is_confirmed:
-                    player.optimization_score *= 1.05
-
+                player.calculate_enhanced_score()
             except Exception as e:
                 logger.error(f"Error scoring {player.name}: {e}")
-                player.optimization_score = player.base_projection
                 player.enhanced_score = player.base_projection
 
-        print("   ✅ All players scored")
+        score_elapsed = time.time() - score_start
+        print(f"   Scored all players in {score_elapsed:.1f}s")
+
+        # Total time
+        total_elapsed = time.time() - start_time
+        print(f"\n⏱️  Total enrichment time: {total_elapsed:.1f}s")
+
+        # Compare to sequential estimate
+        sequential_estimate = len(self.player_pool) * 0.3  # ~0.3s per player sequential
+        speedup = sequential_estimate / total_elapsed if total_elapsed > 0 else 1
+        print(f"   Estimated speedup: {speedup:.1f}x faster than sequential")
 
         return enriched_count
 
@@ -724,7 +634,7 @@ class UnifiedCoreSystem:
             num_lineups: int = 1,
             strategy: str = "balanced",
             min_unique_players: int = 3,
-            contest_type: str = "cash"  # NEW PARAMETER
+            contest_type: str = "cash"
     ) -> List[Dict]:
         """Generate optimized lineups from the player pool"""
         if not self.player_pool:
@@ -733,22 +643,32 @@ class UnifiedCoreSystem:
 
         print(f"\n🎯 Optimizing {num_lineups} lineups...")
         print(f"   Strategy: {strategy}")
-        print(f"   Contest Type: {contest_type}")  # NEW
+        print(f"   Contest Type: {contest_type}")
         print(f"   Pool size: {len(self.player_pool)} players")
 
-        # Adjust optimizer settings based on contest type
-        if contest_type == "cash":
-            self.optimizer.config.max_opposing_hitters = 0  # Strict for cash
-            self.optimizer.config.min_salary_usage = 0.98
-            self.optimizer.config.max_players_per_team = 3
-        elif contest_type == "gpp":
-            self.optimizer.config.max_opposing_hitters = 1  # Balanced for GPP
-            self.optimizer.config.min_salary_usage = 0.95
-            self.optimizer.config.max_players_per_team = 5
-        elif contest_type == "max_points":
-            self.optimizer.config.max_opposing_hitters = 999  # No constraint
-            self.optimizer.config.min_salary_usage = 0.90
-            self.optimizer.config.max_players_per_team = 6
+        # Apply contest-specific configuration using the new config file
+        from cash_optimization_config import apply_contest_config, get_contest_description
+        contest_config = apply_contest_config(self.optimizer, contest_type)
+
+        # Print contest configuration
+        print(f"\n📋 Contest Configuration:")
+        for line in get_contest_description(contest_type).split('\n'):
+            print(f"   {line}")
+
+        # Apply scoring weight overrides if the engine supports it
+        if hasattr(self.scoring_engine, 'config') and hasattr(self.scoring_engine.config, 'weights'):
+            # Save original weights
+            original_weights = self.scoring_engine.config.weights.copy()
+
+            # Apply contest-specific weights
+            for weight_name, weight_value in contest_config.weight_overrides.items():
+                if weight_name in self.scoring_engine.config.weights:
+                    self.scoring_engine.config.weights[weight_name] = weight_value
+
+            # Recalculate all scores with new weights
+            print(f"\n📊 Recalculating scores with {contest_type} weights...")
+            for player in self.player_pool:
+                player.calculate_enhanced_score()
 
         lineups = []
         used_players = set()
@@ -768,7 +688,7 @@ class UnifiedCoreSystem:
                 lineup_players, score = self._call_optimizer(
                     players=self.player_pool,
                     strategy=strategy,
-                    min_salary_val=self.min_salary_usage
+                    min_salary_val=self.optimizer.config.min_salary_usage  # Use config value
                 )
 
             except Exception as e:
@@ -798,14 +718,50 @@ class UnifiedCoreSystem:
                     'total_salary': sum(p.salary for p in lineup_players),
                     'total_projection': score,
                     'strategy': strategy,
-                    'contest_type': contest_type,  # NEW
+                    'contest_type': contest_type,
                     'pool_size': len(self.player_pool)
                 }
+
+                # Add contest-specific metadata
+                lineup_dict['contest_config'] = {
+                    'max_opposing_hitters': contest_config.max_opposing_hitters,
+                    'min_salary_usage': contest_config.min_salary_usage,
+                    'max_players_per_team': contest_config.max_players_per_team
+                }
+
+                # Check for stacks
+                team_counts = {}
+                for player in lineup_players:
+                    if player.primary_position != 'P':
+                        team_counts[player.team] = team_counts.get(player.team, 0) + 1
+
+                stacks = [team for team, count in team_counts.items() if count >= 3]
+                if stacks:
+                    lineup_dict['stacks'] = stacks
+                    print(f"   🔥 Stack(s): {', '.join(stacks)}")
 
                 lineups.append(lineup_dict)
 
                 print(f"   ✅ Score: {score:.1f} pts")
-                print(f"   💰 Salary: ${lineup_dict['total_salary']:,}")
+                print(f"   💰 Salary: ${lineup_dict['total_salary']:,} ({lineup_dict['total_salary'] / 500:.1f}%)")
+
+                # Show pitcher-hitter correlation info for cash games
+                if contest_type == 'cash':
+                    for pitcher in lineup_players:
+                        if pitcher.primary_position == 'P':
+                            opp_team = getattr(pitcher, 'opponent', None)
+                            if opp_team:
+                                opp_hitters = [p.name for p in lineup_players
+                                               if p.primary_position != 'P' and p.team == opp_team]
+                                if opp_hitters:
+                                    print(f"   ⚠️  {pitcher.name} facing {len(opp_hitters)} hitter(s) from {opp_team}")
+
+        # Restore original scoring weights if we changed them
+        if 'original_weights' in locals():
+            self.scoring_engine.config.weights = original_weights
+            # Optionally recalculate scores with original weights
+            # for player in self.player_pool:
+            #     player.calculate_enhanced_score()
 
         print(f"\n✅ Generated {len(lineups)} lineups")
         return lineups

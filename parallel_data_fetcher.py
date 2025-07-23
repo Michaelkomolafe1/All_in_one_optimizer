@@ -5,11 +5,9 @@ PARALLEL DATA FETCHING SYSTEM
 Fetch Vegas, Statcast, and confirmations in parallel
 """
 
-import asyncio
-import aiohttp
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Optional
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -64,138 +62,90 @@ class ParallelDataFetcher:
         start_time = time.time()
         results = {}
 
-        print(f"\n⚡ Parallel enrichment for {len(players)} players...")
-        print(f"   Using {self.max_workers} workers")
+        print(f"\n⚡ Parallel enrichment starting for {len(players)} players...")
 
-        # Step 1: Fetch all Vegas data at once (it's by team)
-        vegas_by_team = self._fetch_all_vegas_parallel()
+        # First, batch fetch data that can be fetched in bulk
+        self._batch_fetch_vegas_data()
+        self._batch_fetch_confirmations()
 
-        # Step 2: Get all confirmations at once
-        confirmations = self._fetch_all_confirmations()
-
-        # Step 3: Parallel fetch individual player data
+        # Then fetch individual player data in parallel
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submit all tasks
+            # Submit all player enrichment tasks
             future_to_player = {
-                executor.submit(
-                    self._enrich_single_player,
-                    player,
-                    vegas_by_team,
-                    confirmations
-                ): player
+                executor.submit(self._enrich_single_player, player): player
                 for player in players
             }
 
-            # Process as completed
-            completed = 0
+            # Process completed tasks
             for future in as_completed(future_to_player):
                 player = future_to_player[future]
-                completed += 1
-
                 try:
                     result = future.result()
                     results[player.name] = result
-
-                    # Progress update
-                    if completed % 20 == 0:
-                        print(f"   Progress: {completed}/{len(players)}")
-
                 except Exception as e:
-                    logger.error(f"Failed to enrich {player.name}: {e}")
+                    logger.error(f"Error enriching {player.name}: {e}")
                     results[player.name] = EnrichmentResult(
                         player_name=player.name,
                         error=str(e)
                     )
 
-        total_time = time.time() - start_time
-        print(f"\n✅ Parallel enrichment completed in {total_time:.1f}s")
-        print(f"   Average: {total_time / len(players):.2f}s per player")
-
-        # Apply results to players
+        # Apply enrichment results back to players
         self._apply_enrichment_results(players, results)
+
+        elapsed = time.time() - start_time
+        successful = sum(1 for r in results.values() if not r.error)
+
+        print(f"✅ Parallel enrichment complete: {successful}/{len(players)} "
+              f"players in {elapsed:.1f}s")
 
         return results
 
-    def _fetch_all_vegas_parallel(self) -> Dict[str, Dict]:
-        """Fetch Vegas data for all teams at once"""
-        if not self.vegas:
-            return {}
+    def _batch_fetch_vegas_data(self):
+        """Batch fetch Vegas data for all teams"""
+        if self.vegas:
+            try:
+                logger.info("Batch fetching Vegas lines...")
+                self.vegas.get_vegas_lines()
+            except Exception as e:
+                logger.error(f"Vegas batch fetch error: {e}")
 
-        try:
-            # Get all lines at once
-            self.vegas.get_vegas_lines()
+    def _batch_fetch_confirmations(self):
+        """Batch fetch lineup confirmations"""
+        if self.confirmation:
+            try:
+                logger.info("Batch fetching confirmations...")
+                # This depends on your confirmation system implementation
+                if hasattr(self.confirmation, 'batch_fetch'):
+                    self.confirmation.batch_fetch()
+            except Exception as e:
+                logger.error(f"Confirmation batch fetch error: {e}")
 
-            # Extract team data
-            vegas_by_team = {}
-            for team, data in self.vegas.lines.items():
-                vegas_by_team[team] = data
-                # Cache it
-                self.cache_manager.cache_vegas(team, data)
-
-            return vegas_by_team
-
-        except Exception as e:
-            logger.error(f"Vegas fetch error: {e}")
-            return {}
-
-    def _fetch_all_confirmations(self) -> Dict:
-        """Fetch all lineup confirmations at once"""
-        if not self.confirmation:
-            return {}
-
-        try:
-            # This would ideally be a batch method
-            confirmations = {
-                'lineups': {},
-                'pitchers': {}
-            }
-
-            # Get confirmed lineups and pitchers
-            # (This is pseudo-code - adapt to your actual confirmation system)
-            if hasattr(self.confirmation, 'get_all_lineups'):
-                confirmations['lineups'] = self.confirmation.get_all_lineups()
-
-            if hasattr(self.confirmation, 'get_all_starting_pitchers'):
-                confirmations['pitchers'] = self.confirmation.get_all_starting_pitchers()
-
-            return confirmations
-
-        except Exception as e:
-            logger.error(f"Confirmation fetch error: {e}")
-            return {}
-
-    def _enrich_single_player(
-            self,
-            player: Any,
-            vegas_by_team: Dict[str, Dict],
-            confirmations: Dict
-    ) -> EnrichmentResult:
-        """Enrich a single player with all data"""
+    def _enrich_single_player(self, player: Any) -> EnrichmentResult:
+        """Enrich a single player with all data sources"""
         start_time = time.time()
         result = EnrichmentResult(player_name=player.name)
 
-        # 1. Apply Vegas data (already fetched)
-        if player.team in vegas_by_team:
-            result.vegas_data = vegas_by_team[player.team]
+        # 1. Get Vegas data (should be cached from batch fetch)
+        if self.vegas and hasattr(player, 'team'):
+            # Check cache first
+            cached = self.cache_manager.cached_vegas(player.team)
+            if cached is not None:
+                result.vegas_data = cached
+            else:
+                # Get from client (should be in memory from batch fetch)
+                team_lines = getattr(self.vegas.lines, player.team, None)
+                if team_lines:
+                    result.vegas_data = team_lines
+                    self.cache_manager.cache_vegas(player.team, team_lines)
 
-        # 2. Check confirmations (already fetched)
-        if player.primary_position == 'P':
-            # Check pitcher confirmations
-            pitchers = confirmations.get('pitchers', {})
-            if player.team in pitchers and player.name in pitchers[player.team]:
-                result.confirmation_data = {'confirmed': True, 'source': 'pitchers'}
-        else:
-            # Check lineup confirmations
-            lineups = confirmations.get('lineups', {})
-            if player.team in lineups:
-                for idx, lineup_player in enumerate(lineups[player.team]):
-                    if lineup_player == player.name:
-                        result.confirmation_data = {
-                            'confirmed': True,
-                            'batting_order': idx + 1,
-                            'source': 'lineups'
-                        }
-                        break
+        # 2. Get confirmation data
+        if self.confirmation:
+            try:
+                conf_data = self.confirmation.check_player_confirmation(player.name)
+                if conf_data:
+                    result.confirmation_data = conf_data
+            except Exception as e:
+                logger.debug(f"Confirmation error for {player.name}: {e}")
 
         # 3. Fetch Statcast data (individual)
         if self.statcast:
@@ -234,11 +184,9 @@ class ParallelDataFetcher:
                     player.vegas_data = result.vegas_data
                     player.implied_total = result.vegas_data.get('total', 9.0) / 2
 
-                    # Calculate Vegas multiplier
-                    if hasattr(self.vegas, '_calculate_vegas_multiplier'):
-                        player.vegas_multiplier = self.vegas._calculate_vegas_multiplier(
-                            player, result.vegas_data
-                        )
+                    # Don't access protected method - let the player calculate its own multiplier
+                    if hasattr(player, 'apply_vegas_data'):
+                        player.apply_vegas_data(result.vegas_data)
 
                 # Apply confirmation data
                 if result.confirmation_data:
@@ -250,70 +198,65 @@ class ParallelDataFetcher:
                 if result.statcast_data is not None:
                     player.statcast_data = result.statcast_data
 
-                    # Extract key metrics if available
-                    if hasattr(self.statcast, 'extract_key_metrics'):
-                        player.statcast_metrics = self.statcast.extract_key_metrics(
-                            result.statcast_data,
-                            player.primary_position
-                        )
+                    # Let the player handle its own Statcast application
+                    if hasattr(player, 'apply_statcast_data'):
+                        player.apply_statcast_data(result.statcast_data)
+
+                # Mark as enriched
+                player._is_enriched = True
 
 
-# Integration function
+# Integration function for unified_core_system.py
 def create_parallel_enrichment_method():
     """Create replacement method for enrich_player_pool"""
 
     method_code = '''
-    def enrich_player_pool(self) -> int:
-        """
-        Enrich player pool with all available data sources IN PARALLEL
-        """
-        if not self.player_pool:
-            return 0
+def enrich_player_pool(self) -> int:
+    """Enrich player pool with all data sources IN PARALLEL"""
+    if not self.player_pool:
+        return 0
 
-        print(f"\\n🔄 Enriching {len(self.player_pool)} players with ALL data sources...")
+    print(f"\\n🔄 Enriching {len(self.player_pool)} players with ALL data sources...")
 
-        # Use parallel fetcher
-        from parallel_data_fetcher import ParallelDataFetcher
+    # Use parallel fetcher
+    from parallel_data_fetcher import ParallelDataFetcher
 
-        fetcher = ParallelDataFetcher(
-            confirmation_system=self.confirmation_system,
-            vegas_client=self.vegas,
-            statcast_fetcher=self.statcast,
-            max_workers=10
-        )
+    fetcher = ParallelDataFetcher(
+        confirmation_system=self.confirmation_system,
+        vegas_client=self.vegas,
+        statcast_fetcher=self.statcast,
+        max_workers=10
+    )
 
-        # Fetch all data in parallel
-        results = fetcher.enrich_players_parallel(self.player_pool)
+    # Fetch all data in parallel
+    start_time = time.time()
+    results = fetcher.enrich_players_parallel(self.player_pool)
+    elapsed = time.time() - start_time
 
-        # Count enriched
-        enriched_count = sum(
-            1 for r in results.values()
-            if r.vegas_data or r.statcast_data or r.confirmation_data
-        )
+    # Count enriched
+    enriched_count = sum(
+        1 for r in results.values() 
+        if r.vegas_data or r.statcast_data or r.confirmation_data
+    )
 
-        print(f"\\n✅ Enriched {enriched_count}/{len(self.player_pool)} players")
+    print(f"\\n✅ Enriched {enriched_count}/{len(self.player_pool)} players in {elapsed:.1f}s")
 
-        # Score all players (same as before)
-        print("\\n📈 Calculating player scores...")
-        # ... rest of scoring logic ...
+    # Score all players
+    print("\\n📈 Calculating player scores...")
+    for player in self.player_pool:
+        player.calculate_enhanced_score()
 
-        return enriched_count
-    '''
+    return enriched_count
+'''
 
     return method_code
 
 
 if __name__ == "__main__":
-    print("✅ Parallel Data Fetching System")
+    print("✅ Parallel Data Fetching System - Fixed Version")
     print("\nFeatures:")
-    print("  - Fetches Vegas for all teams at once")
-    print("  - Fetches confirmations in batch")
-    print("  - Parallel Statcast fetching")
+    print("  - Batch fetches Vegas for all teams")
+    print("  - Parallel player enrichment")
     print("  - Integrated caching")
-    print("  - ~3x faster than sequential")
-
-    # Performance comparison
-    print("\nPerformance Comparison:")
-    print("  Sequential: ~45s for 200 players")
-    print("  Parallel:   ~15s for 200 players")
-    print("  With cache: ~3s for 200 players (2nd run")
+    print("  - Proper error handling")
+    print("  - No unused imports")

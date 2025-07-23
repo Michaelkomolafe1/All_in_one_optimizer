@@ -247,3 +247,5 @@ if __name__ == "__main__":
     for team in ["COL", "SF", "NYY", "XYZ"]:
         factor = park_factors.get_factor(team)
         print(f"{team}: {factor}")
+
+PARK_FACTORS = ParkFactors.PARK_FACTORS

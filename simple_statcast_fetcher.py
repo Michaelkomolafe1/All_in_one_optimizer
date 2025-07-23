@@ -199,7 +199,7 @@ class SimpleStatcastFetcher:
 
     def fetch_player_data(self, player_name: str, position: str = None) -> Optional[pd.DataFrame]:
         """
-        Fetch Statcast data for a player
+        Fetch Statcast data for a player with enhanced caching
 
         Args:
             player_name: Player's full name
@@ -208,12 +208,31 @@ class SimpleStatcastFetcher:
         Returns:
             DataFrame with Statcast data or None
         """
-        # Check cache first
-        cache_data = self._check_cache(player_name)
-        if cache_data is not None:
+        # Import enhanced cache manager
+        from enhanced_caching_system import get_cache_manager
+        cache_manager = get_cache_manager()
+
+        # Check enhanced cache first
+        cached_data = cache_manager.cached_statcast(player_name, position or "Unknown")
+        if cached_data is not None:
             with self.lock:
                 self.stats['cache_hits'] += 1
-            return cache_data
+            logger.debug(f"✅ Enhanced cache hit for {player_name}")
+            return cached_data
+
+        # Check file cache second
+        file_cache_data = self._check_cache(player_name)
+        if file_cache_data is not None:
+            with self.lock:
+                self.stats['cache_hits'] += 1
+
+            # Store in enhanced cache for even faster access
+            cache_manager.cache_statcast(player_name, position or "Unknown", file_cache_data)
+            logger.debug(f"✅ File cache hit for {player_name}, stored in enhanced cache")
+            return file_cache_data
+
+        # If not in any cache, fetch from API
+        logger.debug(f"🔍 Fetching fresh data for {player_name}")
 
         # Get player ID
         player_id = self.get_player_id(player_name)
@@ -221,24 +240,34 @@ class SimpleStatcastFetcher:
             logger.debug(f"No ID found for {player_name}")
             with self.lock:
                 self.stats['failures'] += 1
+
+            # Cache the failure to avoid repeated lookups
+            cache_manager.cache_statcast(player_name, position or "Unknown", None)
             return None
 
         # Fetch from API
         try:
             start_time = time.time()
 
-            if position == 'P':
-                data = statcast_pitcher(
-                    start_dt=self.season_start,
-                    end_dt=self.season_end,
-                    player_id=player_id
-                )
-            else:
-                data = statcast_batter(
-                    start_dt=self.season_start,
-                    end_dt=self.season_end,
-                    player_id=player_id
-                )
+            # Suppress pybaseball output
+            old_stdout = sys.stdout
+            sys.stdout = io.StringIO()
+
+            try:
+                if position == 'P':
+                    data = statcast_pitcher(
+                        start_dt=self.season_start,
+                        end_dt=self.season_end,
+                        player_id=player_id
+                    )
+                else:
+                    data = statcast_batter(
+                        start_dt=self.season_start,
+                        end_dt=self.season_end,
+                        player_id=player_id
+                    )
+            finally:
+                sys.stdout = old_stdout
 
             fetch_time = time.time() - start_time
 
@@ -247,18 +276,36 @@ class SimpleStatcastFetcher:
                 self.stats['total_time'] += fetch_time
 
             if data is not None and not data.empty:
-                # Cache the data
+                # Save to file cache
                 self._save_to_cache(player_name, data)
-                logger.debug(f"Fetched {len(data)} records for {player_name} in {fetch_time:.1f}s")
+
+                # Save to enhanced cache
+                cache_manager.cache_statcast(player_name, position or "Unknown", data)
+
+                logger.debug(f"✅ Fetched {len(data)} records for {player_name} in {fetch_time:.1f}s")
+                logger.debug(f"💾 Cached data for {player_name} in both file and memory cache")
+
+                # Log performance metrics periodically
+                if self.stats['api_calls'] % 10 == 0:
+                    logger.info(f"Statcast performance: {self.stats['api_calls']} API calls, "
+                                f"{self.stats['cache_hits']} cache hits, "
+                                f"avg fetch time: {self.stats['total_time'] / self.stats['api_calls']:.1f}s")
+
                 return data
             else:
                 logger.debug(f"No data found for {player_name}")
+
+                # Cache empty result to avoid repeated failed lookups
+                cache_manager.cache_statcast(player_name, position or "Unknown", pd.DataFrame())
+
                 return None
 
         except Exception as e:
             logger.error(f"Error fetching {player_name}: {e}")
             with self.lock:
                 self.stats['failures'] += 1
+
+            # Don't cache errors - we might want to retry
             return None
 
     def fetch_multiple_players_parallel(self, players_list: List) -> Dict[str, pd.DataFrame]:

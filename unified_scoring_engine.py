@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+
 import numpy as np
 
 # Set up logging
@@ -103,8 +104,12 @@ class UnifiedScoringEngine:
     def __init__(self, config: Optional[ScoringConfig] = None):
         """Initialize with configuration"""
         self.config = config or ScoringConfig()
+        # Load park factors
+        from park_factors import PARK_FACTORS
+        self.park_factors = {team: data['factor'] for team, data in PARK_FACTORS.items()}
         self._cache = {}
         self._calculation_count = 0
+
 
         logger.info("Unified Scoring Engine initialized")
         logger.debug(f"Weights: {self.config.weights}")
@@ -230,7 +235,7 @@ class UnifiedScoringEngine:
             )
 
         # 4. Park Factor Component
-        park_mult = self._calculate_park_multiplier(player)
+        park_mult = self._calculate_park_environment(player)
         if park_mult is not None:
             components.append(
                 ScoreComponent(
@@ -612,20 +617,20 @@ class UnifiedScoringEngine:
         # Only return if we made adjustments based on real data
         return self._apply_bounds(mult, "matchup") if adjustments > 0 else None
 
-    def _calculate_park_environment(self) -> Optional[float]:
+    def _calculate_park_environment(self, player: Any) -> Optional[float]:
         """Calculate park factor multiplier - SINGLE APPLICATION POINT"""
 
         # Check if already applied
-        if hasattr(self.player, '_park_factor_applied'):
+        if hasattr(player, '_park_factor_applied'):
             return None
 
-        park_factor = self.park_factors.get(self.player.team, 1.0)
+        park_factor = self.park_factors.get(player.team, 1.0)
 
         # Mark as applied
-        self.player._park_factor_applied = True
+        player._park_factor_applied = True
 
         # Return adjustment factor
-        if self.player.primary_position == 'P':
+        if player.primary_position == 'P':
             return 2.0 - park_factor  # Inverse for pitchers
         else:
             return park_factor

@@ -245,6 +245,12 @@ class OptimizationPanel(QWidget):
         self.strategy_combo.setCurrentText('balanced')
         settings_layout.addRow("Strategy:", self.strategy_combo)
 
+        # ADD THIS: Contest Type
+        self.contest_type_combo = QComboBox()
+        self.contest_type_combo.addItems(['cash', 'gpp', 'balanced_gpp'])
+        self.contest_type_combo.setCurrentText('cash')
+        settings_layout.addRow("Contest Type:", self.contest_type_combo)
+
         # Number of lineups
         self.lineups_spin = QSpinBox()
         self.lineups_spin.setRange(1, 20)
@@ -371,9 +377,10 @@ class OptimizationPanel(QWidget):
         self.optimize_btn.setEnabled(enabled)
 
     def on_optimize(self):
-        """Emit settings with manual players only"""
+        """Emit settings with contest type"""
         settings = {
             'strategy': self.strategy_combo.currentText(),
+            'contest_type': self.contest_type_combo.currentText(),  # ADD THIS LINE
             'num_lineups': self.lineups_spin.value(),
             'min_salary': self.min_salary_slider.value(),
             'manual_players': self.manual_players.copy()
@@ -539,7 +546,8 @@ class OptimizationWorker(QThread):
                 num_lineups=num_lineups,
                 strategy=strategy,
                 min_unique_players=3,
-                contest_type='cash'  # Or get from GUI combo box
+                contest_type=self.settings.get('contest_type', 'cash')  # ADD THIS LINE
+
             )
 
             if not lineups:
