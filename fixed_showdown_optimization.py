@@ -27,7 +27,7 @@ class ShowdownOptimizer:
     def detect_showdown_slate(self, players: List) -> bool:
         """Detect if this is a showdown slate"""
         # Check for CPT/UTIL positions
-        positions = {p.position for p in players}
+        positions = {p.primary_position for p in players}
         if 'CPT' in positions or 'UTIL' in positions:
             return True
 
@@ -49,7 +49,7 @@ class ShowdownOptimizer:
 
         for player in all_players:
             # Skip CPT entries entirely
-            if player.position == 'CPT':
+            if player.primary_position == 'CPT':
                 continue
 
             # Use UTIL entries or deduplicate if positions are mixed
@@ -129,7 +129,9 @@ class ShowdownOptimizer:
                     ]) <= 4
 
         # Solve
-        prob.solve()
+        from pulp import PULP_CBC_CMD
+        solver = PULP_CBC_CMD(timeLimit=20, gapRel=0.01, msg=0)
+        prob.solve(solver)
 
         if LpStatus[prob.status] != 'Optimal':
             logger.error("No optimal showdown lineup found")

@@ -115,6 +115,64 @@ class UnifiedPlayer:
 
     # In unified_player_model.py, inside the UnifiedPlayer class:
 
+    # Add this method to your UnifiedPlayer class in unified_player_model.py
+
+    @classmethod
+    def from_csv_row(cls, row: Dict) -> 'UnifiedPlayer':
+        """Create UnifiedPlayer from DraftKings CSV row"""
+        # Extract data from CSV row - handle different column variations
+        name = row.get('Name', row.get('name', ''))
+        position = row.get('Position', row.get('Pos', ''))
+        team = row.get('TeamAbbrev', row.get('Team', ''))
+        salary = int(row.get('Salary', 0))
+
+        # Handle game info to extract opponent
+        game_info = row.get('Game Info', row.get('GameInfo', ''))
+        opponent = ''
+        if game_info and '@' in game_info:
+            # Parse "TB@BOS" format
+            teams = game_info.split('@')
+            if team == teams[0]:
+                opponent = teams[1]
+            else:
+                opponent = teams[0]
+
+        # Generate unique ID
+        player_id = f"{name.replace(' ', '_')}_{team}".lower()
+
+        # Parse positions (handle multi-position)
+        positions = position.split('/')
+        primary_position = positions[0]
+
+        # Get base projection
+        base_projection = float(row.get('AvgPointsPerGame',
+                                        row.get('Projection',
+                                                row.get('proj', 0))))
+
+        # Create instance
+        player = cls(
+            id=player_id,
+            name=name,
+            team=team,
+            salary=salary,
+            primary_position=primary_position,
+            positions=positions,
+            base_projection=base_projection
+        )
+
+        # Add additional attributes
+        player.opponent = opponent
+        player.game_info = game_info
+
+        # Add batting order if available
+        if 'batting_order' in row:
+            player.batting_order = int(row['batting_order'])
+
+        # Store DFF projection
+        player.dff_projection = base_projection
+
+        return player
+
     def _get_team_total(self) -> float:
         """Helper to get team total from various sources"""
         if hasattr(self, 'team_total') and self.team_total > 0:
@@ -130,7 +188,8 @@ class UnifiedPlayer:
         quality_checks = {
             'has_projection': bool(getattr(self, 'base_projection', 0) > 0),
             'has_vegas': bool(self._get_team_total() > 0),
-            'has_batting_order': bool(getattr(self, 'batting_order', 0) > 0),
+            'has_batting_order': bool(
+                getattr(self, 'batting_order', None) is not None and getattr(self, 'batting_order', 0) > 0),
             'has_team': bool(getattr(self, 'team', None))
         }
 

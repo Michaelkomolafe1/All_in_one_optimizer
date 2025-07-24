@@ -98,12 +98,68 @@ class UnifiedCoreSystem:
             df = pd.read_csv(csv_path)
             self.players = []
 
-            for _, row in df.iterrows():
-                player = UnifiedPlayer.from_csv_row(row)
+            for idx, row in df.iterrows():
+                # Extract data from CSV row - DraftKings format
+                # Handle different column name variations
+                name = row.get('Name', row.get('name', ''))
+                position = row.get('Position', row.get('Pos', ''))
+                team = row.get('TeamAbbrev', row.get('Team', ''))
+                salary = int(row.get('Salary', 0))
+
+                # Handle game info to extract opponent
+                game_info = row.get('Game Info', row.get('GameInfo', ''))
+                opponent = ''
+                if game_info and '@' in game_info:
+                    # Parse "TB@BOS" format
+                    teams = game_info.split('@')
+                    if team == teams[0]:
+                        opponent = teams[1]
+                    else:
+                        opponent = teams[0]
+
+                # Generate unique ID
+                player_id = f"{name.replace(' ', '_')}_{team}".lower()
+
+                # Parse positions (handle multi-position)
+                positions = position.split('/')
+                primary_position = positions[0]
+
+                # Get base projection (may be in different columns)
+                base_projection = float(row.get('AvgPointsPerGame',
+                                                row.get('Projection',
+                                                        row.get('proj', 0))))
+
+                # Create UnifiedPlayer instance
+                player = UnifiedPlayer(
+                    id=player_id,
+                    name=name,
+                    team=team,
+                    salary=salary,
+                    primary_position=primary_position,
+                    positions=positions,
+                    base_projection=base_projection
+                )
+
+                # Add additional attributes
+                player.opponent = opponent
+                player.game_info = game_info
+
+                # Add any other available data
+                if 'batting_order' in row:
+                    player.batting_order = int(row['batting_order'])
+
+                # Store DFF projection if available
+                player.dff_projection = base_projection
+
                 self.players.append(player)
 
             self.csv_loaded = True
             logger.info(f"✅ Loaded {len(self.players)} players from CSV")
+
+            # Pass players to confirmation system if it supports it
+            if hasattr(self, 'confirmation_system') and hasattr(self.confirmation_system, 'csv_players'):
+                self.confirmation_system.csv_players = self.players
+
             return self.players
 
         except Exception as e:
@@ -119,11 +175,39 @@ class UnifiedCoreSystem:
         logger.info("Fetching confirmed players...")
 
         try:
-            confirmed = self.confirmation_system.get_all_confirmations()
-            self.confirmed_players = set(confirmed)
-            self.confirmations_fetched = True
+            # Get the actual player names from confirmation system
+            if hasattr(self.confirmation_system, 'confirmed_pitchers'):
+                # Get pitchers
+                pitchers = self.confirmation_system.confirmed_pitchers
+                pitcher_names = []
+                for team, pitcher_data in pitchers.items():
+                    if isinstance(pitcher_data, dict) and 'name' in pitcher_data:
+                        pitcher_names.append(pitcher_data['name'])
+                    elif isinstance(pitcher_data, str):
+                        pitcher_names.append(pitcher_data)
 
-            logger.info(f"✅ Found {len(self.confirmed_players)} confirmed players")
+                # Get position players
+                position_players = []
+                if hasattr(self.confirmation_system, 'confirmed_lineups'):
+                    for team, lineup in self.confirmation_system.confirmed_lineups.items():
+                        if isinstance(lineup, list):
+                            for player in lineup:
+                                if isinstance(player, dict) and 'name' in player:
+                                    position_players.append(player['name'])
+                                elif isinstance(player, str):
+                                    position_players.append(player)
+
+                # Combine all names
+                all_names = pitcher_names + position_players
+                self.confirmed_players = set(all_names)
+                logger.info(f"✅ Found {len(self.confirmed_players)} confirmed players")
+
+            else:
+                # Fallback - just use empty set
+                self.confirmed_players = set()
+                logger.warning("Could not access confirmation data properly")
+
+            self.confirmations_fetched = True
             return self.confirmed_players
 
         except Exception as e:
@@ -145,6 +229,13 @@ class UnifiedCoreSystem:
 
         self.player_pool = []
 
+        # Show what we're working with
+        logger.info(f"Total CSV players: {len(self.players)}")
+        logger.info(f"Confirmed players to match: {len(self.confirmed_players)}")
+
+        # Count matches for debugging
+        matches = 0
+
         for player in self.players:
             # Include if manually selected
             if player.name in self.manual_selections:
@@ -154,15 +245,60 @@ class UnifiedCoreSystem:
             # Include if confirmed
             if player.name in self.confirmed_players:
                 self.player_pool.append(player)
+                player.is_confirmed = True  # Mark as confirmed
+                matches += 1
                 continue
 
             # Include unconfirmed if requested
-            if include_unconfirmed and not self.confirmations_fetched:
+            if include_unconfirmed:
                 self.player_pool.append(player)
 
         logger.info(f"✅ Built player pool with {len(self.player_pool)} players")
-        logger.info(f"   Confirmed: {len([p for p in self.player_pool if p.name in self.confirmed_players])}")
-        logger.info(f"   Manual: {len([p for p in self.player_pool if p.name in self.manual_selections])}")
+        logger.info(f"   Confirmed matches: {matches}")
+        logger.info(f"   Manual selections: {len([p for p in self.player_pool if p.name in self.manual_selections])}")
+
+        # If we have confirmations but no matches, something is wrong
+        if self.confirmed_players and matches == 0:
+            logger.error("❌ No confirmed players matched with CSV!")
+            logger.error("Sample confirmed names: " + str(list(self.confirmed_players)[:3]))
+            logger.error("Sample CSV names: " + str([p.name for p in self.players[:3]]))
+            logger.error("Name format mismatch - check CSV player name format")
+
+            # Offer to show all players for debugging
+            if len(self.players) < 20:
+                logger.info("\nAll CSV player names:")
+                for p in self.players:
+                    logger.info(f"  - '{p.name}' ({p.team})")
+
+    def debug_player_matching(self):
+        """Debug method to show why players aren't matching"""
+        print("\n" + "=" * 60)
+        print("PLAYER MATCHING DEBUG")
+        print("=" * 60)
+
+        print(f"\nConfirmed players from API ({len(self.confirmed_players)}):")
+        for i, name in enumerate(list(self.confirmed_players)[:10]):
+            print(f"  {i + 1}. '{name}'")
+
+        print(f"\nCSV players ({len(self.players)}):")
+        for i, player in enumerate(self.players[:10]):
+            print(f"  {i + 1}. '{player.name}' - {player.team} - ${player.salary}")
+
+        # Try to find why they don't match
+        if self.confirmed_players and self.players:
+            conf_name = list(self.confirmed_players)[0]
+            csv_name = self.players[0].name
+
+            print(f"\nComparing first entries:")
+            print(f"  Confirmed: '{conf_name}' (length: {len(conf_name)})")
+            print(f"  CSV:       '{csv_name}' (length: {len(csv_name)})")
+            print(f"  Equal: {conf_name == csv_name}")
+            print(f"  Equal (lower): {conf_name.lower() == csv_name.lower()}")
+
+            # Check for hidden characters
+            print(f"\nChecking for hidden characters:")
+            print(f"  Confirmed bytes: {conf_name.encode('utf-8')}")
+            print(f"  CSV bytes:       {csv_name.encode('utf-8')}")
 
     def enrich_player_pool(self):
         """Enrich player pool with additional data"""
@@ -226,7 +362,7 @@ class UnifiedCoreSystem:
             return False
 
         # Check if any player has CPT or UTIL position
-        positions = {p.position for p in self.player_pool}
+        positions = {p.primary_position for p in self.player_pool}
         return 'CPT' in positions or 'UTIL' in positions
 
     def optimize_showdown_lineups(
@@ -448,6 +584,32 @@ if __name__ == "__main__":
     print("\nExample usage:")
     print("1. system.load_players_from_csv('DKSalaries.csv')")
     print("2. system.fetch_confirmed_players()")
+    # ===== ADD THIS DEBUG CODE HERE =====
+    print("\n🔍 STEP 1: DEBUGGING CONFIRMATION DATA")
+    print("=" * 60)
+
+    # Check what get_all_confirmations actually returns
+    try:
+        raw_confirmations = system.confirmation_system.get_all_confirmations()
+        print(f"Type of confirmation data: {type(raw_confirmations)}")
+        print(f"Number of items: {len(raw_confirmations) if hasattr(raw_confirmations, '__len__') else 'N/A'}")
+
+        # Show first few items
+        if isinstance(raw_confirmations, list):
+            print("\nFirst 5 items:")
+            for i, item in enumerate(raw_confirmations[:5]):
+                print(f"  {i}: {item} (type: {type(item)})")
+        elif isinstance(raw_confirmations, dict):
+            print("\nFirst 5 key-value pairs:")
+            for i, (key, value) in enumerate(list(raw_confirmations.items())[:5]):
+                print(f"  {key}: {value} (type: {type(value)})")
+        else:
+            print(f"Unexpected type: {raw_confirmations}")
+
+    except Exception as e:
+        print(f"ERROR getting confirmations: {e}")
+
+    print("\n" + "-" * 60)
     print("3. system.build_player_pool()")
     print("4. system.enrich_player_pool()")
     print("5. lineups = system.optimize_lineups(num_lineups=20, contest_type='gpp')")

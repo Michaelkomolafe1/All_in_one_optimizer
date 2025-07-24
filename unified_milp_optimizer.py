@@ -340,7 +340,7 @@ class UnifiedMILPOptimizer:
         self._optimization_count += 1
 
         # Check cache first
-        cache_key = (strategy, manual_selections, len(players))
+        cache_key = (strategy, tuple(manual_selections) if manual_selections else (), len(players))
         if cache_key in self._lineup_cache:
             cached_result, cache_time = self._lineup_cache[cache_key]
             from datetime import datetime

@@ -52,7 +52,7 @@ class OptimizationWorker(QThread):
 
             # Build player pool
             self.progress.emit(60, "Building player pool...")
-            system.build_player_pool()
+            system.build_player_pool(include_unconfirmed=True)
             self.log.emit(f"Player pool: {len(system.player_pool)} players", "info")
 
             # Enrich data
@@ -61,6 +61,13 @@ class OptimizationWorker(QThread):
 
             # Optimize lineups
             self.progress.emit(90, "Generating optimal lineups...")
+            if True:  # Force showdown mode
+                lineups = system.optimize_showdown_lineups(
+                    num_lineups=self.settings['num_lineups'],
+                    strategy=self.settings['contest_type']
+                )
+            else:
+                lineups = system.optimize_lineups(...)
 
             # System auto-detects showdown and applies correlation scoring
             lineups = system.optimize_lineups(
@@ -306,13 +313,13 @@ class CompleteDFSGUI(QMainWindow):
         # Number of lineups
         self.lineups_spin = QSpinBox()
         self.lineups_spin.setRange(1, 150)
-        self.lineups_spin.setValue(20)
+        self.lineups_spin.setValue(1)  # ← Changed from 20 to 1
         opt_layout.addRow("Lineups:", self.lineups_spin)
 
         # Min unique
         self.unique_spin = QSpinBox()
         self.unique_spin.setRange(0, 5)
-        self.unique_spin.setValue(3)
+        self.unique_spin.setValue(1)  # ← Changed from 3 to 1
         self.unique_spin.setToolTip("Minimum unique players between lineups")
         opt_layout.addRow("Min Unique:", self.unique_spin)
 
