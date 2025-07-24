@@ -53,8 +53,7 @@ class SlateAnalyzer:
 
         # Check for captain mode
         if 'Name' in df.columns:
-            analysis['has_captains'] = df['Name'].str.contains('(CPT)', na=False).any()
-
+            analysis['has_captains'] = df['Name'].str.contains(r'\(CPT\)', na=False).any()
         # Get positions
         pos_cols = ['Position', 'Pos', 'position']
         for col in pos_cols:
@@ -438,8 +437,7 @@ class SmartDFSGUI(QMainWindow):
 
     def optimize_lineups(self):
         """Run optimization with smart detection"""
-        if not self.players_df:
-            return
+        if self.players_df is None or self.players_df.empty:            return
 
         # Determine actual contest type
         contest_type = self.contest_combo.currentText()
@@ -570,7 +568,8 @@ class SmartDFSGUI(QMainWindow):
 
             # Salary and points
             self.lineups_widget.setItem(i, 7, QTableWidgetItem(f"${lineup['total_salary']:,}"))
-            self.lineups_widget.setItem(i, 8, QTableWidgetItem(f"{lineup['total_score']:.1f}"))
+            # Change from 'total_score' to 'total_projection'
+            self.lineups_widget.setItem(i, 8, QTableWidgetItem(f"{lineup['total_projection']:.1f}"))
 
         self.lineups_widget.resizeColumnsToContents()
 
@@ -581,7 +580,8 @@ class SmartDFSGUI(QMainWindow):
             return
 
         first = lineups[0]['players']
-        positions = [p['position'] for p in first]
+        # Change from p['position'] to p.primary_position or p.display_position
+        positions = [p.primary_position for p in first]
 
         self.lineups_widget.setRowCount(len(lineups))
         self.lineups_widget.setColumnCount(len(positions) + 3)
@@ -593,18 +593,19 @@ class SmartDFSGUI(QMainWindow):
             # Lineup number
             self.lineups_widget.setItem(i, 0, QTableWidgetItem(f"#{i + 1}"))
 
-            # Players
+            # Players - use object notation instead of dictionary notation
             for j, player in enumerate(lineup['players']):
                 self.lineups_widget.setItem(i, j + 1, QTableWidgetItem(
-                    f"{player['name']} (${player['salary']})"
+                    f"{player.name} (${player.salary})"  # Changed from player['name'] and player['salary']
                 ))
 
             # Totals
             self.lineups_widget.setItem(i, len(positions) + 1, QTableWidgetItem(
                 f"${lineup['total_salary']:,}"
             ))
+            # Change from lineup['projected_points'] to lineup['total_projection']
             self.lineups_widget.setItem(i, len(positions) + 2, QTableWidgetItem(
-                f"{lineup['projected_points']:.1f}"
+                f"{lineup['total_projection']:.1f}"  # Changed from projected_points
             ))
 
         self.lineups_widget.resizeColumnsToContents()
@@ -659,15 +660,15 @@ class SmartDFSGUI(QMainWindow):
                         'UTIL4': lineup['utilities'][3].name,
                         'UTIL5': lineup['utilities'][4].name,
                         'Salary': lineup['total_salary'],
-                        'Points': lineup['total_score']
+                        'Points': lineup['total_projection']  # Changed from 'total_score'
                     }
                 else:
                     # Regular format
                     row = {}
                     for player in lineup['players']:
-                        row[player['position']] = player['name']
+                        row[player.primary_position] = player.name  # Changed from player['position'] and player['name']
                     row['Salary'] = lineup['total_salary']
-                    row['Points'] = lineup['projected_points']
+                    row['Points'] = lineup['total_projection']  # Changed from lineup['projected_points']
 
                 export_data.append(row)
 
