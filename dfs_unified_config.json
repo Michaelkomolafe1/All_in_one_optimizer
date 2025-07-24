@@ -1,179 +1,19 @@
 {
   "scoring": {
-    "weights": {
-      "base": 0.3,
-      "recent_form": 0.25,
-      "vegas": 0.2,
-      "matchup": 0.2,
-      "park_batting": 0.05
+    "gpp": {
+      "team_total_threshold": 5.0,
+      "team_total_boost": 1.15,
+      "batting_order_boost": 1.10
     },
-    "bounds": {
-      "base": [
-        1.0,
-        1.0
-      ],
-      "recent_form": [
-        0.7,
-        1.35
-      ],
-      "vegas": [
-        0.75,
-        1.25
-      ],
-      "matchup": [
-        0.8,
-        1.25
-      ],
-      "park_batting": [
-        0.95,
-        1.05
-      ],
-      "final": [
-        0.65,
-        1.4
-      ],
-      "park": [
-        0.85,
-        1.15
-      ],
-      "batting_order": [
-        0.92,
-        1.1
-      ]
-    },
-    "validation": {
-      "min_projection": 0.0,
-      "max_projection": 60.0,
-      "min_multiplier": 0.1,
-      "max_multiplier": 10.0
+    "cash": {
+      "team_total_threshold": 5.0,
+      "team_total_boost": 1.08,
+      "batting_order_boost": 1.05
     }
   },
   "optimization": {
     "salary_cap": 50000,
     "min_salary_usage": 0.95,
-    "max_players_per_team": 4,
-    "min_players_per_team": 0,
-    "preferred_stack_size": 3,
-    "max_hitters_vs_pitcher": 4,
-    "correlation_boost": 0.05,
-    "timeout_seconds": 30,
-    "use_correlation": true,
-    "enforce_lineup_rules": true,
-    "max_form_analysis_players": null,
-    "parallel_workers": 10,
-    "batch_size": 25
-  },
-  "data_sources": {
-    "statcast": {
-      "enabled": true,
-      "priority": 1,
-      "cache_hours": 6,
-      "batch_size": 20
-    },
-    "vegas": {
-      "enabled": true,
-      "priority": 2,
-      "cache_hours": 1,
-      "min_total_deviation": 1.0
-    },
-    "recent_form": {
-      "enabled": true,
-      "priority": 3,
-      "days_back": 7,
-      "min_games": 3,
-      "cache_hours": 6
-    },
-    "dff": {
-      "enabled": true,
-      "priority": 4,
-      "auto_detect": true
-    },
-    "batting_order": {
-      "enabled": true,
-      "priority": 5
-    }
-  },
-  "api": {
-    "pybaseball_delay": 0.5,
-    "max_retries": 3,
-    "timeout": 30,
-    "rate_limit_per_minute": 60
-  },
-  "validation": {
-    "player_salary_min": 2000,
-    "player_salary_max": 15000,
-    "projection_min": 0.0,
-    "projection_max": 60.0,
-    "ownership_min": 0.0,
-    "ownership_max": 100.0,
-    "valid_teams": [
-      "ARI",
-      "ATL",
-      "BAL",
-      "BOS",
-      "CHC",
-      "CHW",
-      "CIN",
-      "CLE",
-      "COL",
-      "DET",
-      "HOU",
-      "KC",
-      "LAA",
-      "LAD",
-      "MIA",
-      "MIL",
-      "MIN",
-      "NYM",
-      "NYY",
-      "OAK",
-      "PHI",
-      "PIT",
-      "SD",
-      "SF",
-      "SEA",
-      "STL",
-      "TB",
-      "TEX",
-      "TOR",
-      "WSH"
-    ],
-    "valid_positions": [
-      "P",
-      "C",
-      "1B",
-      "2B",
-      "3B",
-      "SS",
-      "OF",
-      "DH",
-      "UTIL",
-      "CPT"
-    ]
-  },
-  "performance": {
-    "cache_enabled": true,
-    "cache_ttl": {
-      "player_scores": 300,
-      "api_calls": 3600,
-      "statcast": 7200,
-      "vegas": 600,
-      "recent_form": 900,
-      "lineup_correlation": 1800
-    },
-    "enable_disk_cache": true,
-    "cache_dir": ".dfs_cache",
-    "max_memory_mb": 100,
-    "max_cache_size": 10000
-  },
-  "ui": {
-    "show_progress": true,
-    "verbose_logging": false,
-    "export_format": "csv",
-    "save_lineups": true,
-    "default_strategy": "balanced",
-    "theme": "dark"
-  },
-  "version": "2.0.0",
-  "last_updated": "2025-07-13 17:41:29.579923"
+    "max_players_per_team": 5
+  }
 }
