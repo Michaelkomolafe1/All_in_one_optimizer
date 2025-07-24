@@ -90,6 +90,21 @@ class UnifiedMILPOptimizer:
         self._optimization_count = 0
         self._lineup_cache = {}
 
+
+    def get_showdown_config(self) -> OptimizationConfig:
+        """Get configuration for showdown slates"""
+        config = OptimizationConfig()
+        config.position_requirements = {
+            'UTIL': 6  # 1 captain + 5 utilities (all from UTIL pool)
+        }
+        config.salary_cap = 50000
+        config.max_players_per_team = 6  # Can use all from same team
+        config.min_salary_usage = 0.90  # Can use less salary in showdown
+        return config
+
+
+
+
     def _load_dfs_config(self):
         """Load configuration from unified config system or JSON file"""
         try:
@@ -255,7 +270,7 @@ class UnifiedMILPOptimizer:
             return False
 
         # Must have valid position
-        valid_positions = {'P', 'C', '1B', '2B', '3B', 'SS', 'OF'}
+        valid_positions = {'P', 'SP', 'RP', 'C', '1B', '2B', '3B', 'SS', 'OF'}
         if player.primary_position not in valid_positions:
             return False
 
@@ -290,6 +305,7 @@ class UnifiedMILPOptimizer:
 
         logger.info(f"PERFORMANCE: Reduced to {len(filtered)} players")
         return filtered
+
 
     def calculate_player_scores(self, players: List) -> List:
         """

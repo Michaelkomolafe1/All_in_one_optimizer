@@ -5,6 +5,10 @@ COMPLETE DFS GUI - STREAMLINED VERSION
 Simplified interface with correlation-aware scoring
 """
 
+# Create confirmation system ONCE at module level
+from smart_confirmation_system import SmartConfirmationSystem
+global_confirmation_system = SmartConfirmationSystem(verbose=False)
+
 import sys
 import os
 from PyQt5.QtWidgets import *
@@ -37,6 +41,9 @@ class OptimizationWorker(QThread):
             self.progress.emit(10, "Initializing optimizer...")
             system = UnifiedCoreSystem()
 
+            # Use the global confirmation system
+            system.confirmation_system = global_confirmation_system
+
             # Load CSV
             self.progress.emit(20, "Loading player data...")
             system.load_players_from_csv(self.settings['csv_path'])
@@ -52,29 +59,43 @@ class OptimizationWorker(QThread):
 
             # Build player pool
             self.progress.emit(60, "Building player pool...")
+
+            # Check if showdown slate
+            all_positions = {p.primary_position for p in system.players}
+            is_showdown = 'CPT' in all_positions or 'UTIL' in all_positions
+
+            # Build pool (will auto-filter CPT for showdown)
             system.build_player_pool(include_unconfirmed=True)
             self.log.emit(f"Player pool: {len(system.player_pool)} players", "info")
+
+            if is_showdown:
+                # Verify CPT filtering worked
+                cpt_in_pool = [p for p in system.player_pool if p.primary_position == 'CPT']
+                if cpt_in_pool:
+                    self.log.emit(f"⚠️ Warning: {len(cpt_in_pool)} CPT entries in pool!", "warning")
+                else:
+                    self.log.emit("✅ CPT entries filtered successfully", "success")
 
             # Enrich data
             self.progress.emit(80, "Calculating correlations...")
             system.enrich_player_pool()
 
             # Optimize lineups
+            # Optimize lineups
             self.progress.emit(90, "Generating optimal lineups...")
-            if True:  # Force showdown mode
+
+            # Check if showdown slate
+            if system.detect_showdown_slate():
                 lineups = system.optimize_showdown_lineups(
                     num_lineups=self.settings['num_lineups'],
                     strategy=self.settings['contest_type']
                 )
             else:
-                lineups = system.optimize_lineups(...)
-
-            # System auto-detects showdown and applies correlation scoring
-            lineups = system.optimize_lineups(
-                num_lineups=self.settings['num_lineups'],
-                contest_type=self.settings['contest_type'],
-                min_unique_players=self.settings.get('min_unique', 3)
-            )
+                lineups = system.optimize_lineups(
+                    num_lineups=self.settings['num_lineups'],
+                    contest_type=self.settings['contest_type'],
+                    min_unique_players=self.settings.get('min_unique', 3)
+                )
 
             self.progress.emit(100, "Optimization complete!")
             self.finished.emit(lineups)
@@ -424,15 +445,29 @@ class CompleteDFSGUI(QMainWindow):
         # Basic stats
         num_players = len(df)
 
-        # Detect showdown
+        # Detect slate type
         positions = df['Position'].unique() if 'Position' in df.columns else []
         is_showdown = 'CPT' in positions or 'UTIL' in positions
 
         if is_showdown:
-            self.log("⚡ Showdown slate detected!", "info")
+            self.log("⚡ SHOWDOWN slate detected!", "warning")
+            self.log("Using UTIL entries only for optimization", "info")
 
-        # Update player pool tab
-        self.update_player_pool(df)
+            # Count CPT vs UTIL
+            cpt_count = len(df[df['Position'] == 'CPT']) if 'Position' in df.columns else 0
+            util_count = len(df[df['Position'] == 'UTIL']) if 'Position' in df.columns else 0
+
+            self.log(f"Found {cpt_count} CPT entries (will be filtered out)", "info")
+            self.log(f"Found {util_count} UTIL entries (will be used)", "info")
+        else:
+            self.log("📋 CLASSIC slate detected", "success")
+
+            # Show position breakdown
+            if 'Position' in df.columns:
+                position_counts = df['Position'].value_counts()
+                self.log("Position breakdown:", "info")
+                for pos, count in position_counts.items():
+                    self.log(f"  {pos}: {count} players", "info")
 
     def update_player_pool(self, df):
         """Update player pool display"""
