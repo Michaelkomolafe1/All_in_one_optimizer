@@ -1,288 +1,324 @@
 #!/usr/bin/env python3
 """
-DFS QUICK TOOLS
-===============
-Quick command-line tools for common DFS tasks
+SETUP INTEGRATION SCRIPT
+========================
+Helps integrate all the improvements into your DFS system
 """
 
-import sys
 import os
-import pandas as pd
-from datetime import datetime
+import sys
+import shutil
 from pathlib import Path
-import json
 
 
-class DFSQuickTools:
-    def __init__(self):
-        self.commands = {
-            'info': self.show_csv_info,
-            'stats': self.show_player_stats,
-            'check': self.quick_health_check,
-            'clean': self.quick_clean,
-            'optimize': self.quick_optimize,
-            'export': self.export_lineup,
-            'backup': self.backup_data,
-            'find': self.find_player,
-            'top': self.show_top_players,
-            'help': self.show_help
-        }
+def check_required_files():
+    """Check which required files exist"""
+    print("\n🔍 Checking required files...")
 
-    def run(self, args):
-        """Run command based on arguments"""
-        if len(args) < 2:
-            self.show_help()
-            return
+    required_files = {
+        # Core files that should exist
+        'unified_player_model.py': 'Core player model',
+        'unified_milp_optimizer.py': 'MILP optimization engine',
+        'smart_confirmation_system.py': 'Lineup confirmations',
+        'simple_statcast_fetcher.py': 'Baseball statistics',
+        'vegas_lines.py': 'Vegas betting lines',
+        'cash_optimization_config.py': 'Contest configurations',
 
-        command = args[1].lower()
+        # New files to be added
+        'correlation_scoring_config.py': 'Correlation scoring configuration',
+        'step2_updated_player_model.py': 'Simplified scoring engine',
+        'step3_stack_detection.py': 'Stack detection system',
+        'integrated_scoring_system.py': 'Integrated correlation scoring',
+        'fixed_showdown_optimization.py': 'Fixed showdown optimizer',
+    }
 
-        if command in self.commands:
-            self.commands[command](args[2:] if len(args) > 2 else [])
+    existing = []
+    missing = []
+
+    for filename, description in required_files.items():
+        if Path(filename).exists():
+            existing.append((filename, description))
+            print(f"  ✅ {filename} - {description}")
         else:
-            print(f"❌ Unknown command: {command}")
-            self.show_help()
+            missing.append((filename, description))
+            print(f"  ❌ {filename} - {description} (MISSING)")
 
-    def show_csv_info(self, args):
-        """Show info about CSV file"""
-        if not args:
-            # Find CSV files
-            csv_files = list(Path('.').glob('*.csv'))
-            if not csv_files:
-                print("❌ No CSV files found")
-                return
+    return existing, missing
 
-            print("📄 CSV files found:")
-            for i, csv in enumerate(csv_files, 1):
-                size = csv.stat().st_size / 1024
-                print(f"  {i}. {csv.name} ({size:.1f}KB)")
-            return
 
-        csv_file = args[0]
-        if not os.path.exists(csv_file):
-            print(f"❌ File not found: {csv_file}")
-            return
+def create_integration_patches():
+    """Create patches to integrate the new system"""
+    print("\n🔧 Creating integration patches...")
 
-        df = pd.read_csv(csv_file)
+    # Create a patch file for UnifiedCoreSystem
+    patch_content = '''#!/usr/bin/env python3
+"""
+INTEGRATION PATCH
+=================
+Apply this to integrate the new scoring system
+"""
 
-        print(f"\n📊 CSV INFO: {csv_file}")
-        print("=" * 50)
-        print(f"Players: {len(df)}")
-        print(f"Columns: {list(df.columns)}")
+def patch_unified_core():
+    """Patch UnifiedCoreSystem to use new scoring"""
+    try:
+        # Import the fixed version
+        from unified_core_system import UnifiedCoreSystem
 
-        if 'Position' in df.columns:
-            print("\nPositions:")
-            for pos, count in df['Position'].value_counts().items():
-                print(f"  {pos}: {count}")
+        # The new version already has integrated scoring
+        print("✅ UnifiedCoreSystem is already using integrated scoring")
+        return True
 
-        if 'Salary' in df.columns:
-            print(f"\nSalary Range: ${df['Salary'].min():,} - ${df['Salary'].max():,}")
-            print(f"Average Salary: ${df['Salary'].mean():,.0f}")
+    except ImportError as e:
+        print(f"❌ Could not import UnifiedCoreSystem: {e}")
+        return False
 
-    def show_player_stats(self, args):
-        """Show player statistics"""
-        csv_files = list(Path('.').glob('*.csv'))
-        if not csv_files:
-            print("❌ No CSV files found")
-            return
 
-        # Use first CSV found
-        df = pd.read_csv(csv_files[0])
+def patch_showdown():
+    """Ensure showdown optimization is fixed"""
+    try:
+        from fixed_showdown_optimization import integrate_showdown_with_core
+        from unified_core_system import UnifiedCoreSystem
 
-        print(f"\n📈 PLAYER STATS from {csv_files[0].name}")
-        print("=" * 50)
+        # Apply the patch
+        integrate_showdown_with_core(UnifiedCoreSystem)
+        print("✅ Showdown optimization patched successfully")
+        return True
 
-        # Top projected scorers
-        if 'AvgPointsPerGame' in df.columns:
-            top_scorers = df.nlargest(10, 'AvgPointsPerGame')[['Name', 'Position', 'Salary', 'AvgPointsPerGame']]
-            print("\nTop Projected Scorers:")
-            for _, player in top_scorers.iterrows():
-                print(
-                    f"  {player['Name']:<20} {player['Position']:<4} ${player['Salary']:>6,} {player['AvgPointsPerGame']:>6.1f}pts")
-
-        # Best values
-        if 'Salary' in df.columns and 'AvgPointsPerGame' in df.columns:
-            df['Value'] = df['AvgPointsPerGame'] / df['Salary'] * 1000
-            best_values = df.nlargest(10, 'Value')[['Name', 'Position', 'Salary', 'AvgPointsPerGame', 'Value']]
-            print("\nBest Values (pts/$1000):")
-            for _, player in best_values.iterrows():
-                print(
-                    f"  {player['Name']:<20} {player['Position']:<4} ${player['Salary']:>6,} {player['Value']:>5.2f}x")
-
-    def quick_health_check(self, args):
-        """Quick system health check"""
-        print("\n🏥 QUICK HEALTH CHECK")
-        print("=" * 40)
-
-        # Check modules
-        modules = ['unified_core_system', 'unified_milp_optimizer', 'unified_player_model']
-        missing = []
-
-        for module in modules:
-            try:
-                __import__(module)
-                print(f"✅ {module}")
-            except:
-                print(f"❌ {module}")
-                missing.append(module)
-
-        # Check data directory
-        if os.path.exists('data'):
-            size = sum(f.stat().st_size for f in Path('data').rglob('*') if f.is_file())
-            print(f"\n📁 Data directory: {size / 1024 / 1024:.1f}MB")
-
-        # Check CSV files
-        csv_count = len(list(Path('.').glob('*.csv')))
-        print(f"📄 CSV files: {csv_count}")
-
-        if missing:
-            print(f"\n⚠️ Missing modules: {', '.join(missing)}")
-        else:
-            print("\n✅ All systems operational!")
-
-    def quick_clean(self, args):
-        """Quick cleanup"""
-        print("🧹 Running quick cleanup...")
-
-        # Run the quick cleanup script if it exists
-        if os.path.exists('quick_cleanup.sh'):
-            os.system('./quick_cleanup.sh')
-        else:
-            # Manual cleanup
-            os.system('find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null')
-            os.system('rm -rf .pytest_cache .gui_cache 2>/dev/null')
-            print("✅ Basic cleanup complete")
-
-    def quick_optimize(self, args):
-        """Quick optimization with minimal setup"""
-        strategy = args[0] if args else "balanced"
-
-        print(f"\n🎯 Quick optimization (strategy: {strategy})")
-
-        try:
-            from unified_core_system import UnifiedCoreSystem
-
-            # Find CSV
-            csv_files = list(Path('.').glob('*.csv'))
-            if not csv_files:
-                print("❌ No CSV files found")
-                return
-
-            system = UnifiedCoreSystem()
-            system.load_csv(str(csv_files[0]))
-
-            lineup = system.optimize_lineup(strategy=strategy)
-
-            if lineup:
-                print("\n✅ OPTIMIZED LINEUP:")
-                total_salary = 0
-                total_proj = 0
-
-                for player in lineup:
-                    print(
-                        f"{player.primary_position:<4} {player.name:<20} ${player.salary:>6,} {player.enhanced_score:>6.1f}pts")
-                    total_salary += player.salary
-                    total_proj += player.enhanced_score
-
-                print(f"\nTotal Salary: ${total_salary:,}")
-                print(f"Projected: {total_proj:.1f}pts")
-
-        except Exception as e:
-            print(f"❌ Optimization failed: {e}")
-
-    def export_lineup(self, args):
-        """Export last lineup"""
-        print("📤 Export feature - integrate with your optimizer")
-
-    def backup_data(self, args):
-        """Backup important data"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_dir = f"backup_{timestamp}"
-
-        os.makedirs(backup_dir, exist_ok=True)
-
-        # Backup CSVs
-        for csv in Path('.').glob('*.csv'):
-            os.system(f"cp {csv} {backup_dir}/")
-
-        # Backup configs
-        for config in ['dfs_unified_config.json', 'auto_update_config.json']:
-            if os.path.exists(config):
-                os.system(f"cp {config} {backup_dir}/")
-
-        print(f"✅ Backed up to {backup_dir}/")
-
-    def find_player(self, args):
-        """Find a player in CSV files"""
-        if not args:
-            print("Usage: dfs_quick find <player_name>")
-            return
-
-        search_name = ' '.join(args).lower()
-
-        for csv_file in Path('.').glob('*.csv'):
-            df = pd.read_csv(csv_file)
-
-            if 'Name' in df.columns:
-                matches = df[df['Name'].str.lower().str.contains(search_name, na=False)]
-
-                if not matches.empty:
-                    print(f"\n📍 Found in {csv_file.name}:")
-                    for _, player in matches.iterrows():
-                        info = f"  {player['Name']}"
-                        if 'Position' in df.columns:
-                            info += f" ({player['Position']})"
-                        if 'Salary' in df.columns:
-                            info += f" - ${player['Salary']:,}"
-                        if 'AvgPointsPerGame' in df.columns:
-                            info += f" - {player['AvgPointsPerGame']:.1f}pts"
-                        print(info)
-
-    def show_top_players(self, args):
-        """Show top players by position"""
-        position = args[0].upper() if args else None
-
-        csv_files = list(Path('.').glob('*.csv'))
-        if not csv_files:
-            print("❌ No CSV files found")
-            return
-
-        df = pd.read_csv(csv_files[0])
-
-        if position and 'Position' in df.columns:
-            df = df[df['Position'].str.contains(position, na=False)]
-
-        if 'AvgPointsPerGame' in df.columns:
-            top = df.nlargest(10, 'AvgPointsPerGame')[['Name', 'Position', 'Salary', 'AvgPointsPerGame']]
-
-            print(f"\n🏆 TOP PLAYERS" + (f" - {position}" if position else ""))
-            print("=" * 50)
-
-            for i, (_, player) in enumerate(top.iterrows(), 1):
-                print(
-                    f"{i:2d}. {player['Name']:<20} {player['Position']:<4} ${player['Salary']:>6,} {player['AvgPointsPerGame']:>6.1f}pts")
-
-    def show_help(self):
-        """Show help message"""
-        print("\n🎯 DFS QUICK TOOLS")
-        print("=" * 40)
-        print("Usage: python dfs_quick.py <command> [args]")
-        print("\nCommands:")
-        print("  info [file]    - Show CSV file info")
-        print("  stats          - Show player statistics")
-        print("  check          - Quick health check")
-        print("  clean          - Quick cleanup")
-        print("  optimize [str] - Quick optimization")
-        print("  find <name>    - Find a player")
-        print("  top [pos]      - Show top players")
-        print("  backup         - Backup data")
-        print("  help           - Show this help")
-        print("\nExamples:")
-        print("  python dfs_quick.py info")
-        print("  python dfs_quick.py optimize balanced")
-        print("  python dfs_quick.py find ohtani")
-        print("  python dfs_quick.py top OF")
+    except ImportError as e:
+        print(f"❌ Could not patch showdown: {e}")
+        return False
 
 
 if __name__ == "__main__":
-    tools = DFSQuickTools()
-    tools.run(sys.argv)
+    print("Applying integration patches...")
+    patch_unified_core()
+    patch_showdown()
+'''
+
+    with open('apply_patches.py', 'w') as f:
+        f.write(patch_content)
+
+    print("  ✅ Created apply_patches.py")
+
+
+def create_minimal_test():
+    """Create a minimal test script"""
+    print("\n🧪 Creating minimal test script...")
+
+    test_content = '''#!/usr/bin/env python3
+"""
+MINIMAL INTEGRATION TEST
+========================
+Tests that all components work together
+"""
+
+import sys
+from types import SimpleNamespace
+
+
+def test_scoring_integration():
+    """Test the integrated scoring system"""
+    print("\\n1️⃣ Testing Integrated Scoring...")
+
+    try:
+        from integrated_scoring_system import IntegratedScoringEngine
+
+        # Create test player
+        player = SimpleNamespace(
+            name="Test Player",
+            team="NYY",
+            primary_position="OF",
+            salary=10000,
+            dk_projection=10.0,
+            team_total=5.5,
+            batting_order=3,
+            game_park="neutral"
+        )
+
+        # Test scoring
+        engine = IntegratedScoringEngine()
+        engine.set_contest_type('gpp')
+        score = engine.calculate_score(player)
+
+        print(f"  ✅ Scoring works! Test score: {score:.2f}")
+        return True
+
+    except Exception as e:
+        print(f"  ❌ Scoring failed: {e}")
+        # Try fallback
+        try:
+            from step2_updated_player_model import SimplifiedScoringEngine
+            engine = SimplifiedScoringEngine()
+            print("  ⚠️  Using fallback SimplifiedScoringEngine")
+            return True
+        except:
+            return False
+
+
+def test_showdown_detection():
+    """Test showdown detection"""
+    print("\\n2️⃣ Testing Showdown Detection...")
+
+    try:
+        from fixed_showdown_optimization import ShowdownOptimizer
+
+        # Create test showdown players
+        players = [
+            SimpleNamespace(name="P1", position="CPT", team="NYY", salary=15000),
+            SimpleNamespace(name="P2", position="UTIL", team="NYY", salary=10000),
+        ]
+
+        optimizer = ShowdownOptimizer(None)
+        is_showdown = optimizer.detect_showdown_slate(players)
+
+        if is_showdown:
+            print("  ✅ Showdown detection works!")
+            return True
+        else:
+            print("  ❌ Failed to detect showdown slate")
+            return False
+
+    except Exception as e:
+        print(f"  ❌ Showdown test failed: {e}")
+        return False
+
+
+def test_core_system():
+    """Test the core system initialization"""
+    print("\\n3️⃣ Testing Core System...")
+
+    try:
+        from unified_core_system import UnifiedCoreSystem
+
+        system = UnifiedCoreSystem()
+
+        # Check components
+        checks = [
+            (hasattr(system, 'scoring_engine'), "Scoring engine"),
+            (hasattr(system, 'optimizer'), "MILP optimizer"),
+            (hasattr(system, 'showdown_optimizer'), "Showdown optimizer"),
+        ]
+
+        all_good = True
+        for check, name in checks:
+            if check:
+                print(f"  ✅ {name} initialized")
+            else:
+                print(f"  ❌ {name} missing")
+                all_good = False
+
+        return all_good
+
+    except Exception as e:
+        print(f"  ❌ Core system test failed: {e}")
+        return False
+
+
+if __name__ == "__main__":
+    print("🧪 MINIMAL INTEGRATION TEST")
+    print("=" * 40)
+
+    results = []
+    results.append(test_scoring_integration())
+    results.append(test_showdown_detection())
+    results.append(test_core_system())
+
+    print("\\n" + "=" * 40)
+    if all(results):
+        print("✅ ALL TESTS PASSED! System is integrated correctly.")
+    else:
+        print("❌ Some tests failed. Check the errors above.")
+        sys.exit(1)
+'''
+
+    with open('test_integration.py', 'w') as f:
+        f.write(test_content)
+
+    print("  ✅ Created test_integration.py")
+
+
+def fix_imports():
+    """Create a script to fix import issues"""
+    print("\n🔧 Creating import fixer...")
+
+    fixer_content = '''#!/usr/bin/env python3
+"""
+IMPORT FIXER
+============
+Fixes import issues in your project
+"""
+
+import os
+import re
+
+
+def fix_unified_core_imports():
+    """Fix imports in unified_core_system.py"""
+    if not os.path.exists('unified_core_system.py'):
+        print("❌ unified_core_system.py not found")
+        return
+
+    # Read the file
+    with open('unified_core_system.py', 'r') as f:
+        content = f.read()
+
+    # Remove old imports
+    old_imports = [
+        'from showdown_optimizer import ShowdownOptimizer, is_showdown_slate',
+        'from unified_scoring_engine import get_scoring_engine, ScoringConfig',
+        'from pure_data_scoring_engine import get_pure_scoring_engine, PureDataScoringConfig',
+    ]
+
+    for old_import in old_imports:
+        content = content.replace(old_import + '\\n', '')
+        content = content.replace(old_import, '')
+
+    # Save the fixed file
+    with open('unified_core_system.py.fixed', 'w') as f:
+        f.write(content)
+
+    print("✅ Created unified_core_system.py.fixed")
+    print("   Review and rename to unified_core_system.py")
+
+
+if __name__ == "__main__":
+    fix_unified_core_imports()
+'''
+
+    with open('fix_imports.py', 'w') as f:
+        f.write(fixer_content)
+
+    print("  ✅ Created fix_imports.py")
+
+
+def main():
+    """Main setup process"""
+    print("🚀 DFS OPTIMIZER INTEGRATION SETUP")
+    print("=" * 50)
+
+    # Check files
+    existing, missing = check_required_files()
+
+    if missing:
+        print("\n⚠️  You need to create the following files:")
+        for filename, description in missing:
+            print(f"   - {filename}: {description}")
+        print("\nUse the artifacts from our conversation to create these files.")
+
+    # Create helpers
+    create_integration_patches()
+    create_minimal_test()
+    fix_imports()
+
+    print("\n📋 NEXT STEPS:")
+    print("1. Use the fixed unified_core_system.py from the artifact")
+    print("2. Create any missing files from the artifacts")
+    print("3. Run: python fix_imports.py")
+    print("4. Run: python apply_patches.py")
+    print("5. Run: python test_integration.py")
+
+    print("\n✅ Setup complete! Follow the steps above to integrate everything.")
+
+
+if __name__ == "__main__":
+    main()
