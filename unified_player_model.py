@@ -113,6 +113,30 @@ class UnifiedPlayer:
         self.calculate_data_quality()
         self.calculate_enhanced_score()
 
+    # In unified_player_model.py, inside the UnifiedPlayer class:
+
+    def _get_team_total(self) -> float:
+        """Helper to get team total from various sources"""
+        if hasattr(self, 'team_total') and self.team_total > 0:
+            return self.team_total
+        elif hasattr(self, 'implied_team_score') and self.implied_team_score:
+            return self.implied_team_score
+        elif hasattr(self, '_vegas_data') and self._vegas_data:
+            return self._vegas_data.get('implied_total', 0)
+        return 0
+
+    def _update_data_quality_simple(self):
+        """Simplified data quality calculation"""
+        quality_checks = {
+            'has_projection': bool(getattr(self, 'base_projection', 0) > 0),
+            'has_vegas': bool(self._get_team_total() > 0),
+            'has_batting_order': bool(getattr(self, 'batting_order', 0) > 0),
+            'has_team': bool(getattr(self, 'team', None))
+        }
+
+        self.data_quality_score = sum(quality_checks.values()) / len(quality_checks)
+        self.has_minimum_data = quality_checks['has_projection'] and quality_checks['has_team']
+
     def is_eligible_for_selection(self, mode: str = "normal") -> bool:
         """Check if player is eligible based on mode"""
         if mode == "bulletproof":
@@ -149,17 +173,12 @@ class UnifiedPlayer:
         self.data_quality_score = quality_points / max_points if max_points > 0 else 0
 
     def calculate_enhanced_score(self):
-        """Calculate enhanced score using hybrid scoring system"""
-        # Import the hybrid system
-        from hybrid_scoring_system import get_hybrid_scoring_system
+        """Calculate score using simplified correlation-aware method"""
+        # Import the simplified scoring
+        from step2_updated_player_model import update_unified_player_calculate_score
 
-        # Get the hybrid scoring system
-        engine = get_hybrid_scoring_system()
-
-        # Calculate score with appropriate engine (dynamic or enhanced pure)
-        score = engine.calculate_score(self)
-        self.enhanced_score = score
-        self.optimization_score = score  # Direct assignment for MILP
+        # Call the new simplified scoring
+        return update_unified_player_calculate_score(self)
 
         # Set data quality based on available components
         if hasattr(self, "_score_audit"):

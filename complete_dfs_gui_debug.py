@@ -23,84 +23,48 @@ class SlateAnalyzer:
     """Analyzes uploaded CSV to determine slate characteristics"""
 
     @staticmethod
-    def analyze_slate(df: pd.DataFrame) -> Dict:
-        """
-        Analyze slate and return characteristics
-        """
+    def analyze_slate(self, df):
+        """Simplified slate analysis"""
         analysis = {
-            'type': 'unknown',
-            'teams': [],
-            'games': 0,
-            'players': len(df),
-            'has_captains': False,
-            'positions': [],
-            'salary_range': {},
-            'recommendations': []
+            'type': 'regular',
+            'size': len(df),
+            'avg_salary': df['Salary'].mean() if 'Salary' in df.columns else 0,
+            'positions': {},
+            'teams': len(df['TeamAbbrev'].unique()) if 'TeamAbbrev' in df.columns else 0,
+            'games': 0
         }
 
-        # Check for team columns
-        team_cols = ['Team', 'TeamAbbrev', 'team']
-        team_col = None
-        for col in team_cols:
-            if col in df.columns:
-                team_col = col
-                break
+        # Count positions
+        if 'Position' in df.columns:
+            for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']:
+                analysis['positions'][pos] = len(df[df['Position'].str.contains(pos, na=False)])
 
-        if team_col:
-            teams = df[team_col].dropna().unique()
-            analysis['teams'] = list(teams)
-            analysis['games'] = len(teams) // 2
-
-        # Check for captain mode
-        if 'Name' in df.columns:
-            analysis['has_captains'] = df['Name'].str.contains('(CPT)', na=False).any()
-
-        # Get positions
-        pos_cols = ['Position', 'Pos', 'position']
-        for col in pos_cols:
-            if col in df.columns:
-                positions = df[col].dropna().unique()
-                analysis['positions'] = list(positions)
-                break
-
-        # Salary analysis
-        sal_cols = ['Salary', 'salary']
-        for col in sal_cols:
-            if col in df.columns:
-                analysis['salary_range'] = {
-                    'min': df[col].min(),
-                    'max': df[col].max(),
-                    'avg': df[col].mean()
-                }
-                break
-
-        # Determine slate type
-        if len(analysis['teams']) == 2:
+        # Detect slate type
+        if analysis['positions'].get('P', 0) == 0:
             analysis['type'] = 'showdown'
-            analysis['recommendations'].append("🎪 Showdown slate detected (2 teams)")
-            analysis['recommendations'].append("Will optimize for 1 Captain + 5 Utilities")
-        elif len(analysis['teams']) <= 6:
+        elif analysis['size'] < 50:
             analysis['type'] = 'small'
-            analysis['recommendations'].append("📊 Small slate detected (3-6 teams)")
-            analysis['recommendations'].append("Consider using 'cash' or 'balanced' strategy")
-        elif len(analysis['teams']) <= 20:
-            analysis['type'] = 'main'
-            analysis['recommendations'].append("🎯 Main slate detected (7-20 teams)")
-            analysis['recommendations'].append("All strategies available")
-        else:
+        elif analysis['size'] > 200:
             analysis['type'] = 'large'
-            analysis['recommendations'].append("📈 Large slate detected (20+ teams)")
-            analysis['recommendations'].append("Consider GPP strategies for differentiation")
 
-        # Sport detection
-        if 'P' in analysis['positions'] or 'SP' in analysis['positions']:
-            analysis['sport'] = 'MLB'
-        elif 'QB' in analysis['positions']:
-            analysis['sport'] = 'NFL'
-        elif 'PG' in analysis['positions'] or 'SG' in analysis['positions']:
-            analysis['sport'] = 'NBA'
+        # Estimate games
+        if analysis['teams'] > 0:
+            analysis['games'] = analysis['teams'] // 2
+
+        # Update display
+        info_text = f"<b>Slate Type:</b> {analysis['type'].upper()}<br>"
+        info_text += f"<b>Players:</b> {analysis['size']}<br>"
+        info_text += f"<b>Games:</b> ~{analysis['games']}<br>"
+        info_text += f"<b>Teams:</b> {analysis['teams']}<br>"
+
+        # Recommendation
+        if analysis['type'] == 'small' or analysis['size'] < 100:
+            info_text += "<br><b>💡 Tip:</b> Use CASH mode for small slates"
         else:
-            analysis['sport'] = 'Unknown'
+            info_text += "<br><b>💡 Tip:</b> Use GPP mode for larger slates"
+
+        self.slate_details.setText(info_text)
+        self.slate_analysis = analysis
 
         return analysis
 
@@ -238,11 +202,11 @@ class SmartDFSGUI(QMainWindow):
         toolbar.addAction(settings_action)
 
     def create_left_panel(self) -> QWidget:
-        """Create left control panel"""
+        """Create simplified left control panel"""
         panel = QWidget()
         layout = QVBoxLayout(panel)
 
-        # Slate info card
+        # Slate info card (keep as is)
         self.slate_info = QGroupBox("📊 Slate Analysis")
         slate_layout = QVBoxLayout()
         self.slate_details = QLabel("No slate loaded")
@@ -252,38 +216,54 @@ class SmartDFSGUI(QMainWindow):
         self.slate_info.setLayout(slate_layout)
         layout.addWidget(self.slate_info)
 
-        # Smart optimization settings
+        # SIMPLIFIED optimization settings
         self.opt_settings = QGroupBox("🎯 Optimization Settings")
         opt_layout = QFormLayout()
 
-        # Auto-detected strategy
-        self.strategy_combo = QComboBox()
-        self.strategy_combo.addItems(['Auto-Detect', 'balanced', 'ceiling', 'safe', 'value', 'contrarian'])
-        opt_layout.addRow("Strategy:", self.strategy_combo)
+        # REMOVED: Strategy combo - not needed anymore!
 
-        # Contest type (auto-selected based on slate)
+        # Contest type - THIS IS ALL YOU NEED!
         self.contest_combo = QComboBox()
-        self.contest_combo.addItems(['Auto-Detect', 'cash', 'gpp', 'balanced_gpp'])
-        opt_layout.addRow("Contest:", self.contest_combo)
+        self.contest_combo.addItems(['GPP', 'Cash', '50-50'])
+        self.contest_combo.setCurrentText('GPP')  # Default        self.contest_combo.setCurrentText('GPP')  # Default
+        self.contest_combo.setToolTip(
+            "GPP: Tournaments (aggressive stacking)\n"
+            "Cash/50-50: Conservative lineups\n"
+            "Multiplier: Balanced approach"
+        )
+        opt_layout.addRow("Contest Type:", self.contest_combo)
 
         # Number of lineups
         self.lineups_spin = QSpinBox()
         self.lineups_spin.setRange(1, 150)
         self.lineups_spin.setValue(20)
+        self.lineups_spin.setToolTip("Number of lineups to generate")
         opt_layout.addRow("Lineups:", self.lineups_spin)
 
         # Min salary
         self.salary_slider = QSlider(Qt.Horizontal)
-        self.salary_slider.setRange(85, 100)
-        self.salary_slider.setValue(95)
-        self.salary_label = QLabel("95%")
+        self.salary_slider.setRange(90, 100)
+        self.salary_slider.setValue(96)
+        self.salary_label = QLabel("96%")
         self.salary_slider.valueChanged.connect(
             lambda v: self.salary_label.setText(f"{v}%")
         )
+        self.salary_slider.setToolTip("Minimum salary usage (96-98% recommended)")
         salary_layout = QHBoxLayout()
         salary_layout.addWidget(self.salary_slider)
         salary_layout.addWidget(self.salary_label)
         opt_layout.addRow("Min Salary:", salary_layout)
+
+        # NEW: Stack size preference (optional but useful)
+        self.stack_size = QComboBox()
+        self.stack_size.addItems(['Auto', 'Mini (2-3)', 'Standard (3-4)', 'Max (4-5)'])
+        self.stack_size.setToolTip(
+            "Auto: Let optimizer decide based on contest\n"
+            "Mini: 2-3 player stacks (safer)\n"
+            "Standard: 3-4 player stacks\n"
+            "Max: 4-5 player stacks (GPP)"
+        )
+        opt_layout.addRow("Stack Size:", self.stack_size)
 
         self.opt_settings.setLayout(opt_layout)
         layout.addWidget(self.opt_settings)
@@ -296,17 +276,10 @@ class SmartDFSGUI(QMainWindow):
         self.optimize_btn.setEnabled(False)
         layout.addWidget(self.optimize_btn)
 
-        # Progress
+        # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.hide()
         layout.addWidget(self.progress_bar)
-
-        # Console
-        self.console = QTextEdit()
-        self.console.setReadOnly(True)
-        self.console.setMaximumHeight(150)
-        self.console.setStyleSheet("font-family: monospace; font-size: 10pt;")
-        layout.addWidget(self.console)
 
         layout.addStretch()
         return panel
@@ -433,43 +406,46 @@ class SmartDFSGUI(QMainWindow):
         else:  # large
             self.contest_combo.setCurrentText('gpp')
             self.lineups_spin.setValue(50)
-            self.strategy_combo.setCurrentText('ceiling')
             self.log("📈 Large slate - configured for GPPs", "info")
 
     def optimize_lineups(self):
-        """Run optimization with smart detection"""
-        if not self.players_df:
+        """Simplified optimization"""
+        if not self.csv_path:
+            QMessageBox.warning(self, "No Data", "Please load a CSV file first")
             return
 
-        # Determine actual contest type
-        contest_type = self.contest_combo.currentText()
-        if contest_type == 'Auto-Detect':
-            if self.slate_analysis['type'] == 'showdown':
-                contest_type = 'showdown'
-            elif self.slate_analysis['type'] == 'small':
-                contest_type = 'cash'
-            else:
-                contest_type = 'gpp'
+        # Get contest type
+        contest_type = self.contest_combo.currentText().lower()
 
-        # Determine strategy
-        strategy = self.strategy_combo.currentText()
-        if strategy == 'Auto-Detect':
-            if contest_type == 'cash':
-                strategy = 'balanced'
-            else:
-                strategy = 'ceiling'
+        # Map contest types to optimizer settings
+        if contest_type in ['cash', '50-50']:
+            contest_type = 'cash'
+            strategy = 'balanced'  # Just use balanced for everything
+        elif contest_type == 'multiplier':
+            contest_type = 'gpp'
+            strategy = 'balanced'
+        else:  # GPP
+            contest_type = 'gpp'
+            strategy = 'balanced'
+
+        # Get stack size preference
+        stack_pref = self.stack_size.currentText()
 
         # Prepare settings
         settings = {
             'csv_path': self.csv_path,
             'contest_type': contest_type,
-            'strategy': strategy,
+            'strategy': strategy,  # Always 'balanced' now
             'num_lineups': self.lineups_spin.value(),
-            'min_salary': self.salary_slider.value() / 100
+            'min_salary': self.salary_slider.value() / 100,
+            'stack_size': stack_pref  # New setting
         }
 
         # Run optimization
-        self.log(f"🚀 Starting optimization: {contest_type.upper()} - {strategy}", "info")
+        self.log(f"🚀 Starting {contest_type.upper()} optimization", "info")
+        if stack_pref != 'Auto':
+            self.log(f"📊 Stack preference: {stack_pref}", "info")
+
         self.run_optimization(settings)
 
     def run_optimization(self, settings):
@@ -570,7 +546,8 @@ class SmartDFSGUI(QMainWindow):
 
             # Salary and points
             self.lineups_widget.setItem(i, 7, QTableWidgetItem(f"${lineup['total_salary']:,}"))
-            self.lineups_widget.setItem(i, 8, QTableWidgetItem(f"{lineup['total_score']:.1f}"))
+            # Change from 'total_score' to 'total_projection'
+            self.lineups_widget.setItem(i, 8, QTableWidgetItem(f"{lineup['total_projection']:.1f}"))
 
         self.lineups_widget.resizeColumnsToContents()
 
@@ -581,7 +558,8 @@ class SmartDFSGUI(QMainWindow):
             return
 
         first = lineups[0]['players']
-        positions = [p['position'] for p in first]
+        # Change from p['position'] to p.primary_position or p.display_position
+        positions = [p.primary_position for p in first]
 
         self.lineups_widget.setRowCount(len(lineups))
         self.lineups_widget.setColumnCount(len(positions) + 3)
@@ -593,18 +571,19 @@ class SmartDFSGUI(QMainWindow):
             # Lineup number
             self.lineups_widget.setItem(i, 0, QTableWidgetItem(f"#{i + 1}"))
 
-            # Players
+            # Players - use object notation instead of dictionary notation
             for j, player in enumerate(lineup['players']):
                 self.lineups_widget.setItem(i, j + 1, QTableWidgetItem(
-                    f"{player['name']} (${player['salary']})"
+                    f"{player.name} (${player.salary})"  # Changed from player['name'] and player['salary']
                 ))
 
             # Totals
             self.lineups_widget.setItem(i, len(positions) + 1, QTableWidgetItem(
                 f"${lineup['total_salary']:,}"
             ))
+            # Change from lineup['projected_points'] to lineup['total_projection']
             self.lineups_widget.setItem(i, len(positions) + 2, QTableWidgetItem(
-                f"{lineup['projected_points']:.1f}"
+                f"{lineup['total_projection']:.1f}"  # Changed from projected_points
             ))
 
         self.lineups_widget.resizeColumnsToContents()
@@ -659,15 +638,15 @@ class SmartDFSGUI(QMainWindow):
                         'UTIL4': lineup['utilities'][3].name,
                         'UTIL5': lineup['utilities'][4].name,
                         'Salary': lineup['total_salary'],
-                        'Points': lineup['total_score']
+                        'Points': lineup['total_projection']  # Changed from 'total_score'
                     }
                 else:
                     # Regular format
                     row = {}
                     for player in lineup['players']:
-                        row[player['position']] = player['name']
+                        row[player.primary_position] = player.name  # Changed from player['position'] and player['name']
                     row['Salary'] = lineup['total_salary']
-                    row['Points'] = lineup['projected_points']
+                    row['Points'] = lineup['total_projection']  # Changed from lineup['projected_points']
 
                 export_data.append(row)
 
@@ -732,6 +711,19 @@ class OptimizationWorker(QThread):
             # Enrich data
             self.progress.emit(80, "Enriching player data...")
             system.enrich_player_pool()
+
+            # ADD THIS:
+            # Set contest type on scoring engine
+            contest_type = self.settings['contest_type']
+            if contest_type == 'cash' or contest_type == '50-50':
+                self.log.emit("📊 Using CASH scoring mode (conservative)", "info")
+                system.scoring_engine.set_contest_type('cash')
+            else:
+                self.log.emit("🎯 Using GPP scoring mode (aggressive stacking)", "info")
+                system.scoring_engine.set_contest_type('gpp')
+
+            # THEN continue with optimization:
+            lineups = system.optimize_lineups(...)
 
             # Optimize
             self.progress.emit(90, "Optimizing lineups...")

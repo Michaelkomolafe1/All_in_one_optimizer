@@ -10,6 +10,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from step3_stack_detection import integrate_with_optimizer, EnhancedOptimizer
 
 import pulp
 

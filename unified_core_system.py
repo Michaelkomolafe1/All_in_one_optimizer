@@ -18,9 +18,9 @@ from unified_scoring_engine import get_scoring_engine, ScoringConfig
 from cash_optimization_config import apply_contest_config
 from cash_optimization_config import apply_contest_config, get_contest_description
 from pure_data_scoring_engine import get_pure_scoring_engine, PureDataScoringConfig
-from hybrid_scoring_system import get_hybrid_scoring_system
 from weather_integration import get_weather_integration
 from showdown_optimizer import ShowdownOptimizer, is_showdown_slate
+from step2_updated_player_model import SimplifiedScoringEngine
 
 
 # Data enrichment imports
@@ -98,23 +98,15 @@ class UnifiedCoreSystem:
         print("   ✅ Ready for weather data")
         print("   📍 Using free weather service (wttr.in)")
 
-        # 5. Hybrid Scoring System (REPLACES pure scoring)
-        print("\n🎯 Initializing Hybrid Scoring System...")
-        self.scoring_engine = get_hybrid_scoring_system()
-        print("   ✅ Contest-specific scoring ready")
-        print("   • Cash/Small GPPs: Dynamic scoring")
-        print("   • Large GPPs: Enhanced pure scoring")
+        # 5. Simplified Scoring System
+        print("\n🎯 Initializing Simplified Scoring System...")
+        from step2_updated_player_model import SimplifiedScoringEngine
+        self.scoring_engine = SimplifiedScoringEngine()
+        print("   ✅ Correlation-aware scoring ready")
+        print("   • GPP: Full correlation mode")
+        print("   • Cash: Conservative mode")
 
-        # Connect data sources to scoring engine
-        self.scoring_engine.set_data_sources(
-            statcast_fetcher=self.statcast,
-            vegas_client=self.vegas,
-            confirmation_system=self.confirmation_system
-        )
-
-        # Also set weather on enhanced engine
-        if hasattr(self.scoring_engine, 'enhanced_engine'):
-            self.scoring_engine.enhanced_engine.weather_integration = self.weather
+        # Note: SimplifiedScoringEngine doesn't need data sources - it's simpler!
 
         # 6. MILP Optimizer
         print("\n🎯 Initializing MILP Optimizer...")
@@ -123,6 +115,10 @@ class UnifiedCoreSystem:
             min_salary_usage=self.min_salary_usage
         )
         self.optimizer = UnifiedMILPOptimizer(optimizer_config)
+        # 6a. Enhance optimizer with stack detection
+        from step3_stack_detection import integrate_with_optimizer
+        self.enhanced_optimizer = integrate_with_optimizer(self.optimizer)
+        print("   ✅ Stack detection integrated")
 
         # Connect data sources to optimizer
         if hasattr(self.optimizer, 'set_data_sources'):
@@ -906,11 +902,29 @@ class UnifiedCoreSystem:
 
             try:
                 # Run optimization
-                lineup_players, score = self._call_optimizer(
-                    players=self.player_pool,
-                    strategy=strategy,
-                    min_salary_val=self.optimizer.config.min_salary_usage
-                )
+                if hasattr(self, 'enhanced_optimizer'):
+                    # Set contest type on enhanced optimizer
+                    self.enhanced_optimizer.set_contest_type(contest_type)
+
+                    # Generate lineup with stacking
+                    lineups_data = self.enhanced_optimizer.optimize_with_stacks(
+                        self.player_pool,
+                        num_lineups=1  # One at a time in the loop
+                    )
+
+                    if lineups_data and len(lineups_data) > 0:
+                        lineup_dict = lineups_data[0]
+                        lineup_players = lineup_dict['players']
+                        score = lineup_dict['total_score']
+                    else:
+                        lineup_players, score = [], 0
+                else:
+                    # Fallback to regular optimizer
+                    lineup_players, score = self._call_optimizer(
+                        players=self.player_pool,
+                        strategy=strategy,
+                        min_salary_val=self.optimizer.config.min_salary_usage
+                    )
 
                 # Restore original scores
                 self._restore_diversity_scores()
