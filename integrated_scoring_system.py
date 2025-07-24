@@ -234,33 +234,7 @@ class IntegratedScoringEngine:
         logger.info("Scoring caches cleared")
 
 
-def patch_unified_core_system():
-    """
-    Patch UnifiedCoreSystem to use the new integrated scoring
-    """
-    try:
-        from unified_core_system import UnifiedCoreSystem
-
-        # Replace the scoring engine initialization
-        original_init = UnifiedCoreSystem.__init__
-
-        def new_init(self, *args, **kwargs):
-            # Call original init
-            original_init(self, *args, **kwargs)
-            # Replace scoring engine
-            self.scoring_engine = IntegratedScoringEngine()
-            logger.info("✅ Integrated correlation scoring system active")
-
-        UnifiedCoreSystem.__init__ = new_init
-
-        logger.info("✅ UnifiedCoreSystem patched successfully")
-
-    except ImportError:
-        logger.error("Could not import UnifiedCoreSystem for patching")
-
-
-# Auto-patch on import
-patch_unified_core_system()
+# NO PATCHING NEEDED - UnifiedCoreSystem already imports this directly
 
 if __name__ == "__main__":
     # Test the integrated system
