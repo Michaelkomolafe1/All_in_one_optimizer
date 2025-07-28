@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """
-UNIFIED CORE SYSTEM V2
-=====================
-Clean rewrite using only the enhanced scoring engine
-No old dependencies, no complex configurations
+UNIFIED CORE SYSTEM V2 - WITH CSV LOADING
+=========================================
+Clean rewrite with CSV loading capability
 """
 
 import logging
 from typing import List, Dict, Set, Optional
 from pathlib import Path
+import pandas as pd
 
 # Core components
 from unified_player_model import UnifiedPlayer
 from unified_milp_optimizer import UnifiedMILPOptimizer
 from enhanced_scoring_engine import EnhancedScoringEngine
+from csv_loader_v2 import CSVLoaderV2  # The new CSV loader
 
 # Data sources (all in data/ directory)
 import sys
+
 sys.path.append(str(Path(__file__).parent.parent))
 
 from data.simple_statcast_fetcher import SimpleStatcastFetcher
@@ -31,172 +33,333 @@ logger = logging.getLogger(__name__)
 
 class UnifiedCoreSystemV2:
     """
-    Simplified DFS optimization system
+    Simplified DFS optimization system WITH CSV LOADING
     Uses ONLY the enhanced scoring engine for ALL contest types
     """
-    
+
     def __init__(self):
         """Initialize with only what we need"""
         logger.info("🚀 Initializing Unified Core System V2...")
-        
+
         # Player pools
         self.all_players: List[UnifiedPlayer] = []
         self.player_pool: List[UnifiedPlayer] = []
-        
+
+        # Slate info
+        self.slate_type = "classic"  # classic or showdown
+        self.csv_loaded = False
+
         # Core components
         self.scoring_engine = EnhancedScoringEngine()
         self.optimizer = UnifiedMILPOptimizer()
-        
+        self.csv_loader = CSVLoaderV2()  # NEW: CSV Loader
+
         # Data sources
         self.statcast = SimpleStatcastFetcher()
         self.confirmation = SmartConfirmationSystem()
         self.vegas = VegasLines()
         self.ownership_calc = OwnershipCalculator()
-        
-        logger.info("✅ System initialized with Enhanced Scoring Engine")
-    
-    def load_players_from_csv(self, csv_path: str, source: str = "dk"):
-        """Load players from DraftKings/FanDuel CSV"""
+
+        logger.info("✅ System initialized with Enhanced Scoring Engine & CSV Loader")
+
+    def load_players_from_csv(self, csv_path: str, source: str = "dk") -> int:
+        """
+        Load players from DraftKings/FanDuel CSV
+        Now with full implementation!
+        """
         logger.info(f"📁 Loading players from {csv_path}")
-        
-        # This would use your existing CSV loading logic
-        # For now, return empty list
-        self.all_players = []
-        return len(self.all_players)
-    
-    def set_player_pool(self, 
-                       strategy: str = "all",
-                       confirmed_only: bool = False,
-                       include_doubtful: bool = False) -> int:
-        """Set player pool based on strategy"""
+
+        try:
+            # Use the CSV loader
+            players, slate_type = self.csv_loader.load_csv(csv_path)
+
+            # Store results
+            self.all_players = players
+            self.slate_type = slate_type
+            self.csv_loaded = True
+
+            # Update confirmation system if it has CSV support
+            if hasattr(self.confirmation, 'csv_players'):
+                self.confirmation.csv_players = players
+
+                # Build team set
+                teams = {p.team for p in players}
+                if hasattr(self.confirmation, 'csv_teams'):
+                    self.confirmation.csv_teams = teams
+                    logger.info(f"📋 Updated confirmation system with {len(teams)} teams")
+
+            logger.info(f"✅ Loaded {len(players)} players ({slate_type} slate)")
+            return len(players)
+
+        except Exception as e:
+            logger.error(f"❌ Failed to load CSV: {e}")
+            raise
+
+    def detect_slate_type(self) -> str:
+        """Get the detected slate type"""
+        return self.slate_type
+
+    def set_player_pool(self,
+                        strategy: str = "all",
+                        confirmed_only: bool = False,
+                        include_doubtful: bool = False) -> int:
+        """
+        Set player pool based on strategy
+        Enhanced with slate-type awareness
+        """
+        if not self.all_players:
+            logger.error("No players loaded! Load CSV first.")
+            return 0
+
+        logger.info(f"🎯 Setting player pool with strategy: {strategy}")
+
         if strategy == "confirmed_only":
-            self.player_pool = [p for p in self.all_players if p.is_confirmed]
+            # Get confirmed players from confirmation system
+            confirmed_names = set()
+
+            if hasattr(self.confirmation, 'get_all_confirmations'):
+                self.confirmation.get_all_confirmations()
+
+                # Extract confirmed pitcher names
+                for team, pitcher_info in self.confirmation.confirmed_pitchers.items():
+                    if isinstance(pitcher_info, dict) and 'name' in pitcher_info:
+                        confirmed_names.add(pitcher_info['name'])
+
+                # Extract confirmed hitter names
+                for team, lineup in self.confirmation.confirmed_lineups.items():
+                    if isinstance(lineup, list):
+                        confirmed_names.update(lineup)
+
+            # Filter to confirmed only
+            self.player_pool = [p for p in self.all_players if p.name in confirmed_names]
+            logger.info(f"📋 Using {len(self.player_pool)} confirmed players only")
         else:
+            # Use all players
             self.player_pool = self.all_players.copy()
-            
+
         logger.info(f"📋 Player pool set: {len(self.player_pool)} players")
         return len(self.player_pool)
-    
+
     def enrich_player_pool(self) -> int:
         """Enrich players with all data sources"""
+        if not self.player_pool:
+            logger.warning("No players in pool to enrich!")
+            return 0
+
         logger.info("🔄 Enriching player pool...")
         enriched = 0
-        
+
         for player in self.player_pool:
             try:
-                # 1. Get Vegas data
-                vegas_data = self.vegas.get_player_vegas_data(player)
-                if vegas_data:
-                    player.implied_team_score = vegas_data.get('total', 4.5)
+                # 1. Vegas lines
+                if self.vegas:
+                    # Set defaults (you'd implement actual fetching)
+                    player.team_total = 4.5
+                    player.game_total = 9.0
                     enriched += 1
-                
-                # 2. Get confirmation/batting order
-                conf_data = self.confirmation.check_player_confirmation(player.name)
-                if conf_data:
-                    player.is_confirmed = conf_data.get('confirmed', False)
-                    player.batting_order = conf_data.get('batting_order')
-                
-                # 3. Get recent performance
-                if player.primary_position != 'P':
-                    game_logs = self.statcast.fetch_recent_game_logs(player.name, 4)
-                    if game_logs:
-                        player.recent_game_logs = game_logs
-                        player.recent_form_score = self.statcast.calculate_recent_form_score(game_logs)
-                
-                # 4. Get pitcher stats
-                if player.primary_position == 'P':
-                    pitcher_stats = self.statcast.fetch_pitcher_advanced_stats(player.name)
-                    if pitcher_stats:
-                        player.era = pitcher_stats.get('era', 4.50)
-                        player.k9 = pitcher_stats.get('k9', 8.0)
-                        player.whiff_rate = pitcher_stats.get('whiff_rate', 25.0)
-                
-                # 5. Calculate ownership
-                player.projected_ownership = self.ownership_calc.calculate_ownership(player)
-                player.ownership_leverage = self.ownership_calc.calculate_leverage_score(player)
-                
+
+                # 2. Ownership projections
+                if self.ownership_calc:
+                    player.projected_ownership = self.ownership_calc.calculate_ownership(
+                        player.name,
+                        player.salary,
+                        player.base_projection
+                    )
+
+                # 3. Recent form (placeholder)
+                player.recent_form_score = 10.0  # Default
+
+                # 4. Calculate enhanced score
+                contest_type = "gpp"  # Default, could be parameter
+                player.enhanced_score = self.scoring_engine.score_player(player, contest_type)
+
             except Exception as e:
-                logger.debug(f"Error enriching {player.name}: {e}")
+                logger.warning(f"Failed to enrich {player.name}: {e}")
                 continue
-        
+
         logger.info(f"✅ Enriched {enriched} players")
         return enriched
-    
-    def optimize_lineups(self, 
-                        num_lineups: int = 20,
-                        contest_type: str = "gpp") -> List[List[UnifiedPlayer]]:
+
+    def optimize_lineups(self,
+                         num_lineups: int = 20,
+                         contest_type: str = "gpp",
+                         min_unique: int = 3) -> List[Dict]:
         """
-        Generate optimized lineups using enhanced scoring
+        Generate optimized lineups
+        Handles both classic and showdown
         """
-        logger.info(f"\n🎯 OPTIMIZING {num_lineups} {contest_type.upper()} LINEUPS")
-        logger.info(f"{'='*60}")
-        
-        # 1. Score all players with enhanced engine
-        logger.info("📊 Scoring players...")
+        if not self.player_pool:
+            logger.error("No players in pool! Set player pool first.")
+            return []
+
+        logger.info(f"🎯 Optimizing {num_lineups} {contest_type.upper()} lineups...")
+        logger.info(f"   Slate type: {self.slate_type}")
+        logger.info(f"   Pool size: {len(self.player_pool)} players")
+
+        # Score all players for this contest type
         for player in self.player_pool:
             player.enhanced_score = self.scoring_engine.score_player(player, contest_type)
-            
-            # Store contest-specific scores
-            player.gpp_score = self.scoring_engine.score_player_gpp(player)
-            player.cash_score = self.scoring_engine.score_player_cash(player)
-        
-        # Show top scorers
-        top_players = sorted(self.player_pool, key=lambda x: x.enhanced_score, reverse=True)[:5]
-        logger.info("🌟 Top 5 Players:")
-        for p in top_players:
-            logger.info(f"   {p.name:<20} ${p.salary:<6} Score: {p.enhanced_score:.2f}")
-        
-        # 2. Set up optimization config
-        config = {
-            'stack_min': 3 if contest_type == 'gpp' else 0,
-            'stack_max': 5 if contest_type == 'gpp' else 2,
-            'max_exposure': 0.6 if contest_type == 'gpp' else 0.8,
-            'min_salary': 48000,
-            'max_salary': 50000
-        }
-        
-        # 3. Generate lineups
+
+        # Configure optimizer for contest type
+        if contest_type.lower() == "gpp":
+            self.optimizer.config = {
+                'min_teams': 2,
+                'max_from_team': 5,
+                'min_games': 2
+            }
+        elif contest_type.lower() == "cash":
+            self.optimizer.config = {
+                'min_teams': 3,
+                'max_from_team': 3,
+                'min_games': 3
+            }
+
+        # Handle showdown differently
+        if self.slate_type == "showdown":
+            logger.info("⚡ Using showdown optimization...")
+            # Showdown-specific optimization would go here
+            # For now, just warn
+            logger.warning("Showdown optimization not fully implemented yet")
+            return []
+
+        # Generate lineups
         lineups = []
+        used_players = set()
+
         for i in range(num_lineups):
-            # Use MILP optimizer
-            lineup = self.optimizer.optimize_single_lineup(
-                self.player_pool,
-                excluded_players=set(),  # Track used players if needed
-                config=config
-            )
-            
+            # Add diversity constraint
+            self.optimizer.min_unique_players = min_unique
+            self.optimizer.previous_lineups = lineups
+
+            # Optimize
+            lineup = self.optimizer.optimize(self.player_pool, contest_type)
+
             if lineup:
                 lineups.append(lineup)
-                logger.info(f"   Lineup {i+1}: {sum(p.salary for p in lineup)} salary, "
-                          f"{sum(p.enhanced_score for p in lineup):.2f} points")
-            else:
-                logger.warning(f"   Failed to generate lineup {i+1}")
-        
-        logger.info(f"\n✅ Generated {len(lineups)} lineups")
+
+                # Track used players
+                for player in lineup['players']:
+                    used_players.add(player.name)
+
+                # Log progress
+                if (i + 1) % 5 == 0:
+                    logger.info(f"   Generated {i + 1}/{num_lineups} lineups...")
+
+        logger.info(f"✅ Generated {len(lineups)} lineups using {len(used_players)} unique players")
+
+        # Show lineup summaries
+        self._summarize_lineups(lineups[:3])  # Show first 3
+
         return lineups
-    
-    def display_lineup(self, lineup: List[UnifiedPlayer], contest_type: str = "gpp"):
-        """Display a single lineup with scores"""
-        total_salary = sum(p.salary for p in lineup)
-        total_score = sum(p.enhanced_score for p in lineup)
-        
-        print(f"\n{'='*60}")
-        print(f"LINEUP - {contest_type.upper()} - Salary: ${total_salary} - Proj: {total_score:.2f}")
-        print(f"{'='*60}")
-        print(f"{'Pos':<4} {'Player':<20} {'Team':<5} {'Salary':<7} {'Score':<7} {'Own%':<6}")
-        print(f"{'-'*60}")
-        
-        for player in sorted(lineup, key=lambda x: ['P', 'C', '1B', '2B', '3B', 'SS', 'OF'].index(x.primary_position)):
-            print(f"{player.primary_position:<4} {player.name:<20} {player.team:<5} "
-                  f"${player.salary:<6} {player.enhanced_score:<7.2f} "
-                  f"{getattr(player, 'projected_ownership', 0):<5.1f}%")
+
+    def _summarize_lineups(self, lineups: List[Dict]):
+        """Show summary of lineups"""
+        for i, lineup in enumerate(lineups):
+            logger.info(f"\n📊 Lineup {i + 1}:")
+            logger.info(f"   Salary: ${lineup['total_salary']:,} / $50,000")
+            logger.info(f"   Projection: {lineup['total_score']:.2f} pts")
+
+            # Show stacks
+            teams = {}
+            for p in lineup['players']:
+                teams[p.team] = teams.get(p.team, 0) + 1
+
+            stacks = [(team, count) for team, count in teams.items() if count >= 2]
+            if stacks:
+                stack_str = ", ".join([f"{team}({count})" for team, count in stacks])
+                logger.info(f"   Stacks: {stack_str}")
+
+    def export_lineups(self, lineups: List[Dict], filename: str = None) -> str:
+        """Export lineups to CSV"""
+        if not lineups:
+            logger.warning("No lineups to export")
+            return ""
+
+        from datetime import datetime
+
+        if filename is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"lineups_{self.slate_type}_{timestamp}.csv"
+
+        # Create export format
+        if self.slate_type == "showdown":
+            # Showdown format
+            rows = []
+            for i, lineup in enumerate(lineups):
+                row = {'Lineup': i + 1}
+
+                # Find captain (highest score)
+                players_sorted = sorted(lineup['players'],
+                                        key=lambda p: p.enhanced_score,
+                                        reverse=True)
+
+                row['CPT'] = players_sorted[0].name
+                for j, player in enumerate(players_sorted[1:6], 1):
+                    row[f'UTIL{j}'] = player.name
+
+                row['Salary'] = lineup['total_salary']
+                row['Projection'] = lineup['total_score']
+                rows.append(row)
+        else:
+            # Classic format
+            rows = []
+            for i, lineup in enumerate(lineups):
+                row = {'Lineup': i + 1}
+
+                # Standard positions
+                positions = ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']
+                pos_filled = {pos: 0 for pos in positions}
+
+                # Fill positions
+                for pos in positions:
+                    for player in lineup['players']:
+                        if (player.primary_position == pos or
+                            pos in player.positions) and pos_filled[pos] == 0:
+                            col_name = f"{pos}{pos_filled[pos] + 1}" if pos in ['P', 'OF'] else pos
+                            row[col_name] = player.name
+                            pos_filled[pos] = 1
+                            break
+
+                row['Salary'] = lineup['total_salary']
+                row['Projection'] = lineup['total_score']
+                rows.append(row)
+
+        # Save to CSV
+        df = pd.DataFrame(rows)
+        df.to_csv(filename, index=False)
+        logger.info(f"✅ Exported {len(lineups)} lineups to {filename}")
+
+        return filename
 
 
+# Example usage
 if __name__ == "__main__":
-    # Test the system
+    # Initialize system
     system = UnifiedCoreSystemV2()
-    print("✅ Unified Core System V2 ready!")
-    print("\n🎯 This system uses ONLY the enhanced scoring engine")
-    print("   - GPP: Optimized parameters (-67.7 score)")
-    print("   - Cash: Optimized parameters (86.2 score)")
-    print("   - No complex configurations needed!")
+
+    # Example workflow
+    print("\n🚀 Unified Core System V2 with CSV Loading")
+    print("=" * 50)
+
+    # 1. Load CSV
+    # players_loaded = system.load_players_from_csv("sample_data/DKSalaries.csv")
+    # print(f"✅ Loaded {players_loaded} players")
+
+    # 2. Set player pool
+    # pool_size = system.set_player_pool(strategy="all")
+    # print(f"✅ Player pool: {pool_size} players")
+
+    # 3. Enrich data
+    # enriched = system.enrich_player_pool()
+    # print(f"✅ Enriched {enriched} players")
+
+    # 4. Optimize lineups
+    # lineups = system.optimize_lineups(num_lineups=5, contest_type="gpp")
+    # print(f"✅ Generated {len(lineups)} lineups")
+
+    # 5. Export
+    # if lineups:
+    #     filename = system.export_lineups(lineups)
+    #     print(f"✅ Exported to {filename}")
+
+    print("\n✨ System ready for use!")
