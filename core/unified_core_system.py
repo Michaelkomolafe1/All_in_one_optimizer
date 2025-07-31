@@ -28,7 +28,7 @@ from enhanced_scoring_engine import EnhancedScoringEngine
 from data.simple_statcast_fetcher import SimpleStatcastFetcher
 from data.smart_confirmation_system import SmartConfirmationSystem
 from data.vegas_lines import VegasLines
-
+from strategy_auto_selector import StrategyAutoSelector
 # Optional imports with proper handling
 try:
     from data.weather_integration import get_weather_integration
@@ -69,6 +69,7 @@ class UnifiedCoreSystem:
 
         # Initialize data sources
         self.statcast = SimpleStatcastFetcher()
+        self.strategy_selector = StrategyAutoSelector()
         self.confirmation_system = SmartConfirmationSystem()
         self.vegas = VegasLines()
 

@@ -340,19 +340,32 @@ class UnifiedMILPOptimizer:
 
         return players
 
-    def optimize_lineup(
-            self,
-            players: List,
-            strategy: str = "balanced",
-            manual_selections: str = ""
-    ) -> Tuple[List, float]:
+    def optimize_lineup(self,
+                        players: List,
+                        strategy: str = "balanced",
+                        manual_selections: str = "") -> Tuple[List, float]:
         """
-        Main optimization method
+        Main optimization method with dynamic salary constraints
         """
         logger.info(f"OPTIMIZATION: Starting optimization with strategy: {strategy}")
         logger.info(f"OPTIMIZATION: Players available: {len(players)}")
         logger.info(f"OPTIMIZATION: Manual selections: {manual_selections}")
         self._optimization_count += 1
+
+        # Dynamic minimum salary based on strategy
+        if strategy in ['projection_monster', 'truly_smart_stack']:
+            min_salary = 48000  # 96%
+        elif strategy == 'pitcher_dominance':
+            min_salary = 48500  # 97%
+        elif strategy == 'correlation_value':
+            min_salary = 47500  # 95%
+        elif strategy == 'matchup_leverage_stack':
+            min_salary = 47000  # 94% - needs variance room
+        else:
+            min_salary = 45000  # 90% default
+
+        # Store for use in _run_milp_optimization
+        self._strategy_min_salary = min_salary
 
         # Check cache first
         cache_key = (strategy, tuple(manual_selections) if manual_selections else (), len(players))
@@ -407,8 +420,6 @@ class UnifiedMILPOptimizer:
     def _run_milp_optimization(self, players: List) -> Tuple[List, float]:
         """
         Run the actual MILP optimization
-
-        Enhanced with configurable pitcher-hitter constraint for maximum flexibility
         """
         if not players:
             return [], 0
@@ -431,17 +442,19 @@ class UnifiedMILPOptimizer:
 
         # Constraints
 
-        # 1. Salary cap constraint
+        # 1. Salary cap constraint (maximum)
         prob += pulp.lpSum([
             player_vars[i] * players[i].salary
             for i in range(len(players))
         ]) <= self.config.salary_cap
 
-        # 2. Minimum salary usage
+        # 2. Minimum salary usage (NOW DYNAMIC!)
+        # Use the strategy-specific minimum we set earlier
+        min_salary = getattr(self, '_strategy_min_salary', 45000)
         prob += pulp.lpSum([
             player_vars[i] * players[i].salary
             for i in range(len(players))
-        ]) >= self.config.salary_cap * self.config.min_salary_usage
+        ]) >= min_salary
 
         # 3. Position requirements
         for pos, required in self.config.position_requirements.items():

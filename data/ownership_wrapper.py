@@ -1,1 +1,0 @@
-from ownership_calculator import HybridOwnershipCalculator as OwnershipCalculator
