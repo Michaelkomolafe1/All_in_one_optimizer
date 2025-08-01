@@ -31,3 +31,10 @@ __pycache__/
 *.pyc
 .format_backup/
 backup_*/
+
+# Cache and temp files
+cache_config.json
+lineup_results.json
+__pycache__/
+*.pyc
+debug.py
