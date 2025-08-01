@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Vegas lines integration with The Odds API"""
 from datetime import datetime
-from enhanced_caching_system import get_cache_manager
+from data.enhanced_caching_system import get_cache_manager
 from datetime import datetime
 import requests
 from functools import lru_cache
