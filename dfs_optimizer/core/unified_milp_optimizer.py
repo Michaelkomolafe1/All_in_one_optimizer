@@ -247,7 +247,7 @@ class UnifiedMILPOptimizer:
             if len(confirmed) < 20:
                 non_confirmed = [p for p in players if not getattr(p, 'is_confirmed', False)]
                 non_confirmed.sort(key=lambda x: getattr(x, 'base_projection', 0), reverse=True)
-                eligible = confirmed + non_confirmed[:30]
+                eligible = confirmed + non_confirmed
             else:
                 eligible = confirmed
 

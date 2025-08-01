@@ -8,7 +8,10 @@ Complete unified DFS system with new optimized scoring
 import logging
 from datetime import datetime
 from typing import Dict, List, Set
-from PerformanceTracker import PerformanceTracker
+# # from dfs_optimizer.tracking.performance_tracker import PerformanceTracker
+class PerformanceTracker:
+    def __init__(self): pass
+    def track_lineup(self, data): return None
 import pandas as pd
 
 # Configure logging first
@@ -19,17 +22,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Core imports
-from unified_player_model import UnifiedPlayer
-from unified_milp_optimizer import UnifiedMILPOptimizer
+from dfs_optimizer.core.unified_player_model import UnifiedPlayer
+from dfs_optimizer.core.unified_milp_optimizer import UnifiedMILPOptimizer
 
 # NEW: Enhanced scoring engine - the ONLY scoring system we use
-from enhanced_scoring_engine import EnhancedScoringEngine
+from dfs_optimizer.core.enhanced_scoring_engine import EnhancedScoringEngine
 
 # Data enrichment imports
-from data.simple_statcast_fetcher import SimpleStatcastFetcher
-from data.smart_confirmation_system import SmartConfirmationSystem
-from data.vegas_lines import VegasLines
-from strategy_auto_selector import StrategyAutoSelector
+from dfs_optimizer.data.statcast_fetcher import SimpleStatcastFetcher
+from dfs_optimizer.data.smart_confirmation import SmartConfirmationSystem
+from dfs_optimizer.data.vegas_lines import VegasLines
+from core.strategy_auto_selector import StrategyAutoSelector
 # Optional imports with proper handling
 try:
     from data.weather_integration import get_weather_integration
@@ -77,6 +80,7 @@ class UnifiedCoreSystem:
         self.enrichments_applied = False
 
         logger.info("✅ Unified Core System initialized with Enhanced Scoring Engine")
+        self._last_contest_type = None
 
     """
     FIX FOR score_players METHOD
@@ -85,7 +89,7 @@ class UnifiedCoreSystem:
     """
 
     def score_players(self, contest_type='gpp'):
-        """Score all players"""
+        """Score all players using enhanced scoring engine"""
         logger.info(f"Scoring players for {contest_type.upper()}")
 
         # Ensure enrichment has run
@@ -93,70 +97,30 @@ class UnifiedCoreSystem:
             logger.info("Running enrichments first...")
             self.enrich_player_pool()
 
+        # Use enhanced scoring engine for ALL scoring
         scored_count = 0
-
         for player in self.player_pool:
             try:
-                # Get base projection
-                base_proj = player.fantasy_points if hasattr(player, 'fantasy_points') else 0
+                # Calculate both scores using enhanced engine
+                player.cash_score = self.scoring_engine.score_player_cash(player)
+                player.gpp_score = self.scoring_engine.score_player_gpp(player)
 
+                # SET optimization_score based on contest type!
                 if contest_type.lower() == 'cash':
-                    # CASH SCORING
-                    score = base_proj
+                    player.optimization_score = player.cash_score
+                    player.enhanced_score = player.cash_score
+                else:
+                    player.optimization_score = player.gpp_score
+                    player.enhanced_score = player.gpp_score
 
-                    # Pitcher bonus
-                    if getattr(player, 'is_pitcher', False):
-                        score *= 1.05
-
-                    # Team total adjustment
-                    team_total = getattr(player, 'team_total', 4.5)
-                    if team_total >= 5.0:
-                        score *= 1.08
-
-                    # Batting order boost
-                    batting_order = getattr(player, 'batting_order', None)
-                    if batting_order and 1 <= batting_order <= 4:
-                        score *= 1.05
-
-                else:  # GPP
-                    # GPP SCORING
-                    score = base_proj
-
-                    # Team total
-                    team_total = getattr(player, 'team_total', 4.5)
-                    if team_total >= 5.88:
-                        score *= 1.336
-                    elif team_total >= 5.73:
-                        score *= 1.216
-                    elif team_total >= 4.87:
-                        score *= 1.139
-
-                    # Batting order boost
-                    batting_order = getattr(player, 'batting_order', None)
-                    if batting_order and 1 <= batting_order <= 5:
-                        score *= 1.115
-
-                    # Ownership leverage
-                    ownership = getattr(player, 'ownership_projection', 15.0)
-                    if ownership < 15:
-                        score *= 1.106
-
-                # Set scores
-                player.enhanced_score = score
-                player.cash_score = score if contest_type == 'cash' else base_proj * 0.95
-                player.gpp_score = score if contest_type == 'gpp' else base_proj * 1.1
-
-                if score > 0:
-                    scored_count += 1
+                scored_count += 1
 
             except Exception as e:
-                logger.error(f"Error scoring {player.name}: {e}")
-                player.enhanced_score = base_proj
-                player.cash_score = base_proj
-                player.gpp_score = base_proj
+                logger.error(f"Failed to score {player.name}: {e}")
+                player.optimization_score = 0
+                player.enhanced_score = 0
 
-        logger.info(f"✅ Scored {scored_count}/{len(self.player_pool)} players successfully")
-
+        logger.info(f"Scored {scored_count}/{len(self.player_pool)} players for {contest_type}")
     def load_players_from_csv(self, csv_path: str):
         """Load players from DraftKings CSV"""
         logger.info(f"Loading players from {csv_path}")
@@ -558,6 +522,17 @@ class UnifiedCoreSystem:
             logger.info(f"   {p.name}: {p.enhanced_score:.2f} ({contest_type})")
 
         # Generate lineups
+        # Ensure players are scored for the right contest type
+        if self.player_pool and (not hasattr(self.player_pool[0], 'optimization_score') or self.player_pool[0].optimization_score == 0):
+            self.score_players(contest_type)
+
+        # Re-score if contest type changed
+        elif hasattr(self, '_last_contest_type') and self._last_contest_type != contest_type:
+            logger.info(f"Contest type changed from {self._last_contest_type} to {contest_type}, re-scoring...")
+            self.score_players(contest_type)
+
+        self._last_contest_type = contest_type
+
         lineups = []
         used_players = set()
 

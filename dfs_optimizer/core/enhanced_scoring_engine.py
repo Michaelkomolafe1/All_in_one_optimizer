@@ -109,7 +109,7 @@ class EnhancedScoringEngine:
         """
         Score player for GPP using optimized parameters
         """
-        score = player.base_projection
+        score = player.base_projection if player.base_projection > 0 else getattr(player, "dff_projection", 0) or getattr(player, "fantasy_points", 10)
         
         # 1. Team total multiplier
         if hasattr(player, 'implied_team_score') and player.implied_team_score:
@@ -170,7 +170,7 @@ class EnhancedScoringEngine:
         Score player for Cash games using optimized parameters
         """
         # Get component scores
-        projection_score = player.base_projection
+        projection_score = player.base_projection if player.base_projection > 0 else getattr(player, "dff_projection", 0) or getattr(player, "fantasy_points", 10) if player.base_projection > 0 else getattr(player, "dff_projection", 0) or getattr(player, "fantasy_points", 10)
         
         # Recent form score
         recent_score = player.recent_form_score if hasattr(player, 'recent_form_score') else projection_score

@@ -340,17 +340,134 @@ class UnifiedMILPOptimizer:
 
         return players
 
-    def optimize_lineup(self,
-                        players: List,
-                        strategy: str = "balanced",
-                        manual_selections: str = "") -> Tuple[List, float]:
+    def optimize_lineup(self, players: List, strategy: str = "balanced", manual_selections: str = "", contest_type: str = "gpp") -> Tuple[List, float]:
         """
         Main optimization method with dynamic salary constraints
         """
-        logger.info(f"OPTIMIZATION: Starting optimization with strategy: {strategy}")
+        logger.info(f"OPTIMIZATION: Starting {contest_type.upper()} optimization with strategy: {strategy}")
         logger.info(f"OPTIMIZATION: Players available: {len(players)}")
         logger.info(f"OPTIMIZATION: Manual selections: {manual_selections}")
         self._optimization_count += 1
+
+        # Adjust constraints based on contest type
+
+
+        if contest_type.lower() == 'cash':
+
+
+            # Cash game adjustments
+
+
+            self.config.max_players_per_team = 3  # Less stacking
+
+
+            self.config.preferred_stack_size = 2  # Smaller stacks
+
+
+            self.config.max_opposing_hitters = 0  # No opposing hitters vs your pitcher
+
+
+        else:
+
+
+            # GPP settings (restore defaults)
+
+
+            self.config.max_players_per_team = 4
+
+
+            self.config.preferred_stack_size = 3
+
+
+            self.config.max_opposing_hitters = 1
+
+
+        
+
+
+        # Adjust constraints based on contest type
+
+
+
+        
+
+
+        if contest_type.lower() == 'cash':
+
+
+
+        
+
+
+            # Cash game adjustments
+
+
+
+        
+
+
+            self.config.max_players_per_team = 3  # Less stacking
+
+
+
+        
+
+
+            self.config.preferred_stack_size = 2  # Smaller stacks
+
+
+
+        
+
+
+            self.config.max_opposing_hitters = 0  # No opposing hitters vs your pitcher
+
+
+
+        
+
+
+        else:
+
+
+
+        
+
+
+            # GPP settings (restore defaults)
+
+
+
+        
+
+
+            self.config.max_players_per_team = 4
+
+
+
+        
+
+
+            self.config.preferred_stack_size = 3
+
+
+
+        
+
+
+            self.config.max_opposing_hitters = 1
+
+
+
+        
+
+
+        
+
+
+
+        
+
 
         # Dynamic minimum salary based on strategy
         if strategy in ['projection_monster', 'truly_smart_stack']:

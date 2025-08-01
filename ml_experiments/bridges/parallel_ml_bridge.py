@@ -107,11 +107,37 @@ def process_single_slate(args: Tuple) -> Dict:
         # Initialize YOUR system
         system = UnifiedCoreSystem()
         system.players = players
+        # DEBUG: Check initial positions
+        pos_count = {}
+        for p in system.players:
+            pos_count[p.primary_position] = pos_count.get(p.primary_position, 0) + 1
+        print(f"DEBUG Initial: {pos_count}")
+        # DEBUG: Check positions after assignment
+        pos_count = {}
+        for p in system.players:
+            pos_count[p.primary_position] = pos_count.get(p.primary_position, 0) + 1
+        print(f"DEBUG: After assignment - Positions: {pos_count}")
         system.csv_loaded = True  # Mark as loaded since we're bypassing CSV
 
         # Build and enrich pool
         system.build_player_pool(include_unconfirmed=True)
+        # DEBUG: Check pool
+        pool_pos = {}
+        for p in system.player_pool:
+            pool_pos[p.primary_position] = pool_pos.get(p.primary_position, 0) + 1
+        print(f"DEBUG Pool: {pool_pos}, Size: {len(system.player_pool)}")
+        # DEBUG: Check pool positions
+        pool_positions = {}
+        for p in system.player_pool:
+            pool_positions[p.primary_position] = pool_positions.get(p.primary_position, 0) + 1
+        print(f"DEBUG: After build_pool - Positions: {pool_positions}")
+        print(f"DEBUG: Pool size: {len(system.player_pool)} vs Players size: {len(system.players)}")
         system.enrich_player_pool()
+        # DEBUG: Check after enrichment
+        enrich_positions = {}
+        for p in system.player_pool:
+            enrich_positions[p.primary_position] = enrich_positions.get(p.primary_position, 0) + 1
+        print(f"DEBUG: After enrichment - Positions: {enrich_positions}")
         
         # RESTORE simulator ownership after enrichment
         for p in system.player_pool:
