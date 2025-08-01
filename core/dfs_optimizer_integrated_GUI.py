@@ -14,6 +14,8 @@ from PyQt5.QtGui import *
 import pandas as pd
 from datetime import datetime
 from typing import Dict, List, Optional
+from datetime import datetime
+import pyperclip  # If not installed: pip install pyperclip
 import json
 import traceback
 
@@ -381,18 +383,102 @@ class DFSOptimizerGUI(QMainWindow):
                 background-color: #45a049;
             }
         """)
-        # Add this after the optimize button:
-       # test_btn = QPushButton("Test System")
-        #test_btn.clicked.connect(self.run_system_diagnostics)
-        #test_btn.setStyleSheet("background-color: #FF9800;")  # Orange
-        #actions_layout.addWidget(test_btn)
         actions_layout.addWidget(self.optimize_btn)
+
+        # NEW: Export Tracking Button
+        self.export_tracking_btn = QPushButton("📋 Copy Lineup for Tracking")
+        self.export_tracking_btn.clicked.connect(self.export_lineup_summary)
+        self.export_tracking_btn.setEnabled(False)  # Disabled until lineups generated
+        self.export_tracking_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                font-weight: bold;
+                padding: 8px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #8e44ad;
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+            }
+        """)
+        actions_layout.addWidget(self.export_tracking_btn)
 
         layout.addWidget(actions_group)
 
         layout.addStretch()
 
         return panel
+
+    def export_lineup_summary(self):
+        """Export lineup summary for easy tracking"""
+        if not self.lineups:
+            self.log("No lineups to export!", "error")
+            return
+
+        # Get the first lineup (or let user select which one)
+        lineup = self.lineups[0]
+
+        # Build a formatted summary
+        summary_lines = [
+            "=" * 60,
+            f"DFS LINEUP TRACKING - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            "=" * 60,
+            f"Contest Type: {self.contest_type.currentText()}",
+            f"Strategy: {self.selected_strategy}",
+            f"Projected Points: {lineup.get('total_projection', 0):.1f}",
+            f"Total Salary: ${lineup.get('total_salary', 0):,}",
+            "",
+            "LINEUP:",
+            "-" * 40
+        ]
+
+        # Add each player
+        for player in lineup['players']:
+            pos = player.primary_position
+            name = player.name
+            team = player.team
+            salary = player.salary
+            proj = getattr(player, 'dff_projection', 0)
+            summary_lines.append(f"{pos:<4} {name:<20} {team:<4} ${salary:>6,} {proj:>5.1f}")
+
+        # Add tracking fields
+        summary_lines.extend([
+            "",
+            "-" * 40,
+            "RESULTS (Fill in after contest):",
+            "Actual Score: _______",
+            "Placement: _______",
+            "Entries: _______",
+            "Winnings: $_______",
+            "ROI: _______%",
+            "=" * 60
+        ])
+
+        # Join all lines
+        summary = "\n".join(summary_lines)
+
+        # Copy to clipboard
+        try:
+            QApplication.clipboard().setText(summary)
+            self.log("✅ Lineup copied to clipboard! Paste into your tracking spreadsheet.", "success")
+        except Exception as e:
+            self.log(f"Error copying to clipboard: {e}", "error")
+
+        # Also save to a file for backup
+        tracking_dir = "lineup_tracking"
+        os.makedirs(tracking_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{tracking_dir}/lineup_{timestamp}.txt"
+
+        with open(filename, 'w') as f:
+            f.write(summary)
+
+        self.log(f"Also saved to: {filename}", "info")
+
 
     def create_player_pool_panel(self):
         """Create center player pool panel"""
@@ -859,6 +945,8 @@ class DFSOptimizerGUI(QMainWindow):
                 total_proj += proj
 
                 self.lineups_text.append(f"{pos:<4} {name:<20} {team:<4} ${salary:>6,} {proj:>6.1f}")
+                self.export_tracking_btn.setEnabled(True)
+
 
             self.lineups_text.append(f"\nTotal Salary: ${total_salary:,} | Projected: {total_proj:.1f}")
             self.lineups_text.append("\n")

@@ -8,6 +8,7 @@ Complete unified DFS system with new optimized scoring
 import logging
 from datetime import datetime
 from typing import Dict, List, Set
+from PerformanceTracker import PerformanceTracker
 import pandas as pd
 
 # Configure logging first
@@ -62,6 +63,7 @@ class UnifiedCoreSystem:
         self.player_pool: List[UnifiedPlayer] = []
         self.confirmed_players: Set[str] = set()
         self.manual_selections: Set[str] = set()
+        self.tracker = PerformanceTracker()
 
         # Initialize components
         self.optimizer = UnifiedMILPOptimizer()
@@ -72,6 +74,7 @@ class UnifiedCoreSystem:
         self.strategy_selector = StrategyAutoSelector()
         self.confirmation_system = SmartConfirmationSystem()
         self.vegas = VegasLines()
+        self.enrichments_applied = False
 
         logger.info("✅ Unified Core System initialized with Enhanced Scoring Engine")
 
@@ -82,11 +85,12 @@ class UnifiedCoreSystem:
     """
 
     def score_players(self, contest_type='gpp'):
-        """Score all players - WORKING VERSION"""
+        """Score all players"""
         logger.info(f"Scoring players for {contest_type.upper()}")
 
         # Ensure enrichment has run
         if not self.enrichments_applied:
+            logger.info("Running enrichments first...")
             self.enrich_player_pool()
 
         scored_count = 0
@@ -365,6 +369,7 @@ class UnifiedCoreSystem:
 
     def enrich_player_pool(self):
         """Enrich player pool with additional data"""
+        logger.info("Enriching player pool...")
         if not self.player_pool:
             logger.warning("No players in pool to enrich")
             return
@@ -454,6 +459,8 @@ class UnifiedCoreSystem:
         self.enrichments_applied = True
         logger.info("✅ Player pool enrichment complete")
 
+
+
     def set_confirmed_players(self, confirmed_list: List[str]):
         """Manually set confirmed players (for testing)"""
         self.confirmed_players = set(confirmed_list)
@@ -512,8 +519,6 @@ class UnifiedCoreSystem:
                 contest_type=contest_type
             )
 
-        # Continue with classic optimization...
-
         # Regular optimization
         logger.info(f"🎯 Optimizing {num_lineups} lineups...")
         logger.info(f"   Strategy: {strategy}")
@@ -564,14 +569,19 @@ class UnifiedCoreSystem:
                 self._apply_diversity_penalty(used_players, penalty=0.8)
 
             # Optimize single lineup
-            lineup_players, total_score = self.optimizer.optimize_lineup(
-                players=self.player_pool,
-                strategy=strategy,
-                manual_selections=list(self.manual_selections)
-            )
+                # Prepare for strategy-specific scoring
+                self._prepare_strategy_scoring(strategy)
 
-            # Restore original scores
-            self._restore_original_scores()
+                # Optimize single lineup
+                lineup_players, total_score = self.optimizer.optimize(
+                    strategy=strategy,
+                    contest_type=contest_type,
+                    players=self.player_pool,
+                    manual_selections=list(self.manual_selections)
+                )
+
+                # Restore original scores
+                self._restore_original_scores()
 
             if lineup_players:
                 # Track used players
@@ -586,6 +596,52 @@ class UnifiedCoreSystem:
                     'strategy': strategy,
                     'contest_type': contest_type
                 }
+
+                # ==========================================
+                # PERFORMANCE TRACKING ADDITION
+                # ==========================================
+
+                # Calculate total projection (sum of player projections)
+                total_projection = sum(
+                    getattr(p, 'dff_projection', 0) for p in lineup_players
+                )
+                lineup_dict['total_projection'] = total_projection
+
+                # Track the lineup for ML training
+                tracking_data = {
+                    "players": [p.name for p in lineup_players],
+                    "projected_score": total_score,
+                    "total_projection": total_projection,
+                    "contest_type": contest_type,
+                    "strategy": strategy,
+                    "slate_date": datetime.now().strftime("%Y-%m-%d"),
+                    "salary_used": lineup_dict['total_salary'],
+                    "positions": [p.primary_position for p in lineup_players],
+                    "teams": [p.team for p in lineup_players],
+                    "player_details": [
+                        {
+                            "name": p.name,
+                            "position": p.primary_position,
+                            "team": p.team,
+                            "salary": p.salary,
+                            "projection": getattr(p, 'dff_projection', 0),
+                            "enhanced_score": p.enhanced_score,
+                            "ownership": getattr(p, 'projected_ownership', 0)
+                        } for p in lineup_players
+                    ]
+                }
+
+                # Add slate info if available
+                if hasattr(self, 'slate_info'):
+                    tracking_data['slate_info'] = self.slate_info
+
+                # Track the lineup
+                lineup_id = self.tracker.track_lineup(tracking_data)
+                lineup_dict["tracking_id"] = lineup_id
+
+                # ==========================================
+                # END OF PERFORMANCE TRACKING
+                # ==========================================
 
                 lineups.append(lineup_dict)
 
@@ -613,8 +669,10 @@ class UnifiedCoreSystem:
         """Log a summary of the lineup"""
         total_salary = lineup['total_salary']
         total_score = lineup['total_score']
+        total_projection = lineup.get('total_projection', 0)
 
-        logger.info(f"   ✓ Lineup {lineup_num}: ${total_salary:,} salary, {total_score:.1f} projected points")
+        logger.info(
+            f"   ✓ Lineup {lineup_num}: ${total_salary:,} salary, {total_score:.1f} optimizer score, {total_projection:.1f} projected points")
 
         # Count stacks
         team_counts = {}
@@ -626,6 +684,7 @@ class UnifiedCoreSystem:
         if stacks:
             stack_str = ", ".join([f"{team}({count})" for team, count in stacks])
             logger.info(f"   ✓ Stacks: {stack_str}")
+
 
     def export_lineups(self, lineups: List[Dict], filename: str = None):
         """Export lineups to CSV"""
