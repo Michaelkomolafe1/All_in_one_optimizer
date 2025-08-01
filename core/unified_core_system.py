@@ -164,7 +164,7 @@ class UnifiedCoreSystem:
                 player.game_info = game_info
 
                 # Set projections
-                base_projection = float(row.get('AvgPointsPerGame', 0))
+                base_projection=float(row.get('AvgPointsPerGame', 0))
                 player.dff_projection = base_projection
                 player.dk_projection = base_projection
                 player.projection = base_projection
