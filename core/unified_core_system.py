@@ -156,10 +156,10 @@ class UnifiedCoreSystem:
                     primary_position = 'P'
                     positions = ['P'] + [p for p in positions if p not in ['SP', 'RP']]
 
-                # CRITICAL FIX: Get the projection value
+                # Get projection value FIRST
                 projection_value = float(row.get('AvgPointsPerGame', 0))
 
-                # Create player object with base_projection
+                # Create player with base_projection
                 player = UnifiedPlayer(
                     id=player_id,
                     name=name,
@@ -167,21 +167,20 @@ class UnifiedCoreSystem:
                     positions=positions,
                     salary=salary,
                     primary_position=primary_position,
-                    base_projection=projection_value  # ADD THIS LINE!
+                    base_projection=projection_value  # THIS IS THE KEY LINE!
                 )
-                logger.info(
-                    f"Created {name} with base_projection={player.base_projection} (should be {projection_value})")
 
                 # Set additional attributes AFTER creation
                 player.is_pitcher = (primary_position == 'P')
                 player.game_info = game_info
 
-                # Also set these for compatibility
+                # Set projections (KEEP ONLY THIS BLOCK)
+                player.base_projection = projection_value
                 player.dff_projection = projection_value
                 player.dk_projection = projection_value
                 player.projection = projection_value
 
-                # CRITICAL FIX: Initialize enrichment attributes
+                # Initialize enrichment attributes
                 player.vegas_score = 1.0
                 player.matchup_score = 1.0
                 player.park_score = 1.0

@@ -14,16 +14,18 @@ from PyQt5.QtGui import *
 import pandas as pd
 from datetime import datetime
 from typing import Dict, List, Optional
-from datetime import datetime
 import pyperclip  # If not installed: pip install pyperclip
 import json
 import traceback
 
-# Import your existing components
-from core.unified_core_system import UnifiedCoreSystem
-from core.strategy_auto_selector import StrategyAutoSelector
-from data.smart_confirmation_system import SmartConfirmationSystem
-from strategies import STRATEGY_REGISTRY
+# Add the project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import your existing components with correct paths
+from dfs_optimizer.core.unified_core_system import UnifiedCoreSystem
+from dfs_optimizer.strategies.strategy_selector import StrategyAutoSelector
+from dfs_optimizer.data.smart_confirmation import SmartConfirmationSystem
+from dfs_optimizer.strategies import STRATEGY_REGISTRY
 
 
 class PlayerPoolModel(QAbstractTableModel):
