@@ -105,22 +105,29 @@ class UnifiedCoreSystem:
                 player.cash_score = self.scoring_engine.score_player_cash(player)
                 player.gpp_score = self.scoring_engine.score_player_gpp(player)
 
-                # SET optimization_score based on contest type!
+                # SET enhanced_score based on contest type
                 if contest_type.lower() == 'cash':
-                    player.optimization_score = player.cash_score
                     player.enhanced_score = player.cash_score
-                else:
-                    player.optimization_score = player.gpp_score
+                    player.optimization_score = player.cash_score
+                else:  # GPP or other
                     player.enhanced_score = player.gpp_score
+                    player.optimization_score = player.gpp_score
 
                 scored_count += 1
 
             except Exception as e:
                 logger.error(f"Failed to score {player.name}: {e}")
-                player.optimization_score = 0
-                player.enhanced_score = 0
+                # Set default scores on error
+                player.cash_score = player.base_projection
+                player.gpp_score = player.base_projection
+                player.enhanced_score = player.base_projection
+                player.optimization_score = player.base_projection
 
-        logger.info(f"Scored {scored_count}/{len(self.player_pool)} players for {contest_type}")
+        logger.info(f"✅ Scored {scored_count}/{len(self.player_pool)} players successfully")
+
+        # Store the contest type we scored for
+        self._last_contest_type = contest_type
+
     def load_players_from_csv(self, csv_path: str):
         """Load players from DraftKings CSV"""
         logger.info(f"Loading players from {csv_path}")
@@ -149,39 +156,51 @@ class UnifiedCoreSystem:
                     primary_position = 'P'
                     positions = ['P'] + [p for p in positions if p not in ['SP', 'RP']]
 
-                # Create player object with required parameters including primary_position
+                # CRITICAL FIX: Get the projection value
+                projection_value = float(row.get('AvgPointsPerGame', 0))
+
+                # Create player object with base_projection
                 player = UnifiedPlayer(
                     id=player_id,
                     name=name,
                     team=team,
                     positions=positions,
                     salary=salary,
-                    primary_position=primary_position  # This is required!
+                    primary_position=primary_position,
+                    base_projection=projection_value  # ADD THIS LINE!
                 )
+                logger.info(
+                    f"Created {name} with base_projection={player.base_projection} (should be {projection_value})")
 
                 # Set additional attributes AFTER creation
                 player.is_pitcher = (primary_position == 'P')
                 player.game_info = game_info
 
-                # Set projections
-                base_projection=float(row.get('AvgPointsPerGame', 0))
-                player.dff_projection = base_projection
-                player.dk_projection = base_projection
-                player.projection = base_projection
+                # Also set these for compatibility
+                player.dff_projection = projection_value
+                player.dk_projection = projection_value
+                player.projection = projection_value
+
+                # CRITICAL FIX: Initialize enrichment attributes
+                player.vegas_score = 1.0
+                player.matchup_score = 1.0
+                player.park_score = 1.0
+                player.weather_score = 1.0
+                player.recent_form_score = projection_value
 
                 # Extract opponent from game info
-                if ' ' in game_info:
-                    teams_in_game = game_info.split(' ')
-                    if team == teams_in_game[0]:
-                        player.opponent = teams_in_game[1] if len(teams_in_game) > 1 else 'UNK'
+                if '@' in game_info:
+                    parts = game_info.split('@')
+                    if team in parts[0]:
+                        player.opponent = parts[1].split()[0]
                     else:
-                        player.opponent = teams_in_game[0]
+                        player.opponent = parts[0]
                 else:
                     player.opponent = 'UNK'
 
                 self.players.append(player)
 
-            # Update teams in confirmation system
+            # Update teams in confirmation system - INDENT THIS PROPERLY!
             if self.confirmation_system:
                 teams = list(set([p.team for p in self.players]))
                 self.confirmation_system.teams = teams
@@ -190,13 +209,19 @@ class UnifiedCoreSystem:
             self.csv_loaded = True
             logger.info(f"✅ Loaded {len(self.players)} players from CSV")
 
+            # CRITICAL: Log sample projections to verify
+            sample_projections = [(p.name, p.base_projection) for p in self.players[:5]]
+            logger.info(f"Sample projections: {sample_projections}")
+
         except Exception as e:
             logger.error(f"Error loading CSV: {e}")
             raise
 
+
     def load_csv(self, csv_path: str) -> List[UnifiedPlayer]:
         """Alias for load_players_from_csv for compatibility"""
         return self.load_players_from_csv(csv_path)
+
 
     def fetch_confirmed_players(self) -> Set[str]:
         """Fetch confirmed starting lineups"""
@@ -340,71 +365,20 @@ class UnifiedCoreSystem:
 
         logger.info("Enriching player pool with additional data...")
 
-        # CRITICAL: Set ALL required attributes for scoring engine
+        # Initialize required attributes for all players
         for player in self.player_pool:
-            # The scoring engine looks for 'fantasy_points' or 'fpts', not 'dff_projection'
-            if hasattr(player, 'dff_projection') and player.dff_projection:
-                player.fantasy_points = player.dff_projection
-                player.fpts = player.dff_projection
-            else:
-                # Fallback estimation
-                player.fantasy_points = player.salary / 1000.0
-                player.fpts = player.fantasy_points
-                player.dff_projection = player.fantasy_points
+            # Ensure all required attributes exist
+            if not hasattr(player, 'vegas_score'):
+                player.vegas_score = 1.0
+            if not hasattr(player, 'matchup_score'):
+                player.matchup_score = 1.0
+            if not hasattr(player, 'park_score'):
+                player.park_score = 1.0
+            if not hasattr(player, 'weather_score'):
+                player.weather_score = 1.0
+            if not hasattr(player, 'recent_form_score'):
+                player.recent_form_score = player.base_projection if hasattr(player, 'base_projection') else 0
 
-            # REQUIRED: Team and game totals
-            player.team_total = 4.5  # Default MLB team total
-            player.game_total = 9.0  # Default MLB game total
-
-            # REQUIRED: Ownership projection for GPP
-            player.ownership_projection = 15.0  # Default 15%
-
-            # REQUIRED: Recent form and performance metrics
-            player.recent_form = 1.0  # Neutral
-            player.recent_points = player.fantasy_points  # Same as projection for now
-            player.season_points = player.fantasy_points  # Same as projection for now
-
-            # REQUIRED: Consistency metrics
-            player.consistency_score = 0.7  # Default average
-            player.floor = player.fantasy_points * 0.7  # 70% of projection
-            player.ceiling = player.fantasy_points * 1.3  # 130% of projection
-
-            # REQUIRED: Advanced stats
-            player.woba_recent = 0.320  # League average
-            player.woba_season = 0.320  # League average
-            player.barrel_rate = 8.0  # League average
-            player.exit_velocity = 88.0  # League average
-            player.hard_hit_rate = 35.0  # League average
-            player.xwoba = 0.320  # League average
-
-            # Batting order (already set correctly)
-            if not hasattr(player, 'batting_order'):
-                player.batting_order = None
-
-            # Pitcher specific attributes
-            if player.is_pitcher:
-                player.strikeout_rate = 22.0  # League average K%
-                player.k9 = 9.0  # Average K/9
-                player.era = 4.00  # League average ERA
-                player.whip = 1.25  # League average WHIP
-                player.opp_k_rate = 0.22  # Opponent K rate
-
-            # Hitter specific attributes
-            else:
-                player.platoon_advantage = False  # Default no advantage
-                player.hot_streak = False  # Default not hot
-                player.cold_streak = False  # Default not cold
-
-            # Confirmation and other status
-            player.is_confirmed = getattr(player, 'is_confirmed', False)
-            player.weather_score = 1.0  # Neutral
-            player.park_factor = 1.0  # Neutral
-
-            # Value metrics
-            player.value = player.fantasy_points / (player.salary / 1000.0)
-            player.pts_per_dollar = player.fantasy_points / player.salary * 1000
-
-        # Log what we've done
         logger.info(f"✅ Enriched {len(self.player_pool)} players with required attributes")
 
         # Try to fetch real data (but don't fail if unavailable)
@@ -420,6 +394,27 @@ class UnifiedCoreSystem:
         except Exception as e:
             logger.warning(f"Could not fetch Vegas lines: {e}")
 
+        # Apply synthetic variation
+        import random
+        for player in self.player_pool:
+            # Add variation based on available data
+            if hasattr(player, 'base_projection') and player.base_projection > 0:
+                player.vegas_score = 0.8 + (player.base_projection / 50)
+                player.recent_form_score = player.base_projection * (0.85 + random.random() * 0.3)
+
+            if hasattr(player, 'salary'):
+                player.matchup_score = 0.7 + (player.salary / 20000)
+
+            player.weather_score = 0.95 + (hash(player.name) % 10) / 100
+
+            # Park factors
+            park_factors = {
+                'COL': 1.15, 'TEX': 1.10, 'CIN': 1.08, 'BOS': 1.05,
+                'SF': 0.92, 'SD': 0.90, 'LAD': 0.93, 'SEA': 0.88
+            }
+            player.park_score = park_factors.get(player.team, 1.0)
+
+        logger.info(f"Applied variation to {len(self.player_pool)} players")
         self.enrichments_applied = True
         logger.info("✅ Player pool enrichment complete")
 

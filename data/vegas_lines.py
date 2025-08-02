@@ -1,13 +1,29 @@
 #!/usr/bin/env python3
 """Vegas lines integration with The Odds API"""
 from datetime import datetime
-from data.enhanced_caching_system import get_cache_manager
-from datetime import datetime
 import requests
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
-from typing import Dict, List, Any, Optional
 import logging
+
+try:
+    from dfs_optimizer.data.enhanced_caching_system import get_cache_manager
+except ImportError:
+    # Fallback if caching isn't available
+    class DummyCacheManager:
+        def cache_key(self, *args): return str(args)
+
+        def get_cache(self, name):
+            class DummyCache:
+                def get(self, key): return None
+
+                def put(self, key, value): pass
+
+            return DummyCache()
+
+
+    def get_cache_manager():
+        return DummyCacheManager()
 
 logger = logging.getLogger(__name__)
 
