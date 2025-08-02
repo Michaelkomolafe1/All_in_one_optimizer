@@ -9,7 +9,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set  # Add Set here
 
 import pulp
 
@@ -116,6 +116,20 @@ class UnifiedMILPOptimizer:
         except ImportError:
             logger.warning("Strategy selector not available, using default strategies")
             return None
+
+    def _apply_diversity_penalty(self, used_players: Set[str], penalty: float = 0.8):
+        """Apply penalty to previously used players"""
+        for player in self.player_pool:
+            if player.name in used_players:
+                if not hasattr(player, 'original_optimization_score'):
+                    player.original_optimization_score = player.optimization_score
+                player.optimization_score *= penalty
+
+    def _restore_original_scores(self):
+        """Restore original optimization scores"""
+        for player in self.player_pool:
+            if hasattr(player, 'original_optimization_score'):
+                player.optimization_score = player.original_optimization_score
 
     def _determine_slate_size(self, players: List) -> str:
         """Determine slate size based on number of games"""
@@ -299,90 +313,55 @@ class UnifiedMILPOptimizer:
             logger.debug("Vegas lines module not available")
 
     def apply_strategy_filter(self, players: List, strategy: str) -> List:
-        """Apply strategy-based filtering to player pool"""
+        """Apply strategy-based filtering AND scoring to player pool"""
 
-        # Map strategies to filtering logic
-        if strategy in ["confirmed_only", "confirmed_plus_value"]:
-            # Only confirmed starters
-            eligible = [p for p in players if getattr(p, 'is_confirmed', False)]
+        # Import the actual strategy functions
+        try:
+            from dfs_optimizer.strategies.cash_strategies import (
+                build_projection_monster,
+                build_pitcher_dominance
+            )
+            from dfs_optimizer.strategies.gpp_strategies import (
+                build_correlation_value,
+                build_truly_smart_stack,
+                build_matchup_leverage_stack
+            )
+        except ImportError:
+            logger.error("Failed to import strategy functions")
+            return players
 
-            # For confirmed_plus_value, add high-value players
-            if strategy == "confirmed_plus_value" and len(eligible) < 30:
-                non_confirmed = [p for p in players if not getattr(p, 'is_confirmed', False)]
-                # Sort by value (points per dollar)
-                non_confirmed.sort(key=lambda x: getattr(x, 'base_projection', 0) / max(x.salary, 1), reverse=True)
-                eligible.extend(non_confirmed[:20])
+        # Map strategy names to functions
+        strategy_functions = {
+            'projection_monster': build_projection_monster,
+            'pitcher_dominance': build_pitcher_dominance,
+            'correlation_value': build_correlation_value,
+            'truly_smart_stack': build_truly_smart_stack,
+            'matchup_leverage_stack': build_matchup_leverage_stack,
+            'smart_stack': build_truly_smart_stack,  # Alias for compatibility
+        }
 
-        elif strategy == "stack_leverage":
-            # Focus on stacking opportunities
-            eligible = []
-            # Get teams with high totals
-            team_totals = {}
-            for p in players:
-                team = getattr(p, 'team', 'UNK')
-                total = getattr(p, 'team_total', 0)
-                if team != 'UNK' and total > 0:
-                    team_totals[team] = total
+        # First, filter to valid players
+        eligible = [p for p in players if self._is_valid_player(p)]
 
-            # Get top 6 teams by total
-            top_teams = sorted(team_totals.items(), key=lambda x: x[1], reverse=True)[:6]
-            top_team_names = [t[0] for t in top_teams]
-
-            # Include all players from top teams
-            for p in players:
-                if getattr(p, 'team', 'UNK') in top_team_names:
-                    eligible.append(p)
-                elif p.primary_position == 'P' and getattr(p, 'is_confirmed', False):
-                    eligible.append(p)
-
-        elif strategy in ["balanced", "balanced_upside"]:
-            # Mix of confirmed and high-projection players
-            confirmed = [p for p in players if getattr(p, 'is_confirmed', False)]
-
-            # Add top projections
-            non_confirmed = [p for p in players if not getattr(p, 'is_confirmed', False)]
-
-            if strategy == "balanced_upside":
-                # For GPP, focus on ceiling
-                non_confirmed.sort(key=lambda x: getattr(x, 'ceiling', getattr(x, 'base_projection', 0)), reverse=True)
-            else:
-                # For cash, focus on floor
-                non_confirmed.sort(key=lambda x: getattr(x, 'floor', getattr(x, 'base_projection', 0)), reverse=True)
-
-            eligible = confirmed + non_confirmed[:30]
-
-        elif strategy == "multi_stack":
-            # Multiple team stacks for large GPP
-            eligible = []
-            teams_included = set()
-
-            # First add confirmed pitchers
-            for p in players:
-                if p.primary_position == 'P' and getattr(p, 'is_confirmed', False):
-                    eligible.append(p)
-
-            # Add players from high-total teams
-            for p in players:
-                team = getattr(p, 'team', 'UNK')
-                team_total = getattr(p, 'team_total', 0)
-
-                if team != 'UNK' and team_total >= 4.5:
-                    eligible.append(p)
-                    teams_included.add(team)
-
-            # Ensure we have enough players
-            if len(eligible) < 50:
-                remaining = [p for p in players if p not in eligible]
-                remaining.sort(key=lambda x: getattr(x, 'base_projection', 0), reverse=True)
-                eligible.extend(remaining[:30])
-
+        # Apply the strategy function if it exists
+        if strategy in strategy_functions:
+            logger.info(f"Applying strategy: {strategy}")
+            # Strategy functions modify player.optimization_score
+            eligible = strategy_functions[strategy](eligible)
+            logger.info(f"Strategy {strategy} applied to {len(eligible)} players")
         else:
-            # Default to all valid players
-            eligible = [p for p in players if self._is_valid_player(p)]
+            logger.warning(f"Unknown strategy '{strategy}', using default scoring")
+            # Just copy the appropriate score to optimization_score
+            contest_type = getattr(self.config, 'contest_type', 'gpp')
+            for player in eligible:
+                if contest_type == 'cash' and hasattr(player, 'cash_score'):
+                    player.optimization_score = player.cash_score
+                elif hasattr(player, 'gpp_score'):
+                    player.optimization_score = player.gpp_score
+                else:
+                    player.optimization_score = player.enhanced_score
 
-        logger.info(f"Strategy '{strategy}' resulted in {len(eligible)} eligible players")
         return eligible
-
     def _is_valid_player(self, player) -> bool:
         """Check if player meets basic validation criteria"""
         # Must have required attributes
@@ -431,108 +410,102 @@ class UnifiedMILPOptimizer:
         return filtered
 
     def calculate_player_scores(self, players: List) -> List:
-        """
-        Use scores from pure data engine - NO MODIFICATIONS
+        """Ensure optimization_score is set, but don't overwrite if already set by strategy"""
+        contest_type = getattr(self.config, 'contest_type', 'gpp')
 
-        The pure data scoring engine has already calculated final scores.
-        This method now just ensures optimization_score is set.
-        """
         for player in players:
-            # Simply use the score that was already calculated by pure data engine
+            # Check if optimization_score was already set by a strategy
             if hasattr(player, 'optimization_score') and player.optimization_score > 0:
-                # Score already set, nothing to do
-                pass
+                # Strategy already set the score, don't overwrite
+                logger.debug(f"{player.name} already has optimization_score: {player.optimization_score}")
+                continue
+
+            # Otherwise, set optimization_score based on contest type
+            if contest_type.lower() == 'cash' and hasattr(player, 'cash_score'):
+                player.optimization_score = player.cash_score
+            elif contest_type.lower() == 'gpp' and hasattr(player, 'gpp_score'):
+                player.optimization_score = player.gpp_score
             elif hasattr(player, 'enhanced_score'):
-                # Copy enhanced_score to optimization_score
                 player.optimization_score = player.enhanced_score
-            elif hasattr(player, 'pure_data_score'):
-                # If using pure_data_score attribute
-                player.optimization_score = player.pure_data_score
             else:
-                # No valid score found
                 player.optimization_score = 0
                 logger.warning(f"No valid score for {player.name}")
 
         return players
 
-    def optimize_lineup(self, players: List, strategy: str = None,
+    def optimize_lineup(self, players: List, strategy: str = "balanced",
                         manual_selections: str = "", contest_type: str = "gpp") -> Tuple[List, float]:
-        """
-        Main optimization method - automatically selects best strategy if not provided
-        """
-        # Auto-select the best strategy for this contest type if not provided
-        if strategy is None or strategy == "auto":
-            strategy = self._get_best_strategy(contest_type, players)
+        """Main optimization method with proper strategy application"""
 
-        logger.info(f"OPTIMIZATION: Starting {contest_type.upper()} optimization with strategy: {strategy}")
+        logger.info(f"OPTIMIZATION: Starting {contest_type.upper()} optimization")
+        logger.info(f"OPTIMIZATION: Strategy: {strategy}")
         logger.info(f"OPTIMIZATION: Players available: {len(players)}")
-        logger.info(f"OPTIMIZATION: Manual selections: {manual_selections}")
-        self._optimization_count += 1
 
-        # Adjust constraints based on contest type
-        if contest_type.lower() == 'cash':
-            # Cash game adjustments
-            self.config.max_players_per_team = 3  # Less stacking
-            self.config.preferred_stack_size = 2  # Smaller stacks
-            self.config.max_opposing_hitters = 0  # No opposing hitters vs your pitcher
-            self.config.min_salary_usage = 0.98  # Use more salary in cash
-        else:
-            # GPP settings
-            self.config.max_players_per_team = 5  # More stacking allowed
-            self.config.preferred_stack_size = 4  # Bigger stacks
-            self.config.max_opposing_hitters = 2  # More flexibility
-            self.config.min_salary_usage = 0.95  # Can leave more salary on table
+        # Set contest type on config for use in other methods
+        self.config.contest_type = contest_type
 
-        # Apply strategy filter
+        # Apply strategy filter AND scoring
         eligible_players = self.apply_strategy_filter(players, strategy)
 
         if not eligible_players:
             logger.error("No eligible players after strategy filtering")
             return [], 0
 
-        # Pre-filter for performance
+        # Pre-filter for performance if needed
         if len(eligible_players) > 200:
             eligible_players = self._pre_filter_players(eligible_players, strategy)
 
-        # Ensure scores are calculated
+        # Ensure scores are calculated (but don't overwrite strategy scores)
         eligible_players = self.calculate_player_scores(eligible_players)
 
         # Parse manual selections
-        manual_names = self.parse_manual_selections(manual_selections, eligible_players)
+        manual_names = []
+        if manual_selections:
+            manual_names = [name.strip() for name in manual_selections.split(',')]
+            logger.info(f"Manual selections: {manual_names}")
 
-        # Create MILP problem
+        # Now run the MILP optimization with properly scored players
+        return self._run_milp_optimization(eligible_players, manual_names, contest_type)
+
+    def _run_milp_optimization(self, players: List, manual_names: List[str], contest_type: str) -> Tuple[List, float]:
+        """Run the actual MILP optimization with scored players"""
+
+        if not players:
+            return [], 0
+
+        # Create optimization problem
         prob = pulp.LpProblem("DFS_Optimizer", pulp.LpMaximize)
 
         # Decision variables
         player_vars = {
             i: pulp.LpVariable(f"player_{i}", cat='Binary')
-            for i in range(len(eligible_players))
+            for i in range(len(players))
         }
 
         # Objective: Maximize total score
         prob += pulp.lpSum([
-            player_vars[i] * getattr(eligible_players[i], 'optimization_score', 0)
-            for i in range(len(eligible_players))
+            player_vars[i] * getattr(players[i], 'optimization_score', 0)
+            for i in range(len(players))
         ])
 
         # Constraint: Salary cap
         prob += pulp.lpSum([
-            player_vars[i] * eligible_players[i].salary
-            for i in range(len(eligible_players))
+            player_vars[i] * players[i].salary
+            for i in range(len(players))
         ]) <= self.config.salary_cap
 
         # Constraint: Minimum salary usage
         prob += pulp.lpSum([
-            player_vars[i] * eligible_players[i].salary
-            for i in range(len(eligible_players))
+            player_vars[i] * players[i].salary
+            for i in range(len(players))
         ]) >= self.config.salary_cap * self.config.min_salary_usage
 
         # Position constraints
         for pos, required in self.config.position_requirements.items():
             # Find players eligible for this position
             position_players = [
-                i for i in range(len(eligible_players))
-                if pos in getattr(eligible_players[i], 'eligible_positions', [eligible_players[i].primary_position])
+                i for i in range(len(players))
+                if pos in getattr(players[i], 'eligible_positions', [players[i].primary_position])
             ]
 
             if len(position_players) < required:
@@ -544,40 +517,40 @@ class UnifiedMILPOptimizer:
 
         # Manual selections constraint
         if manual_names:
-            manual_indices = [
-                i for i in range(len(eligible_players))
-                if eligible_players[i].name in manual_names
-            ]
+            manual_indices = []
+            for i, player in enumerate(players):
+                if player.name in manual_names:
+                    manual_indices.append(i)
+                    logger.info(f"Enforcing manual selection: {player.name}")
 
             for idx in manual_indices:
                 prob += player_vars[idx] == 1
-                logger.info(f"Manual selection enforced: {eligible_players[idx].name}")
 
         # Team stacking constraints
-        teams = list(set(getattr(p, 'team', 'UNK') for p in eligible_players))
+        teams = list(set(getattr(p, 'team', 'UNK') for p in players))
         for team in teams:
             team_players = [
-                i for i in range(len(eligible_players))
-                if getattr(eligible_players[i], 'team', 'UNK') == team
+                i for i in range(len(players))
+                if getattr(players[i], 'team', 'UNK') == team
             ]
 
             if team_players:
                 prob += pulp.lpSum([player_vars[i] for i in team_players]) <= self.config.max_players_per_team
 
         # Pitcher vs opposing hitters constraint
-        pitchers = [i for i in range(len(eligible_players)) if eligible_players[i].primary_position == 'P']
+        pitchers = [i for i in range(len(players)) if players[i].primary_position == 'P']
 
         for p_idx in pitchers:
-            pitcher = eligible_players[p_idx]
+            pitcher = players[p_idx]
             pitcher_team = getattr(pitcher, 'team', 'UNK')
             opponent = getattr(pitcher, 'opponent', 'UNK')
 
             if opponent != 'UNK':
                 # Find hitters on the opposing team
                 opposing_hitters = [
-                    i for i in range(len(eligible_players))
-                    if getattr(eligible_players[i], 'team', 'UNK') == opponent
-                       and eligible_players[i].primary_position != 'P'
+                    i for i in range(len(players))
+                    if getattr(players[i], 'team', 'UNK') == opponent
+                       and players[i].primary_position != 'P'
                 ]
 
                 if opposing_hitters and self.config.max_opposing_hitters < 999:
@@ -587,61 +560,59 @@ class UnifiedMILPOptimizer:
 
         # Solve the problem
         try:
-            prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=self.config.timeout_seconds))
+            solver_options = pulp.PULP_CBC_CMD(
+                timeLimit=30,  # 30 second timeout
+                threads=4,  # Use 4 threads
+                options=['preprocess=on', 'cuts=on', 'heuristics=on'],
+                msg=0  # Suppress solver output
+            )
+            prob.solve(solver_options)
 
             if prob.status == pulp.LpStatusOptimal:
-                # Extract the lineup
+                # Extract lineup
                 lineup = []
-                for i in range(len(eligible_players)):
-                    if player_vars[i].value() == 1:
-                        lineup.append(eligible_players[i])
+                total_score = 0
 
-                total_score = sum(getattr(p, 'optimization_score', 0) for p in lineup)
+                for i in range(len(players)):
+                    if player_vars[i].varValue == 1:
+                        lineup.append(players[i])
+                        total_score += getattr(players[i], 'optimization_score', 0)
 
-                # Store result
-                self._last_result = {
-                    'lineup': lineup,
-                    'score': total_score,
-                    'strategy': strategy,
-                    'contest_type': contest_type
-                }
+                # Sort lineup by position for display
+                position_order = ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']
+                lineup.sort(key=lambda p: (
+                    position_order.index(p.primary_position)
+                    if p.primary_position in position_order else 99
+                ))
 
-                # Log correlation information
-                pitchers_in_lineup = [p for p in lineup if p.primary_position == 'P']
-                for pitcher in pitchers_in_lineup:
-                    opp_team = getattr(pitcher, 'opponent', 'UNK')
-                    if opp_team != 'UNK':
-                        opp_hitters = [
-                            h.name for h in lineup
-                            if h.primary_position != 'P' and getattr(h, 'team', None) == opp_team
-                        ]
-                        if opp_hitters:
-                            logger.info(
-                                f"  ⚠️  Correlation: {pitcher.name} with {len(opp_hitters)} "
-                                f"opposing hitter(s) from {opp_team}: {', '.join(opp_hitters)}"
-                            )
+                logger.info(f"Optimization successful: {len(lineup)} players, score: {total_score:.2f}")
+                logger.info(f"Strategy '{contest_type}' lineup created")
 
-                # Log the final lineup
-                logger.info(
-                    f"LINEUP SELECTED: Total score = {total_score:.1f}, "
-                    f"Total salary = {sum(p.salary for p in lineup)}"
-                )
-                logger.info(f"Strategy used: {strategy}")
-                for p in lineup:
-                    logger.info(
-                        f"  LINEUP: {p.primary_position} - {p.name} - ${p.salary} - "
-                        f"{getattr(p, 'optimization_score', 0):.1f} pts"
-                    )
+                # Log correlation info
+                if self.config.max_opposing_hitters < 999:
+                    for pitcher in lineup:
+                        if pitcher.primary_position == 'P':
+                            opp_team = getattr(pitcher, 'opponent', None)
+                            if opp_team:
+                                opp_hitters = [
+                                    h.name for h in lineup
+                                    if h.primary_position != 'P' and getattr(h, 'team', None) == opp_team
+                                ]
+                                if opp_hitters:
+                                    logger.info(f"  Correlation: {pitcher.name} vs {len(opp_hitters)} opposing hitters")
 
                 return lineup, total_score
 
             else:
-                logger.error(f"Optimization failed with status: {pulp.LpStatus[prob.status]}")
+                logger.error(f"Optimization failed: {pulp.LpStatus[prob.status]}")
                 return [], 0
 
         except Exception as e:
-            logger.error(f"MILP optimization error: {e}")
+            logger.error(f"Error in MILP optimization: {e}")
+            import traceback
+            traceback.print_exc()
             return [], 0
+
 
     def get_optimization_stats(self) -> Dict:
         """Get statistics about optimization performance"""

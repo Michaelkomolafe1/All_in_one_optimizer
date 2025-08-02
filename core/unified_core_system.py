@@ -460,73 +460,31 @@ class UnifiedCoreSystem:
             num_lineups
         )
 
-    def optimize_lineups(self, num_lineups: int = 1, strategy: str = "balanced",
-                         min_unique_players: int = 3, contest_type: str = "gpp") -> List[Dict]:
-        """Generate optimized lineups from the player pool"""
+    def optimize_lineups(self, num_lineups=1, strategy='auto', contest_type='gpp', min_unique_players=3):
+        """Generate optimal lineups with proper strategy application"""
+
         if not self.player_pool:
             logger.error("No players in pool! Build player pool first.")
             return []
 
-        # Auto-detect showdown slates
-        if self.detect_showdown_slate():
-            logger.info("Showdown slate detected! Using showdown optimizer...")
-            return self.optimize_showdown_lineups(
-                num_lineups=num_lineups,
-                strategy=strategy,
-                min_unique_players=min_unique_players,
-                contest_type=contest_type
-            )
+        # Auto-select strategy if needed
+        if strategy == 'auto' or strategy is None:
+            slate_analysis = self.strategy_selector.analyze_slate_from_csv(self.player_pool)
+            strategy, reason = self.strategy_selector.select_strategy(slate_analysis, contest_type)
+            logger.info(f"Auto-selected strategy: {strategy} ({reason})")
 
-        # Regular optimization
-        logger.info(f"🎯 Optimizing {num_lineups} lineups...")
+        logger.info(f"\n🎯 Optimizing {num_lineups} lineups...")
         logger.info(f"   Strategy: {strategy}")
         logger.info(f"   Contest Type: {contest_type}")
         logger.info(f"   Pool size: {len(self.player_pool)} players")
 
-        # Print contest configuration (simplified)
-        logger.info(f"📋 Contest Configuration: {contest_type.upper()}")
-        if contest_type.lower() == 'gpp':
-            logger.info(f"   Strategy: Tournament optimization")
-            logger.info(f"   Parameters: Stack correlation, ownership leverage")
-            logger.info(f"   Target: -67.7 score (64th percentile)")
-        elif contest_type.lower() == 'cash':
-            logger.info(f"   Strategy: Cash game optimization")
-            logger.info(f"   Parameters: Consistency, floor-weighted")
-            logger.info(f"   Target: 86.2 score (79% win rate)")
-        elif contest_type.lower() == 'showdown':
-            logger.info(f"   Strategy: Showdown optimization")
-            logger.info(f"   Parameters: Captain mode, single game")
+        # Make sure contest_type is set on the optimizer config
+        self.optimizer.config.contest_type = contest_type
 
-        # Calculate scores with the enhanced scoring engine
-        logger.info("📊 Calculating player scores...")
-        for player in self.player_pool:
-            # Use the new scoring method with contest type
-            score = self.scoring_engine.score_player(player, contest_type)
-            player.enhanced_score = score
-            player.optimization_score = score
-
-            # Also store contest-specific scores for reference
-            player.gpp_score = self.scoring_engine.score_player_gpp(player)
-            player.cash_score = self.scoring_engine.score_player_cash(player)
-
-        # Log some sample scores for verification
-        sample_players = self.player_pool[:3] if len(self.player_pool) >= 3 else self.player_pool
-        logger.info("   Sample scores:")
-        for p in sample_players:
-            logger.info(f"   {p.name}: {p.enhanced_score:.2f} ({contest_type})")
+        # Score players first
+        self.score_players(contest_type)
 
         # Generate lineups
-        # Ensure players are scored for the right contest type
-        if self.player_pool and (not hasattr(self.player_pool[0], 'optimization_score') or self.player_pool[0].optimization_score == 0):
-            self.score_players(contest_type)
-
-        # Re-score if contest type changed
-        elif hasattr(self, '_last_contest_type') and self._last_contest_type != contest_type:
-            logger.info(f"Contest type changed from {self._last_contest_type} to {contest_type}, re-scoring...")
-            self.score_players(contest_type)
-
-        self._last_contest_type = contest_type
-
         lineups = []
         used_players = set()
 
@@ -537,88 +495,53 @@ class UnifiedCoreSystem:
             if i > 0 and min_unique_players > 0:
                 self._apply_diversity_penalty(used_players, penalty=0.8)
 
-            # Optimize single lineup
-                # Prepare for strategy-specific scoring
-                self._prepare_strategy_scoring(strategy)
-
-                # Optimize single lineup
-                lineup_players, total_score = self.optimizer.optimize(
-                    strategy=strategy,
-                    contest_type=contest_type,
-                    players=self.player_pool,
-                    manual_selections=list(self.manual_selections)
-                )
-
-                # Restore original scores
-                self._restore_original_scores()
+            # Optimize single lineup - calls the MILP optimizer
+            lineup_players, total_score = self.optimizer.optimize_lineup(
+                players=self.player_pool,
+                strategy=strategy,
+                manual_selections=','.join(self.manual_selections),
+                contest_type=contest_type
+            )
 
             if lineup_players:
                 # Track used players
                 for player in lineup_players:
                     used_players.add(player.name)
 
-                # Create lineup dictionary
+                # Create lineup dict
                 lineup_dict = {
                     'players': lineup_players,
+                    'total_projection': total_score,
                     'total_salary': sum(p.salary for p in lineup_players),
-                    'total_score': total_score,
                     'strategy': strategy,
                     'contest_type': contest_type
                 }
 
-                # ==========================================
-                # PERFORMANCE TRACKING ADDITION
-                # ==========================================
-
-                # Calculate total projection (sum of player projections)
-                total_projection = sum(
-                    getattr(p, 'dff_projection', 0) for p in lineup_players
-                )
-                lineup_dict['total_projection'] = total_projection
-
-                # Track the lineup for ML training
-                tracking_data = {
-                    "players": [p.name for p in lineup_players],
-                    "projected_score": total_score,
-                    "total_projection": total_projection,
-                    "contest_type": contest_type,
-                    "strategy": strategy,
-                    "slate_date": datetime.now().strftime("%Y-%m-%d"),
-                    "salary_used": lineup_dict['total_salary'],
-                    "positions": [p.primary_position for p in lineup_players],
-                    "teams": [p.team for p in lineup_players],
-                    "player_details": [
-                        {
-                            "name": p.name,
-                            "position": p.primary_position,
-                            "team": p.team,
-                            "salary": p.salary,
-                            "projection": getattr(p, 'dff_projection', 0),
-                            "enhanced_score": p.enhanced_score,
-                            "ownership": getattr(p, 'projected_ownership', 0)
-                        } for p in lineup_players
-                    ]
-                }
-
-                # Add slate info if available
-                if hasattr(self, 'slate_info'):
-                    tracking_data['slate_info'] = self.slate_info
-
-                # Track the lineup
-                lineup_id = self.tracker.track_lineup(tracking_data)
-                lineup_dict["tracking_id"] = lineup_id
-
-                # ==========================================
-                # END OF PERFORMANCE TRACKING
-                # ==========================================
-
                 lineups.append(lineup_dict)
+                logger.info(f"   ✓ Created lineup with score: {total_score:.2f}")
 
-                # Log lineup summary
-                self._log_lineup_summary(lineup_dict, i + 1)
+            # Restore original scores after diversity penalty
+            if i > 0:
+                self._restore_original_scores()
 
-        logger.info(f"\n✅ Generated {len(lineups)} optimized lineups")
+        logger.info(f"\n✅ Generated {len(lineups)}/{num_lineups} lineups successfully")
         return lineups
+
+    def verify_strategy_application(self, sample_size=5):
+        """Debug method to verify strategies are working"""
+        if not self.player_pool:
+            logger.error("No player pool to verify")
+            return
+
+        logger.info("\n=== STRATEGY VERIFICATION ===")
+        logger.info(f"Checking {sample_size} players...")
+
+        for i, player in enumerate(self.player_pool[:sample_size]):
+            logger.info(f"\nPlayer {i + 1}: {player.name}")
+            logger.info(f"  Base projection: {getattr(player, 'projection', 0):.2f}")
+            logger.info(f"  Cash score: {getattr(player, 'cash_score', 0):.2f}")
+            logger.info(f"  GPP score: {getattr(player, 'gpp_score', 0):.2f}")
+            logger.info(f"  Optimization score: {getattr(player, 'optimization_score', 0):.2f}")
 
     def _apply_diversity_penalty(self, used_players: Set[str], penalty: float = 0.8):
         """Apply penalty to previously used players"""
@@ -653,6 +576,8 @@ class UnifiedCoreSystem:
         if stacks:
             stack_str = ", ".join([f"{team}({count})" for team, count in stacks])
             logger.info(f"   ✓ Stacks: {stack_str}")
+
+
 
 
     def export_lineups(self, lineups: List[Dict], filename: str = None):
