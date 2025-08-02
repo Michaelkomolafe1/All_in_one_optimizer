@@ -1,6 +1,7 @@
 """
 Cash Game Strategies - #1 Winners
 ================================
+UPDATED WITH optimization_score
 """
 from collections import defaultdict
 import numpy as np
@@ -19,6 +20,8 @@ def build_projection_monster(players):
 
             # Average the adjustments
             final_proj = (base_proj + park_adj) / 2
+
+            # SET OPTIMIZATION SCORE
             player.optimization_score = final_proj
 
         else:
@@ -31,6 +34,7 @@ def build_projection_monster(players):
             value_score = player.projection / (player.salary / 1000) if player.salary > 0 else 0
             value_bonus = value_score * 0.5
 
+            # SET OPTIMIZATION SCORE
             player.optimization_score = final_proj + value_bonus
 
     return players
@@ -56,6 +60,7 @@ def build_pitcher_dominance(players):
             else:
                 elite_mult = 0.9
 
+            # SET OPTIMIZATION SCORE
             player.optimization_score = player.projection * elite_mult
 
         else:
@@ -63,6 +68,7 @@ def build_pitcher_dominance(players):
             floor = getattr(player, 'floor', player.projection * 0.6)
 
             # 60% floor, 40% projection
+            # SET OPTIMIZATION SCORE
             player.optimization_score = (floor * 0.6) + (player.projection * 0.4)
 
     return players

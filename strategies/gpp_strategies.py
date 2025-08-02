@@ -1,6 +1,7 @@
 """
 GPP Tournament Strategies - #1 Winners
 =====================================
+UPDATED WITH optimization_score
 """
 from collections import defaultdict
 import numpy as np
@@ -14,6 +15,7 @@ def build_correlation_value(players):
     for player in players:
         if player.primary_position == 'P':
             # Standard pitcher scoring
+            # SET OPTIMIZATION SCORE
             player.optimization_score = player.projection
         else:
             # Calculate value score
@@ -27,6 +29,7 @@ def build_correlation_value(players):
                 game_bonus = 1.0
 
             # Combine factors
+            # SET OPTIMIZATION SCORE
             player.optimization_score = value_score * player.projection * game_bonus / 10
 
     return players
@@ -92,19 +95,24 @@ def build_truly_smart_stack(players):
         for p in players:
             if p.primary_position == 'P':
                 # Don't modify pitcher scores
+                # SET OPTIMIZATION SCORE
                 p.optimization_score = p.projection
             elif p.team == best_team:
                 # Primary stack gets full boost
+                # SET OPTIMIZATION SCORE
                 p.optimization_score = p.projection * 1.4
             elif second_team and p.team == second_team:
                 # Secondary stack gets smaller boost
+                # SET OPTIMIZATION SCORE
                 p.optimization_score = p.projection * 1.15
             else:
                 # Non-stack players
+                # SET OPTIMIZATION SCORE
                 p.optimization_score = p.projection
     else:
         # Fallback if no teams found
         for p in players:
+            # SET OPTIMIZATION SCORE
             p.optimization_score = p.projection
 
     return players
@@ -113,53 +121,52 @@ def build_truly_smart_stack(players):
 def build_matchup_leverage_stack(players):
     """
     #1 GPP Strategy for Large Slates (+40.1% ROI!)
-    Aggressive stacking vs worst pitchers
+    Target team stacks facing weak pitching
     """
-    # Find worst pitchers
-    pitcher_quality = {}
+    # Identify weak pitchers (ERA > 4.5)
+    weak_pitchers = []
+    pitcher_opponents = {}
 
     for p in players:
         if p.primary_position == 'P':
-            era = getattr(p, 'era', 3.8)
-            whip = getattr(p, 'whip', 1.25)
+            era = getattr(p, 'era', 4.0)
+            if era > 4.5:
+                weak_pitchers.append(p)
+                # Store which team this pitcher faces
+                opp_team = getattr(p, 'opponent', None)
+                if opp_team:
+                    pitcher_opponents[p.name] = opp_team
 
-            # Lower score = worse pitcher
-            quality_score = (50 - era * 10) + (50 - whip * 30)
-            pitcher_quality[p.name] = {
-                'score': quality_score,
-                'team': p.team,
-                'player': p
-            }
-
-    # Find teams facing worst pitchers
+    # Find teams facing weak pitchers
     target_teams = set()
+    for pitcher in weak_pitchers:
+        if pitcher.name in pitcher_opponents:
+            target_teams.add(pitcher_opponents[pitcher.name])
 
-    if pitcher_quality:
-        # Get 3 worst pitchers
-        worst_pitchers = sorted(pitcher_quality.items(),
-                                key=lambda x: x[1]['score'])[:3]
-
-        # Find opposing teams
-        for pitcher_name, pitcher_info in worst_pitchers:
-            pitcher_team = pitcher_info['team']
-
-            # Find teams playing against this pitcher's team
-            for p in players:
-                if p.primary_position != 'P' and p.team != pitcher_team:
-                    # Check if this player faces this pitcher
-                    if hasattr(p, 'opponent') and p.opponent == pitcher_team:
-                        target_teams.add(p.team)
-
-    # Apply scoring
+    # Score players based on leverage
     for p in players:
         if p.primary_position == 'P':
+            # Standard pitcher scoring
+            # SET OPTIMIZATION SCORE
             p.optimization_score = p.projection
-        elif p.team in target_teams:
-            # Huge boost for teams facing bad pitchers
-            ceiling = getattr(p, 'ceiling', p.projection * 1.5)
-            p.optimization_score = ceiling * 1.8
         else:
-            # Penalty for others to force stacking
-            p.optimization_score = p.projection * 0.7
+            # Check if on a target team
+            if p.team in target_teams:
+                # Big boost for teams facing weak pitching
+                matchup_mult = 1.5
+
+                # Additional boost for high-upside players
+                ceiling = getattr(p, 'ceiling', p.projection * 1.5)
+                if ceiling > p.projection * 1.4:
+                    upside_mult = 1.2
+                else:
+                    upside_mult = 1.0
+
+                # SET OPTIMIZATION SCORE
+                p.optimization_score = p.projection * matchup_mult * upside_mult
+            else:
+                # Reduced score for non-leverage plays
+                # SET OPTIMIZATION SCORE
+                p.optimization_score = p.projection * 0.8
 
     return players

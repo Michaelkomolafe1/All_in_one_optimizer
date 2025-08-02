@@ -28,11 +28,11 @@ class OptimizationConfig:
     """Enhanced configuration for optimization"""
 
     salary_cap: int = 50000
-    min_salary_usage: float = 0.95
+    min_salary_usage: float = 0.85  # CHANGED from 0.95
     position_requirements: Dict[str, int] = None
 
     # Team stacking constraints
-    max_players_per_team: int = 4
+    max_players_per_team: int = 5  # CHANGED from 4
     min_players_per_team: int = 0
     preferred_stack_size: int = 3
 
@@ -312,10 +312,11 @@ class UnifiedMILPOptimizer:
         except ImportError:
             logger.debug("Vegas lines module not available")
 
-    def apply_strategy_filter(self, players: List, strategy: str) -> List:
-        """Apply strategy-based filtering AND scoring to player pool"""
+    def apply_strategy_filter(self, players: List[Any], strategy: str,
+                              contest_type: str = 'gpp') -> List[Any]:
+        """Apply strategy-specific filtering and scoring"""
 
-        # Import the actual strategy functions
+        # Import strategy functions
         try:
             from dfs_optimizer.strategies.cash_strategies import (
                 build_projection_monster,
@@ -337,10 +338,10 @@ class UnifiedMILPOptimizer:
             'correlation_value': build_correlation_value,
             'truly_smart_stack': build_truly_smart_stack,
             'matchup_leverage_stack': build_matchup_leverage_stack,
-            'smart_stack': build_truly_smart_stack,  # Alias for compatibility
+            'smart_stack': build_truly_smart_stack,  # Alias
         }
 
-        # First, filter to valid players
+        # Filter to valid players
         eligible = [p for p in players if self._is_valid_player(p)]
 
         # Apply the strategy function if it exists
@@ -351,17 +352,34 @@ class UnifiedMILPOptimizer:
             logger.info(f"Strategy {strategy} applied to {len(eligible)} players")
         else:
             logger.warning(f"Unknown strategy '{strategy}', using default scoring")
-            # Just copy the appropriate score to optimization_score
-            contest_type = getattr(self.config, 'contest_type', 'gpp')
+            # CRITICAL FIX: Copy the appropriate score to optimization_score
             for player in eligible:
                 if contest_type == 'cash' and hasattr(player, 'cash_score'):
                     player.optimization_score = player.cash_score
                 elif hasattr(player, 'gpp_score'):
                     player.optimization_score = player.gpp_score
                 else:
-                    player.optimization_score = player.enhanced_score
+                    player.optimization_score = getattr(player, 'enhanced_score', 0)
+
+        # CRITICAL FIX: Ensure optimization_score is set for all players
+        # Even after strategy application, some might be 0
+        for player in eligible:
+            if not hasattr(player, 'optimization_score') or player.optimization_score == 0:
+                # Fall back to the appropriate score
+                if contest_type == 'cash' and hasattr(player, 'cash_score'):
+                    player.optimization_score = player.cash_score
+                elif hasattr(player, 'gpp_score'):
+                    player.optimization_score = player.gpp_score
+                else:
+                    player.optimization_score = player.base_projection
+
+        # Debug: Log score status
+        scores_set = sum(1 for p in eligible if getattr(p, 'optimization_score', 0) > 0)
+        logger.info(f"Players with optimization_score > 0: {scores_set}/{len(eligible)}")
 
         return eligible
+
+
     def _is_valid_player(self, player) -> bool:
         """Check if player meets basic validation criteria"""
         # Must have required attributes
@@ -467,152 +485,169 @@ class UnifiedMILPOptimizer:
         # Now run the MILP optimization with properly scored players
         return self._run_milp_optimization(eligible_players, manual_names, contest_type)
 
-    def _run_milp_optimization(self, players: List, manual_names: List[str], contest_type: str) -> Tuple[List, float]:
-        """Run the actual MILP optimization with scored players"""
+    def _run_milp_optimization(self, eligible_players: List[Any], manual_selections: str = "",
+                               contest_type: str = "gpp") -> Tuple[Optional[List[Any]], float]:
+        """Run the MILP optimization with eligible players"""
 
-        if not players:
-            return [], 0
+        if not eligible_players:
+            logger.warning("No eligible players for optimization")
+            return None, 0.0
 
-        # Create optimization problem
-        prob = pulp.LpProblem("DFS_Optimizer", pulp.LpMaximize)
+        # Create the LP problem
+        prob = pulp.LpProblem("DFS_Lineup_Optimization", pulp.LpMaximize)
 
         # Decision variables
-        player_vars = {
-            i: pulp.LpVariable(f"player_{i}", cat='Binary')
-            for i in range(len(players))
-        }
+        player_vars = []
+        for i, player in enumerate(eligible_players):
+            var = pulp.LpVariable(f"player_{i}", cat='Binary')
+            player_vars.append(var)
 
-        # Objective: Maximize total score
-        prob += pulp.lpSum([
-            player_vars[i] * getattr(players[i], 'optimization_score', 0)
-            for i in range(len(players))
-        ])
+        # Objective function - maximize total score
+        objective_terms = []
+        for i, player in enumerate(eligible_players):
+            # CRITICAL FIX: Get the appropriate score
+            score = 0.0
 
-        # Constraint: Salary cap
-        prob += pulp.lpSum([
-            player_vars[i] * players[i].salary
-            for i in range(len(players))
-        ]) <= self.config.salary_cap
+            # First try optimization_score (if it exists)
+            if hasattr(player, 'optimization_score'):
+                score = player.optimization_score
+            # If not, use contest-specific score
+            elif contest_type == 'cash' and hasattr(player, 'cash_score'):
+                score = player.cash_score
+            elif hasattr(player, 'gpp_score'):
+                score = player.gpp_score
+            elif hasattr(player, 'enhanced_score'):
+                score = player.enhanced_score
+            else:
+                # Last resort - use base projection
+                score = getattr(player, 'base_projection', 0)
 
-        # Constraint: Minimum salary usage
-        prob += pulp.lpSum([
-            player_vars[i] * players[i].salary
-            for i in range(len(players))
-        ]) >= self.config.salary_cap * self.config.min_salary_usage
+            # Log if score is 0
+            if score == 0:
+                logger.debug(f"Player {player.name} has 0 score!")
 
-        # Position constraints
-        for pos, required in self.config.position_requirements.items():
-            # Find players eligible for this position
-            position_players = [
-                i for i in range(len(players))
-                if pos in getattr(players[i], 'eligible_positions', [players[i].primary_position])
-            ]
+            objective_terms.append(score * player_vars[i])
 
-            if len(position_players) < required:
-                logger.warning(
-                    f"Not enough players for position {pos}: {len(position_players)} available, {required} required")
-                return [], 0
+        prob += pulp.lpSum(objective_terms), "Total Score"
 
-            prob += pulp.lpSum([player_vars[i] for i in position_players]) == required
+        # Constraint 1: Salary cap
+        salary_terms = []
+        for i, player in enumerate(eligible_players):
+            salary_terms.append(player.salary * player_vars[i])
+        prob += pulp.lpSum(salary_terms) <= self.config.salary_cap, "Salary Cap"
 
-        # Manual selections constraint
-        if manual_names:
-            manual_indices = []
-            for i, player in enumerate(players):
-                if player.name in manual_names:
-                    manual_indices.append(i)
-                    logger.info(f"Enforcing manual selection: {player.name}")
+        # Optional: Minimum salary usage
+        if self.config.min_salary_usage > 0:
+            min_salary = self.config.salary_cap * self.config.min_salary_usage
+            prob += pulp.lpSum(salary_terms) >= min_salary, "Min Salary Usage"
 
-            for idx in manual_indices:
-                prob += player_vars[idx] == 1
+        # Constraint 2: Position requirements
+        for position, required in self.config.position_requirements.items():
+            position_terms = []
+            for i, player in enumerate(eligible_players):
+                # Check if player can fill this position
+                if position == player.primary_position or position in getattr(player, 'positions', []):
+                    position_terms.append(player_vars[i])
 
-        # Team stacking constraints
-        teams = list(set(getattr(p, 'team', 'UNK') for p in players))
-        for team in teams:
-            team_players = [
-                i for i in range(len(players))
-                if getattr(players[i], 'team', 'UNK') == team
-            ]
+            # Must have exactly the required number
+            if position_terms:
+                prob += pulp.lpSum(position_terms) == required, f"Position_{position}"
+            else:
+                logger.warning(f"No players available for position {position}")
+                return None, 0.0
 
-            if team_players:
-                prob += pulp.lpSum([player_vars[i] for i in team_players]) <= self.config.max_players_per_team
+        # Constraint 3: Exactly roster_size players
+        roster_size = sum(self.config.position_requirements.values())
+        prob += pulp.lpSum(player_vars) == roster_size, "Roster Size"
 
-        # Pitcher vs opposing hitters constraint
-        pitchers = [i for i in range(len(players)) if players[i].primary_position == 'P']
+        # Constraint 4: Max players per team
+        if self.config.max_players_per_team < roster_size:
+            teams = list(set(p.team for p in eligible_players if p.team))
+            for team in teams:
+                team_terms = []
+                for i, player in enumerate(eligible_players):
+                    if player.team == team:
+                        team_terms.append(player_vars[i])
+                if team_terms:
+                    prob += pulp.lpSum(team_terms) <= self.config.max_players_per_team, f"Team_{team}_Max"
 
-        for p_idx in pitchers:
-            pitcher = players[p_idx]
-            pitcher_team = getattr(pitcher, 'team', 'UNK')
-            opponent = getattr(pitcher, 'opponent', 'UNK')
+        # Constraint 5: Manual selections (if any)
+        if manual_selections:
+            selected_names = [name.strip() for name in manual_selections.split(',') if name.strip()]
+            for name in selected_names:
+                # Find the player
+                for i, player in enumerate(eligible_players):
+                    if player.name.lower() == name.lower():
+                        prob += player_vars[i] == 1, f"Manual_{name}"
+                        break
 
-            if opponent != 'UNK':
-                # Find hitters on the opposing team
-                opposing_hitters = [
-                    i for i in range(len(players))
-                    if getattr(players[i], 'team', 'UNK') == opponent
-                       and players[i].primary_position != 'P'
-                ]
+        # Constraint 6: Pitcher-Hitter constraint
+        if self.config.max_opposing_hitters < 999:
+            # For each pitcher, limit opposing hitters
+            for i, player in enumerate(eligible_players):
+                if getattr(player, 'is_pitcher', False):
+                    # Find opposing team
+                    opp_team = getattr(player, 'opponent', None)
+                    if opp_team:
+                        # Count opposing hitters
+                        opp_hitter_terms = []
+                        for j, other in enumerate(eligible_players):
+                            if (not getattr(other, 'is_pitcher', False) and
+                                    other.team == opp_team):
+                                opp_hitter_terms.append(player_vars[j])
 
-                if opposing_hitters and self.config.max_opposing_hitters < 999:
-                    # Add constraint: if this pitcher is selected, limit opposing hitters
-                    prob += pulp.lpSum([player_vars[h] for h in opposing_hitters]) <= \
-                            self.config.max_opposing_hitters + (1 - player_vars[p_idx]) * len(opposing_hitters)
+                        if opp_hitter_terms:
+                            # If this pitcher is selected, limit opposing hitters
+                            prob += (pulp.lpSum(opp_hitter_terms) <=
+                                     self.config.max_opposing_hitters +
+                                     roster_size * (1 - player_vars[i])), f"Pitcher_Opp_{i}"
 
         # Solve the problem
         try:
-            solver_options = pulp.PULP_CBC_CMD(
-                timeLimit=30,  # 30 second timeout
-                threads=4,  # Use 4 threads
-                options=['preprocess=on', 'cuts=on', 'heuristics=on'],
-                msg=0  # Suppress solver output
-            )
-            prob.solve(solver_options)
+            # Use CBC solver with timeout
+            solver = pulp.PULP_CBC_CMD(timeLimit=self.config.timeout_seconds, msg=0)
+            prob.solve(solver)
 
-            if prob.status == pulp.LpStatusOptimal:
-                # Extract lineup
-                lineup = []
-                total_score = 0
+            # Check solution status
+            if pulp.LpStatus[prob.status] != 'Optimal':
+                logger.error(f"Optimization failed with status: {pulp.LpStatus[prob.status]}")
+                return None, 0.0
 
-                for i in range(len(players)):
-                    if player_vars[i].varValue == 1:
-                        lineup.append(players[i])
-                        total_score += getattr(players[i], 'optimization_score', 0)
+            # Extract selected players
+            selected_players = []
+            total_score = 0.0
 
-                # Sort lineup by position for display
-                position_order = ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']
-                lineup.sort(key=lambda p: (
-                    position_order.index(p.primary_position)
-                    if p.primary_position in position_order else 99
-                ))
+            for i, player in enumerate(eligible_players):
+                if player_vars[i].varValue == 1:
+                    selected_players.append(player)
+                    # Use the same score calculation as in objective
+                    if hasattr(player, 'optimization_score'):
+                        score = player.optimization_score
+                    elif contest_type == 'cash' and hasattr(player, 'cash_score'):
+                        score = player.cash_score
+                    elif hasattr(player, 'gpp_score'):
+                        score = player.gpp_score
+                    elif hasattr(player, 'enhanced_score'):
+                        score = player.enhanced_score
+                    else:
+                        score = getattr(player, 'base_projection', 0)
+                    total_score += score
 
-                logger.info(f"Optimization successful: {len(lineup)} players, score: {total_score:.2f}")
-                logger.info(f"Strategy '{contest_type}' lineup created")
+            # Verify we have a complete lineup
+            if len(selected_players) != roster_size:
+                logger.error(f"Invalid lineup size: {len(selected_players)} != {roster_size}")
+                return None, 0.0
 
-                # Log correlation info
-                if self.config.max_opposing_hitters < 999:
-                    for pitcher in lineup:
-                        if pitcher.primary_position == 'P':
-                            opp_team = getattr(pitcher, 'opponent', None)
-                            if opp_team:
-                                opp_hitters = [
-                                    h.name for h in lineup
-                                    if h.primary_position != 'P' and getattr(h, 'team', None) == opp_team
-                                ]
-                                if opp_hitters:
-                                    logger.info(f"  Correlation: {pitcher.name} vs {len(opp_hitters)} opposing hitters")
+            # Log the lineup
+            logger.info(f"Optimized lineup: {sum(p.salary for p in selected_players)} salary, {total_score:.2f} points")
 
-                return lineup, total_score
-
-            else:
-                logger.error(f"Optimization failed: {pulp.LpStatus[prob.status]}")
-                return [], 0
+            return selected_players, total_score
 
         except Exception as e:
-            logger.error(f"Error in MILP optimization: {e}")
+            logger.error(f"MILP optimization error: {str(e)}")
             import traceback
             traceback.print_exc()
-            return [], 0
-
+            return None, 0.0
 
     def get_optimization_stats(self) -> Dict:
         """Get statistics about optimization performance"""
