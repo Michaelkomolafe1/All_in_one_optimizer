@@ -35,6 +35,19 @@ except ImportError:
     HAS_ENHANCED_DISPLAY = False
 
 
+import pandas as pd
+from dfs_optimizer.core.unified_core_system import UnifiedCoreSystem
+
+# Fix projection loading
+_orig = UnifiedCoreSystem.load_players_from_csv
+def _fix(self, csv):
+    _orig(self, csv)
+    df = pd.read_csv(csv)
+    for p in self.players:
+        r = df[df['Name'] == p.name]
+        if not r.empty: p.base_projection = float(r.iloc[0]['AvgPointsPerGame'])
+UnifiedCoreSystem.load_players_from_csv = _fix
+
 # Update the PlayerPoolModel class in your GUI file:
 
 class PlayerPoolModel(QAbstractTableModel):

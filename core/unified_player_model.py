@@ -151,7 +151,7 @@ class UnifiedPlayer:
 
         # Calculate initial scores
         self.calculate_data_quality()
-        self.calculate_enhanced_score()
+       # self.calculate_enhanced_score()
 
     # In unified_player_model.py, inside the UnifiedPlayer class:
 
