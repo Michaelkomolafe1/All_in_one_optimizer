@@ -8,6 +8,12 @@ player pool management, and optimization
 
 import sys
 import os
+
+# Add the current directory to Python path so it can find our modules
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -18,35 +24,152 @@ import pyperclip  # If not installed: pip install pyperclip
 import json
 import traceback
 
-# Add the project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Import your existing components with correct paths
-from dfs_optimizer.core.unified_core_system import UnifiedCoreSystem
-from dfs_optimizer.strategies.strategy_selector import StrategyAutoSelector
-from dfs_optimizer.data.smart_confirmation import SmartConfirmationSystem
-from dfs_optimizer.strategies import STRATEGY_REGISTRY
+# Import your components
+from unified_core_system import UnifiedCoreSystem
+from strategy_selector import StrategyAutoSelector
+from smart_confirmation import SmartConfirmationSystem
 from enhanced_gui_display import EnhancedGUIDisplay
-# Try to import enhanced display
-try:
-    from enhanced_gui_display import EnhancedGUIDisplay
-    HAS_ENHANCED_DISPLAY = True
-except ImportError:
-    HAS_ENHANCED_DISPLAY = False
+from enhanced_scoring_engine import EnhancedScoringEngine
+
+# ========== FIX 1: PROJECTION LOADING ==========
+# Fix projection loading from CSV
+_orig_load_csv = UnifiedCoreSystem.load_players_from_csv
 
 
-import pandas as pd
-from dfs_optimizer.core.unified_core_system import UnifiedCoreSystem
-
-# Fix projection loading
-_orig = UnifiedCoreSystem.load_players_from_csv
-def _fix(self, csv):
-    _orig(self, csv)
-    df = pd.read_csv(csv)
+def _fixed_load_csv(self, csv_path):
+    _orig_load_csv(self, csv_path)
+    df = pd.read_csv(csv_path)
     for p in self.players:
-        r = df[df['Name'] == p.name]
-        if not r.empty: p.base_projection = float(r.iloc[0]['AvgPointsPerGame'])
-UnifiedCoreSystem.load_players_from_csv = _fix
+        row = df[df['Name'] == p.name]
+        if not row.empty:
+            p.base_projection = float(row.iloc[0].get('AvgPointsPerGame', 0))
+
+
+UnifiedCoreSystem.load_players_from_csv = _fixed_load_csv
+
+
+# ========== FIX 2: ENRICHMENT ATTRIBUTES ==========
+def fix_player_enrichment(system):
+    """Fix attribute names after enrichment to match scoring engine expectations"""
+    for player in system.player_pool:
+        # Map team_total to implied_team_score
+        if hasattr(player, 'team_total'):
+            player.implied_team_score = player.team_total
+        elif hasattr(player, 'vegas_score'):
+            player.implied_team_score = 4.5 * player.vegas_score
+
+        # Map park_score to park_factor
+        if hasattr(player, 'park_score'):
+            player.park_factor = player.park_score
+
+        # Set batting order for non-pitchers
+        if not player.is_pitcher and player.batting_order is None:
+            if player.salary >= 5000:
+                player.batting_order = 3
+            elif player.salary >= 4000:
+                player.batting_order = 5
+            else:
+                player.batting_order = 8
+
+
+# ========== FIX 3: SCORING THRESHOLDS ==========
+# Fix GPP scoring thresholds for better player differentiation
+_orig_ese_init = EnhancedScoringEngine.__init__
+
+
+def _new_ese_init(self):
+    _orig_ese_init(self)
+    # Override with MLB-appropriate thresholds
+    self.gpp_params['threshold_high'] = 9.0  # High scoring games
+    self.gpp_params['threshold_med'] = 7.5  # Average games
+    self.gpp_params['threshold_low'] = 6.0  # Low scoring games
+    self.gpp_params['mult_high'] = 1.4  # 40% boost
+    self.gpp_params['mult_med'] = 1.2  # 20% boost
+    self.gpp_params['mult_low'] = 1.0  # No change
+    self.gpp_params['mult_none'] = 0.85  # 15% penalty
+
+
+EnhancedScoringEngine.__init__ = _new_ese_init
+
+# ========== STRATEGY REGISTRY ==========
+STRATEGY_REGISTRY = {
+    'cash': {
+        'small': 'build_projection_monster',
+        'medium': 'build_pitcher_dominance',
+        'large': 'build_pitcher_dominance'
+    },
+    'gpp': {
+        'small': 'build_correlation_value',
+        'medium': 'build_truly_smart_stack',
+        'large': 'build_matchup_leverage_stack'
+    }
+}
+
+
+# ========== START OF GUI CLASSES ==========
+# Your GUI classes start here...
+
+
+# ========== FIX 2: ENRICHMENT ATTRIBUTES ==========
+def fix_player_enrichment(system):
+    """Fix attribute names after enrichment to match scoring engine expectations"""
+    for player in system.player_pool:
+        # Map team_total to implied_team_score
+        if hasattr(player, 'team_total'):
+            player.implied_team_score = player.team_total
+        elif hasattr(player, 'vegas_score'):
+            player.implied_team_score = 4.5 * player.vegas_score
+
+        # Map park_score to park_factor
+        if hasattr(player, 'park_score'):
+            player.park_factor = player.park_score
+
+        # Set batting order for non-pitchers
+        if not player.is_pitcher and player.batting_order is None:
+            if player.salary >= 5000:
+                player.batting_order = 3
+            elif player.salary >= 4000:
+                player.batting_order = 5
+            else:
+                player.batting_order = 8
+
+
+# ========== FIX 3: SCORING THRESHOLDS ==========
+# Fix GPP scoring thresholds for better player differentiation
+_orig_ese_init = EnhancedScoringEngine.__init__
+
+
+def _new_ese_init(self):
+    _orig_ese_init(self)
+    # Override with MLB-appropriate thresholds
+    self.gpp_params['threshold_high'] = 9.0  # High scoring games
+    self.gpp_params['threshold_med'] = 7.5  # Average games
+    self.gpp_params['threshold_low'] = 6.0  # Low scoring games
+    self.gpp_params['mult_high'] = 1.4  # 40% boost
+    self.gpp_params['mult_med'] = 1.2  # 20% boost
+    self.gpp_params['mult_low'] = 1.0  # No change
+    self.gpp_params['mult_none'] = 0.85  # 15% penalty
+
+
+EnhancedScoringEngine.__init__ = _new_ese_init
+
+# ========== STRATEGY REGISTRY ==========
+STRATEGY_REGISTRY = {
+    'cash': {
+        'small': 'build_projection_monster',
+        'medium': 'build_pitcher_dominance',
+        'large': 'build_pitcher_dominance'
+    },
+    'gpp': {
+        'small': 'build_correlation_value',
+        'medium': 'build_truly_smart_stack',
+        'large': 'build_matchup_leverage_stack'
+    }
+}
+
+
+# ========== START OF GUI CLASSES ==========
+# Your GUI classes start here...
 
 # Update the PlayerPoolModel class in your GUI file:
 
@@ -62,6 +185,9 @@ class PlayerPoolModel(QAbstractTableModel):
 
     def columnCount(self, parent=QModelIndex()):
         return len(self.headers)
+
+    def rowCount(self, parent=None):
+        return len(self.players)
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
@@ -841,6 +967,7 @@ class DFSOptimizerGUI(QMainWindow):
             QApplication.processEvents()  # Keep GUI responsive
 
             self.system.enrich_player_pool()
+            fix_player_enrichment(self.system)
 
             # Debug: Check batting orders
             players_with_order = 0
