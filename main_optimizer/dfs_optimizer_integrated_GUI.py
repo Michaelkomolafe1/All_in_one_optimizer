@@ -108,66 +108,6 @@ STRATEGY_REGISTRY = {
 
 # ========== START OF GUI CLASSES ==========
 # Your GUI classes start here...
-
-
-# ========== FIX 2: ENRICHMENT ATTRIBUTES ==========
-def fix_player_enrichment(system):
-    """Fix attribute names after enrichment to match scoring engine expectations"""
-    for player in system.player_pool:
-        # Map team_total to implied_team_score
-        if hasattr(player, 'team_total'):
-            player.implied_team_score = player.team_total
-        elif hasattr(player, 'vegas_score'):
-            player.implied_team_score = 4.5 * player.vegas_score
-
-        # Map park_score to park_factor
-        if hasattr(player, 'park_score'):
-            player.park_factor = player.park_score
-
-        # Set batting order for non-pitchers
-        if not player.is_pitcher and player.batting_order is None:
-            if player.salary >= 5000:
-                player.batting_order = 3
-            elif player.salary >= 4000:
-                player.batting_order = 5
-            else:
-                player.batting_order = 8
-
-
-# ========== FIX 3: SCORING THRESHOLDS ==========
-# Fix GPP scoring thresholds for better player differentiation
-_orig_ese_init = EnhancedScoringEngine.__init__
-
-
-def _new_ese_init(self):
-    _orig_ese_init(self)
-    # Override with MLB-appropriate thresholds
-    self.gpp_params['threshold_high'] = 9.0  # High scoring games
-    self.gpp_params['threshold_med'] = 7.5  # Average games
-    self.gpp_params['threshold_low'] = 6.0  # Low scoring games
-    self.gpp_params['mult_high'] = 1.4  # 40% boost
-    self.gpp_params['mult_med'] = 1.2  # 20% boost
-    self.gpp_params['mult_low'] = 1.0  # No change
-    self.gpp_params['mult_none'] = 0.85  # 15% penalty
-
-
-EnhancedScoringEngine.__init__ = _new_ese_init
-
-# ========== STRATEGY REGISTRY ==========
-STRATEGY_REGISTRY = {
-    'cash': {
-        'small': 'build_projection_monster',
-        'medium': 'build_pitcher_dominance',
-        'large': 'build_pitcher_dominance'
-    },
-    'gpp': {
-        'small': 'build_correlation_value',
-        'medium': 'build_truly_smart_stack',
-        'large': 'build_matchup_leverage_stack'
-    }
-}
-
-
 # ========== START OF GUI CLASSES ==========
 # Your GUI classes start here...
 
