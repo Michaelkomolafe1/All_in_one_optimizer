@@ -23,6 +23,7 @@ from typing import Dict, List, Optional
 import pyperclip  # If not installed: pip install pyperclip
 import json
 import traceback
+import time
 
 # Import your components
 from unified_core_system import UnifiedCoreSystem
@@ -30,6 +31,48 @@ from strategy_selector import StrategyAutoSelector
 from smart_confirmation import SmartConfirmationSystem
 from enhanced_gui_display import EnhancedGUIDisplay
 from enhanced_scoring_engine import EnhancedScoringEngine
+
+# ========== FIX 1: PROJECTION LOADING ==========
+# ========== FIX 4: SCORING DISPLAY ==========
+def fix_scoring_display(UnifiedCoreSystem):
+    """Fix the scoring to store calculated values on player objects"""
+    _orig_score_players = UnifiedCoreSystem.score_players
+
+    def _new_score_players(self, contest_type='gpp'):
+        """Score players and store the scores properly"""
+        self.log(f"Scoring {len(self.player_pool)} players for {contest_type.upper()}")
+
+        # Track score distribution for debugging
+        score_distribution = {}
+
+        for player in self.player_pool:
+            # Calculate the actual scores
+            if contest_type.lower() == 'cash':
+                score = self.scoring_engine.score_player_cash(player)
+                player.cash_score = score
+                player.optimization_score = score
+            else:
+                score = self.scoring_engine.score_player_gpp(player)
+                player.gpp_score = score
+                player.optimization_score = score
+
+            # Track distribution
+            score_bucket = int(score)
+            score_distribution[score_bucket] = score_distribution.get(score_bucket, 0) + 1
+
+        # Log score distribution to verify differentiation
+        self.log(f"Score distribution: {dict(sorted(score_distribution.items()))}")
+
+        # Log some examples
+        sorted_players = sorted(self.player_pool, key=lambda p: p.optimization_score, reverse=True)
+        self.log(f"Top scorer: {sorted_players[0].name} = {sorted_players[0].optimization_score:.1f}")
+        self.log(f"Bottom scorer: {sorted_players[-1].name} = {sorted_players[-1].optimization_score:.1f}")
+
+    UnifiedCoreSystem.score_players = _new_score_players
+
+
+# Apply the fix
+fix_scoring_display(UnifiedCoreSystem)
 
 # ========== FIX 1: PROJECTION LOADING ==========
 # Fix projection loading from CSV
@@ -46,6 +89,198 @@ def _fixed_load_csv(self, csv_path):
 
 
 UnifiedCoreSystem.load_players_from_csv = _fixed_load_csv
+
+
+# ========== FIX 5: ADD REAL DATA ENRICHMENTS ==========
+def add_real_enrichments(UnifiedCoreSystem):
+    """Add REAL data enrichments using actual APIs"""
+    _orig_enrich = UnifiedCoreSystem.enrich_player_pool
+
+    def _new_enrich_player_pool(self):
+        """Enhanced enrichment with REAL data sources"""
+        # First run original enrichment (Vegas, confirmations, etc)
+        _orig_enrich(self)
+
+        # Initialize our real data fetchers
+        try:
+            # Import the real data module
+            from real_data_enrichments import (
+                RealStatcastFetcher,
+                RealWeatherIntegration,
+                RealParkFactors,
+                check_and_install_dependencies
+            )
+
+            # Check dependencies first
+            if not check_and_install_dependencies():
+                self.log("⚠️ Some dependencies missing for real data. Using defaults.", "warning")
+                self._set_default_enrichments()
+                return
+
+            self.log("🎯 Initializing real data sources...", "info")
+
+            # Initialize fetchers
+            stats_fetcher = RealStatcastFetcher()
+            weather_fetcher = RealWeatherIntegration()  # Uses free Open-Meteo API
+            park_factors = RealParkFactors()
+
+            # Track success counts
+            stats_success = 0
+            weather_success = 0
+            park_success = 0
+            consistency_success = 0
+
+            total_players = len(self.player_pool)
+
+            # Process in batches to avoid overwhelming APIs
+            batch_size = 10
+            for i in range(0, total_players, batch_size):
+                batch = self.player_pool[i:i + batch_size]
+                self.log(f"Processing batch {i // batch_size + 1}/{(total_players + batch_size - 1) // batch_size}...",
+                         "info")
+
+                for player in batch:
+                    try:
+                        # === 1. PARK FACTORS (instant, no API) ===
+                        if hasattr(player, 'game_info') and player.game_info:
+                            # Extract home team from game info
+                            if '@' in player.game_info:
+                                home_team = player.game_info.split('@')[1].split()[0]
+                            else:
+                                # Home game
+                                home_team = player.team
+
+                            player.park_factor = park_factors.get_park_factor(home_team)
+                            park_success += 1
+                        else:
+                            player.park_factor = 1.0
+
+                        # === 2. WEATHER DATA ===
+                        if hasattr(player, 'game_info') and player.game_info:
+                            # Get home team for weather
+                            if '@' in player.game_info:
+                                home_team = player.game_info.split('@')[1].split()[0]
+                            else:
+                                home_team = player.team
+
+                            weather_data = weather_fetcher.get_game_weather(home_team)
+                            player.weather_impact = weather_data['weather_impact']
+                            player.game_temperature = weather_data['temperature']
+                            player.game_wind = weather_data['wind_speed']
+                            player.is_dome = weather_data['is_dome']
+                            weather_success += 1
+                        else:
+                            player.weather_impact = 1.0
+
+                        # === 3. RECENT FORM & STATS (API intensive - only for confirmed starters) ===
+                        if getattr(player, 'is_confirmed', False) or player.salary >= 4500:
+                            # Only fetch stats for confirmed players or high-salary players
+                            try:
+                                # Get recent performance
+                                recent_stats = stats_fetcher.get_recent_stats(player.name, days=7)
+
+                                if recent_stats.get('data_available', True):
+                                    player.recent_form = recent_stats.get('recent_form', 1.0)
+
+                                    # Store additional stats for reference
+                                    if player.is_pitcher:
+                                        player.recent_velocity = recent_stats.get('avg_velocity', 0)
+                                        player.recent_whiff_rate = recent_stats.get('whiff_rate', 0)
+                                        player.recent_strike_rate = recent_stats.get('strike_rate', 0)
+                                    else:
+                                        player.recent_avg = recent_stats.get('batting_avg', 0)
+                                        player.recent_xba = recent_stats.get('xBA', 0)
+                                        player.recent_barrel_rate = recent_stats.get('barrel_rate', 0)
+                                        player.recent_exit_velo = recent_stats.get('avg_exit_velocity', 0)
+
+                                    stats_success += 1
+                                else:
+                                    player.recent_form = 1.0
+
+                                # Small delay to respect API limits
+                                time.sleep(0.1)
+
+                            except Exception as e:
+                                self.log(f"Stats error for {player.name}: {e}", "debug")
+                                player.recent_form = 1.0
+                        else:
+                            # Non-confirmed players get neutral form
+                            player.recent_form = 1.0
+
+                        # === 4. CONSISTENCY SCORE ===
+                        if getattr(player, 'is_confirmed', False) and player.salary >= 4000:
+                            try:
+                                player.consistency_score = stats_fetcher.get_consistency_score(player.name, days=30)
+                                consistency_success += 1
+                            except:
+                                player.consistency_score = 1.0
+                        else:
+                            # Lower salary players assumed less consistent
+                            if player.salary < 3500:
+                                player.consistency_score = 0.9
+                            else:
+                                player.consistency_score = 1.0
+
+                    except Exception as e:
+                        self.log(f"Error enriching {player.name}: {e}", "debug")
+                        # Set defaults for this player
+                        if not hasattr(player, 'park_factor'):
+                            player.park_factor = 1.0
+                        if not hasattr(player, 'weather_impact'):
+                            player.weather_impact = 1.0
+                        if not hasattr(player, 'recent_form'):
+                            player.recent_form = 1.0
+                        if not hasattr(player, 'consistency_score'):
+                            player.consistency_score = 1.0
+
+                # Update progress
+                QApplication.processEvents()
+
+            # Log results
+            self.log(f"✅ Real Data Enrichment Complete:", "success")
+            self.log(f"   Park factors: {park_success}/{total_players}", "info")
+            self.log(f"   Weather data: {weather_success}/{total_players}", "info")
+            self.log(f"   Recent stats: {stats_success}/{total_players}", "info")
+            self.log(f"   Consistency: {consistency_success}/{total_players}", "info")
+
+            # Show some examples
+            if stats_success > 0:
+                # Find best recent form
+                best_form = max(self.player_pool, key=lambda p: getattr(p, 'recent_form', 1.0))
+                self.log(f"   🔥 Best form: {best_form.name} ({best_form.recent_form:.2f})", "success")
+
+                # Find best park/weather combo
+                best_conditions = max(self.player_pool,
+                                      key=lambda p: getattr(p, 'park_factor', 1.0) * getattr(p, 'weather_impact', 1.0))
+                conditions_score = best_conditions.park_factor * best_conditions.weather_impact
+                self.log(f"   🏟️ Best conditions: {best_conditions.name} ({conditions_score:.2f}x)", "success")
+
+        except ImportError as e:
+            self.log(f"⚠️ Could not import real data modules: {e}", "warning")
+            self.log("Using fallback enrichment values", "warning")
+            self._set_default_enrichments()
+        except Exception as e:
+            self.log(f"❌ Error in real enrichment: {e}", "error")
+            self._set_default_enrichments()
+
+    def _set_default_enrichments(self):
+        """Set default values when real data unavailable"""
+        for player in self.player_pool:
+            if not hasattr(player, 'park_factor'):
+                player.park_factor = 1.0
+            if not hasattr(player, 'weather_impact'):
+                player.weather_impact = 1.0
+            if not hasattr(player, 'recent_form'):
+                player.recent_form = 1.0
+            if not hasattr(player, 'consistency_score'):
+                player.consistency_score = 1.0
+
+    UnifiedCoreSystem.enrich_player_pool = _new_enrich_player_pool
+    UnifiedCoreSystem._set_default_enrichments = _set_default_enrichments
+
+
+# Apply the fix (add after other fixes)
+add_real_enrichments(UnifiedCoreSystem)
 
 
 # ========== FIX 2: ENRICHMENT ATTRIBUTES ==========
@@ -106,6 +341,126 @@ STRATEGY_REGISTRY = {
 }
 
 
+def fix_scoring_to_use_enrichments(EnhancedScoringEngine):
+    """Modify scoring engine to actually use our enrichments"""
+
+    # Save original methods
+    _orig_score_cash = EnhancedScoringEngine.score_player_cash
+    _orig_score_gpp = EnhancedScoringEngine.score_player_gpp
+
+    def new_score_player_cash(self, player):
+        """Enhanced cash scoring using real data"""
+        # Start with base projection
+        score = getattr(player, 'base_projection', 0)
+
+        if score == 0:
+            return 0
+
+        # === APPLY REAL ENRICHMENTS ===
+
+        # 1. Recent Form (most important for cash)
+        # If player is hot (>1.2) or cold (<0.8), it matters
+        recent_form = getattr(player, 'recent_form', 1.0)
+        score *= recent_form
+
+        # 2. Consistency (critical for cash games)
+        # High consistency = more reliable for cash
+        consistency = getattr(player, 'consistency_score', 1.0)
+        score *= consistency
+
+        # 3. Matchup (from original enrichments)
+        matchup = getattr(player, 'matchup_score', 1.0)
+        score *= matchup
+
+        # 4. Park Factor (mild impact for cash)
+        park = getattr(player, 'park_factor', 1.0)
+        score *= (1.0 + (park - 1.0) * 0.3)  # 30% of park effect
+
+        # 5. Weather (mild impact for cash)
+        weather = getattr(player, 'weather_impact', 1.0)
+        score *= (1.0 + (weather - 1.0) * 0.3)  # 30% of weather effect
+
+        # 6. For pitchers, consistency matters more
+        if player.is_pitcher:
+            score *= 1.1  # Slight pitcher boost for cash
+
+        return score
+
+    def new_score_player_gpp(self, player):
+        """Enhanced GPP scoring using real data"""
+        # Start with base projection
+        score = getattr(player, 'base_projection', 0)
+
+        if score == 0:
+            return 0
+
+        # === APPLY REAL ENRICHMENTS ===
+
+        # 1. Vegas Team Total (existing)
+        vegas_total = getattr(player, 'implied_team_score', 4.5)
+        if vegas_total >= self.gpp_params['threshold_high']:
+            score *= self.gpp_params['mult_high']
+        elif vegas_total >= self.gpp_params['threshold_med']:
+            score *= self.gpp_params['mult_med']
+        elif vegas_total >= self.gpp_params['threshold_low']:
+            score *= self.gpp_params['mult_low']
+        else:
+            score *= self.gpp_params['mult_none']
+
+        # 2. Recent Form (more extreme for GPP)
+        recent_form = getattr(player, 'recent_form', 1.0)
+        if recent_form > 1.3:  # Very hot
+            score *= 1.25  # Big boost for ceiling
+        elif recent_form > 1.15:  # Hot
+            score *= 1.15
+        elif recent_form < 0.7:  # Very cold
+            score *= 0.6  # Big penalty
+        elif recent_form < 0.85:  # Cold
+            score *= 0.8
+        else:
+            score *= recent_form
+
+        # 3. Park + Weather Combined (huge for GPP)
+        park = getattr(player, 'park_factor', 1.0)
+        weather = getattr(player, 'weather_impact', 1.0)
+        environmental = park * weather
+
+        if environmental > 1.3:  # Coors + hot day
+            score *= 1.3  # Huge ceiling boost
+        elif environmental > 1.15:
+            score *= 1.15
+        elif environmental < 0.85:  # Oracle + cold
+            score *= 0.85
+        else:
+            score *= environmental
+
+        # 4. Batting Order (existing boost)
+        if not player.is_pitcher and hasattr(player, 'batting_order'):
+            if player.batting_order and player.batting_order <= self.gpp_params['batting_positions']:
+                score *= self.gpp_params['batting_boost']
+
+        # 5. Statcast Bonuses (if available from real data)
+        if hasattr(player, 'recent_barrel_rate') and player.recent_barrel_rate > 0:
+            if player.recent_barrel_rate >= 15:  # Elite barrel rate
+                score *= 1.1
+
+        if hasattr(player, 'recent_exit_velo') and player.recent_exit_velo > 0:
+            if player.recent_exit_velo >= 92:  # Hard contact
+                score *= 1.05
+
+        # 6. Pitcher adjustments
+        if player.is_pitcher:
+            # Recent velocity/whiff rate
+            if hasattr(player, 'recent_whiff_rate') and player.recent_whiff_rate > 30:
+                score *= 1.1  # Elite strikeout potential
+
+        return score
+
+    # Replace methods
+    EnhancedScoringEngine.score_player_cash = new_score_player_cash
+    EnhancedScoringEngine.score_player_gpp = new_score_player_gpp
+
+    print("✅ Scoring engine updated to use real enrichments!")
 # ========== START OF GUI CLASSES ==========
 # Your GUI classes start here...
 # ========== START OF GUI CLASSES ==========
@@ -113,15 +468,76 @@ STRATEGY_REGISTRY = {
 
 # Update the PlayerPoolModel class in your GUI file:
 
+def verify_enrichments_in_use(system):
+    """Verify enrichments are being used in scoring"""
+    if not system.player_pool:
+        print("No players in pool to verify")
+        return
+
+    # Get a test player
+    test_player = system.player_pool[0]
+
+    print(f"\n🔍 Verifying Enrichment Usage for {test_player.name}")
+    print("=" * 50)
+
+    # Check what enrichments the player has
+    enrichments = {
+        'base_projection': getattr(test_player, 'base_projection', 'MISSING'),
+        'recent_form': getattr(test_player, 'recent_form', 'MISSING'),
+        'consistency_score': getattr(test_player, 'consistency_score', 'MISSING'),
+        'park_factor': getattr(test_player, 'park_factor', 'MISSING'),
+        'weather_impact': getattr(test_player, 'weather_impact', 'MISSING'),
+        'implied_team_score': getattr(test_player, 'implied_team_score', 'MISSING'),
+    }
+
+    print("Player Enrichments:")
+    for key, value in enrichments.items():
+        status = "✅" if value != 'MISSING' else "❌"
+        print(f"  {status} {key}: {value}")
+
+    # Calculate scores
+    print("\nScore Calculation:")
+
+    # Cash score
+    cash_score = system.scoring_engine.score_player_cash(test_player)
+    print(f"  Cash Score: {cash_score:.2f}")
+
+    # GPP score
+    gpp_score = system.scoring_engine.score_player_gpp(test_player)
+    print(f"  GPP Score: {gpp_score:.2f}")
+
+    # Calculate expected multiplier
+    if all(v != 'MISSING' for v in enrichments.values()):
+        expected_mult = (enrichments['recent_form'] *
+                         enrichments['consistency_score'] *
+                         enrichments['park_factor'] *
+                         enrichments['weather_impact'])
+        print(f"\nExpected Total Multiplier: {expected_mult:.3f}x")
+        print(f"Base Projection: {enrichments['base_projection']:.1f}")
+        print(
+            f"Expected Cash Score Range: {enrichments['base_projection'] * expected_mult * 0.8:.1f} - {enrichments['base_projection'] * expected_mult * 1.2:.1f}")
+
+    return enrichments
+
+
+# 2. Update the PlayerPoolModel class (replace the existing one)
 class PlayerPoolModel(QAbstractTableModel):
-    """Model for player pool table with enhanced score display"""
+    """Model for player pool table with FIXED score display"""
 
     def __init__(self, players=None):
         super().__init__()
         self.players = players or []
         self.manual_selections = set()
-        # Updated headers to show more scores
-        self.headers = ['Select', 'Name', 'Team', 'Pos', 'Salary', 'DK Proj', 'Enhanced', 'Score', 'Confirmed', 'Bat']
+        self.contest_type = 'gpp'  # Default
+        # Updated headers - shows actual calculated scores
+        self.headers = ['Select', 'Name', 'Team', 'Pos', 'Salary', 'DK Proj', 'Vegas', 'Score', 'Conf', 'Bat']
+
+    def set_contest_type(self, contest_type):
+        """Update contest type and refresh headers"""
+        self.contest_type = contest_type
+        self.headers[7] = f'{contest_type.upper()}'  # Update the Score column header
+        self.headerDataChanged.emit(Qt.Horizontal, 7, 7)
+        self.layoutChanged.emit()
 
     def columnCount(self, parent=QModelIndex()):
         return len(self.headers)
@@ -149,20 +565,24 @@ class PlayerPoolModel(QAbstractTableModel):
             elif col == 4:
                 return f"${player.salary:,}"
             elif col == 5:
-                # DK Projection
+                # DK Base Projection
                 return f"{player.base_projection:.1f}"
             elif col == 6:
-                # Enhanced Score
-                return f"{player.enhanced_score:.1f}"
+                # Vegas Total for the team
+                vegas = getattr(player, 'implied_team_score', getattr(player, 'team_total', 4.5))
+                return f"{vegas:.1f}"
             elif col == 7:
-                # Current optimization score (cash or GPP)
-                score = getattr(player, 'optimization_score', player.enhanced_score)
-                return f"{score:.1f}"
+                # ACTUAL CALCULATED SCORE (the fix!)
+                if hasattr(player, 'optimization_score'):
+                    return f"{player.optimization_score:.1f}"
+                else:
+                    # Fallback to base projection
+                    return f"{player.base_projection:.1f}"
             elif col == 8:
                 return "✓" if getattr(player, 'is_confirmed', False) else ""
             elif col == 9:
                 order = getattr(player, 'batting_order', None)
-                return str(order) if order else ""
+                return str(order) if order and order > 0 else ""
 
         elif role == Qt.TextAlignmentRole:
             if col in [0, 8, 9]:  # Checkbox, Confirmed, Batting Order
@@ -171,18 +591,66 @@ class PlayerPoolModel(QAbstractTableModel):
                 return Qt.AlignRight | Qt.AlignVCenter
 
         elif role == Qt.ToolTipRole:
-            # Add detailed tooltip
             if col in [5, 6, 7]:
-                tooltip = f"{player.name} Scores:\n"
-                tooltip += f"DK Projection: {player.base_projection:.1f}\n"
-                tooltip += f"Enhanced: {player.enhanced_score:.1f}\n"
-                tooltip += f"Cash Score: {getattr(player, 'cash_score', player.base_projection):.1f}\n"
-                tooltip += f"GPP Score: {getattr(player, 'gpp_score', player.base_projection):.1f}\n"
-                tooltip += f"\nMultipliers:\n"
-                tooltip += f"Vegas: {getattr(player, 'vegas_score', 1.0):.2f}\n"
-                tooltip += f"Park: {getattr(player, 'park_score', 1.0):.2f}\n"
-                tooltip += f"Weather: {getattr(player, 'weather_score', 1.0):.2f}"
+                tooltip = f"🎯 {player.name} Real Data:\n"
+                tooltip += f"{'=' * 40}\n"
+
+                # Basic scores
+                tooltip += f"📊 Scoring:\n"
+                tooltip += f"  Base DK Projection: {player.base_projection:.1f} pts\n"
+                tooltip += f"  Cash Score: {getattr(player, 'cash_score', 'Not calculated')}\n"
+                tooltip += f"  GPP Score: {getattr(player, 'gpp_score', 'Not calculated')}\n"
+
+                # Real enrichments
+                tooltip += f"\n🔬 Real Data Enrichments:\n"
+                tooltip += f"  Vegas Team Total: {getattr(player, 'implied_team_score', 'N/A')}\n"
+                tooltip += f"  Park Factor: {getattr(player, 'park_factor', 1.0):.2f}x\n"
+                tooltip += f"  Weather Impact: {getattr(player, 'weather_impact', 1.0):.2f}x\n"
+                tooltip += f"  Recent Form: {getattr(player, 'recent_form', 1.0):.2f}x\n"
+                tooltip += f"  Consistency: {getattr(player, 'consistency_score', 1.0):.2f}\n"
+
+                # Weather details if available
+                if hasattr(player, 'game_temperature'):
+                    tooltip += f"\n🌤️ Game Conditions:\n"
+                    tooltip += f"  Temperature: {player.game_temperature:.0f}°F\n"
+                    tooltip += f"  Wind: {getattr(player, 'game_wind', 0):.0f} mph\n"
+                    if getattr(player, 'is_dome', False):
+                        tooltip += f"  Location: Dome (perfect conditions)\n"
+
+                # Recent stats if available
+                if hasattr(player, 'recent_avg') and player.recent_avg > 0:
+                    tooltip += f"\n📈 Last 7 Days (Hitter):\n"
+                    tooltip += f"  AVG: {player.recent_avg:.3f}\n"
+                    tooltip += f"  xBA: {getattr(player, 'recent_xba', 0):.3f}\n"
+                    tooltip += f"  Barrel%: {getattr(player, 'recent_barrel_rate', 0):.1f}%\n"
+                    tooltip += f"  Exit Velo: {getattr(player, 'recent_exit_velo', 0):.1f} mph\n"
+                elif hasattr(player, 'recent_velocity') and player.recent_velocity > 0:
+                    tooltip += f"\n📈 Last 7 Days (Pitcher):\n"
+                    tooltip += f"  Avg Velocity: {player.recent_velocity:.1f} mph\n"
+                    tooltip += f"  Strike%: {getattr(player, 'recent_strike_rate', 0):.1f}%\n"
+                    tooltip += f"  Whiff%: {getattr(player, 'recent_whiff_rate', 0):.1f}%\n"
+
+                # Overall impact
+                total_multiplier = (getattr(player, 'park_factor', 1.0) *
+                                    getattr(player, 'weather_impact', 1.0) *
+                                    getattr(player, 'recent_form', 1.0))
+                tooltip += f"\n💫 Total Impact: {total_multiplier:.2f}x"
+
                 return tooltip
+            return None
+
+        # Add coloring for high/low scores
+        elif role == Qt.BackgroundRole and col == 7:
+            if hasattr(player, 'optimization_score'):
+                score = player.optimization_score
+                # Color code by score percentile
+                all_scores = [p.optimization_score for p in self.players if hasattr(p, 'optimization_score')]
+                if all_scores:
+                    percentile = sum(1 for s in all_scores if s < score) / len(all_scores)
+                    if percentile >= 0.9:  # Top 10%
+                        return QColor(200, 255, 200)  # Light green
+                    elif percentile <= 0.1:  # Bottom 10%
+                        return QColor(255, 200, 200)  # Light red
 
         return None
 
@@ -211,8 +679,6 @@ class PlayerPoolModel(QAbstractTableModel):
         self.beginResetModel()
         self.players = players
         self.endResetModel()
-
-
 
 
 class OptimizationWorker(QThread):
@@ -341,6 +807,8 @@ class DFSOptimizerGUI(QMainWindow):
         self.progress_bar.setVisible(False)
         self.status_bar.addPermanentWidget(self.progress_bar)
 
+
+
     def create_workflow_widget(self):
         """Create workflow steps indicator"""
         workflow = QWidget()
@@ -420,7 +888,7 @@ class DFSOptimizerGUI(QMainWindow):
         self.contest_type = QComboBox()
         self.contest_type.addItems(["Cash", "GPP"])  # Cash first
         self.contest_type.currentTextChanged.connect(self.update_strategy_display)
-        contest_layout.addRow("Contest Type:", self.contest_type)
+        self.contest_type.currentTextChanged.connect(self.on_contest_type_changed)  # ADD THIS LINE
 
         # Number of lineups - DEFAULT TO 1
         self.num_lineups = QSpinBox()
@@ -918,6 +1386,23 @@ class DFSOptimizerGUI(QMainWindow):
             if players_with_order > 0:
                 self.log(f"Found batting order for {players_with_order} players", "info")
 
+            # NEW: Pre-score players for current contest type
+            contest_type = self.contest_type.currentText().lower()
+            self.log(f"Pre-scoring players for {contest_type.upper()}...", "info")
+            QApplication.processEvents()
+
+            self.system.score_players(contest_type)
+
+            # Update the player model with contest type
+            self.player_model.set_contest_type(contest_type)
+            self.player_model.layoutChanged.emit()
+
+            # Show score range
+            scores = [p.optimization_score for p in self.system.player_pool if hasattr(p, 'optimization_score')]
+            if scores:
+                self.log(f"Score range: {min(scores):.1f} - {max(scores):.1f}", "info")
+                self.log(f"Average score: {sum(scores) / len(scores):.1f}", "info")
+
             self.update_step("pool", True)
             self.log(f"Built pool with {len(self.system.player_pool)} players", "success")
 
@@ -932,6 +1417,30 @@ class DFSOptimizerGUI(QMainWindow):
         finally:
             # Re-enable button
             self.build_pool_btn.setEnabled(True)
+
+    def on_contest_type_changed(self):
+        """Re-score players when contest type changes"""
+        if hasattr(self, 'system') and self.system.player_pool:
+            contest_type = self.contest_type.currentText().lower()
+            self.log(f"Contest type changed to {contest_type.upper()}, re-scoring...", "info")
+
+            # Re-score all players
+            self.system.score_players(contest_type)
+
+            # Update the model
+            self.player_model.set_contest_type(contest_type)
+            self.player_model.layoutChanged.emit()
+
+            # Update strategy
+            self.update_strategy_display()
+
+            # Show new score distribution
+            scores = [p.optimization_score for p in self.system.player_pool if hasattr(p, 'optimization_score')]
+            if scores:
+                self.log(f"New score range: {min(scores):.1f} - {max(scores):.1f}", "info")
+
+
+
 
     def filter_players(self, text):
         """Filter player table based on search text"""
