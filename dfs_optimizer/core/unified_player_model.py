@@ -81,6 +81,26 @@ class UnifiedPlayer:
         self.positions = positions
         self.base_projection = base_projection
 
+        # Position-based attribute
+        self.is_pitcher = (primary_position == 'P')
+
+        # Enrichment scores (required for scoring engine)
+        self.vegas_score = 1.0
+        self.matchup_score = 1.0
+        self.park_score = 1.0
+        self.weather_score = 1.0
+        self.recent_form_score = 1.0
+
+        # Game data
+        self.team_total = 4.5
+        self.game_total = 9.0
+        self.is_home = True
+
+        # Scoring attributes
+        self.cash_score = base_projection
+        self.gpp_score = base_projection
+        self.optimization_score = base_projection
+
         # DFS platform projections
         self.dff_projection = 0.0
         self.dff_l5_avg = None

@@ -62,14 +62,14 @@ class UnifiedPlayer:
     """
 
     def __init__(
-        self,
-        id: str,
-        name: str,
-        team: str,
-        salary: int,
-        primary_position: str,
-        positions: List[str],
-        base_projection: float = 0.0,
+            self,
+            id: str,
+            name: str,
+            team: str,
+            salary: int,
+            primary_position: str,
+            positions: List[str],
+            base_projection: float = 0.0
     ):
         """Initialize player with basic attributes"""
         # Core attributes
@@ -101,7 +101,6 @@ class UnifiedPlayer:
         self.enhanced_score = base_projection
         self.data_quality_score = 0.0
         self.recent_scores = []
-        # In the __init__ method, add these lines:
 
         # Ownership projections (NEW)
         self.projected_ownership = 0.0
@@ -126,6 +125,22 @@ class UnifiedPlayer:
         self.k9 = 8.0
         self.whiff_rate = 25.0
         self.barrel_rate_against = 8.0
+
+        # Enrichment scores - REQUIRED for your system
+        self.vegas_score = 1.0
+        self.matchup_score = 1.0
+        self.park_score = 1.0
+        self.weather_score = 1.0
+
+        # Additional Vegas/game data
+        self.team_total = 4.5
+        self.game_total = 9.0
+        self.is_home = True
+
+        # Scoring attributes
+        self.cash_score = base_projection
+        self.gpp_score = base_projection
+        self.optimization_score = base_projection
 
         # Private data storage
         self._vegas_data = None

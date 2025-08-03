@@ -26,19 +26,20 @@ from dfs_optimizer.core.unified_core_system import UnifiedCoreSystem
 from dfs_optimizer.strategies.strategy_selector import StrategyAutoSelector
 from dfs_optimizer.data.smart_confirmation import SmartConfirmationSystem
 from dfs_optimizer.strategies import STRATEGY_REGISTRY
+from enhanced_gui_display import EnhancedGUIDisplay
 
+
+# Update the PlayerPoolModel class in your GUI file:
 
 class PlayerPoolModel(QAbstractTableModel):
-    """Model for player pool table with checkboxes"""
+    """Model for player pool table with enhanced score display"""
 
     def __init__(self, players=None):
         super().__init__()
         self.players = players or []
-        self.manual_selections = set()  # Start empty
-        self.headers = ['Select', 'Name', 'Team', 'Pos', 'Salary', 'Proj', 'Confirmed', 'Bat']
-
-    def rowCount(self, parent=QModelIndex()):
-        return len(self.players)
+        self.manual_selections = set()
+        # Updated headers to show more scores
+        self.headers = ['Select', 'Name', 'Team', 'Pos', 'Salary', 'DK Proj', 'Enhanced', 'Score', 'Confirmed', 'Bat']
 
     def columnCount(self, parent=QModelIndex()):
         return len(self.headers)
@@ -63,25 +64,40 @@ class PlayerPoolModel(QAbstractTableModel):
             elif col == 4:
                 return f"${player.salary:,}"
             elif col == 5:
-                # Use dff_projection or projection, whichever exists
-                proj = getattr(player, 'dff_projection', getattr(player, 'projection', 0))
-                return f"{proj:.1f}"
+                # DK Projection
+                return f"{player.base_projection:.1f}"
             elif col == 6:
-                return "✓" if getattr(player, 'is_confirmed', False) else ""
+                # Enhanced Score
+                return f"{player.enhanced_score:.1f}"
             elif col == 7:
-                order = getattr(player, 'batting_order', 0)
-                # Handle None values
-                if order is None:
-                    return ""
-                return str(order) if order > 0 else ""
+                # Current optimization score (cash or GPP)
+                score = getattr(player, 'optimization_score', player.enhanced_score)
+                return f"{score:.1f}"
+            elif col == 8:
+                return "✓" if getattr(player, 'is_confirmed', False) else ""
+            elif col == 9:
+                order = getattr(player, 'batting_order', None)
+                return str(order) if order else ""
 
-        if role == Qt.TextAlignmentRole:
-            if col in [4, 5, 6, 7]:
+        elif role == Qt.TextAlignmentRole:
+            if col in [0, 8, 9]:  # Checkbox, Confirmed, Batting Order
                 return Qt.AlignCenter
+            elif col in [4, 5, 6, 7]:  # Money and scores
+                return Qt.AlignRight | Qt.AlignVCenter
 
-        if role == Qt.BackgroundRole:
-            if getattr(player, 'is_confirmed', False):
-                return QColor(200, 255, 200)  # Light green for confirmed
+        elif role == Qt.ToolTipRole:
+            # Add detailed tooltip
+            if col in [5, 6, 7]:
+                tooltip = f"{player.name} Scores:\n"
+                tooltip += f"DK Projection: {player.base_projection:.1f}\n"
+                tooltip += f"Enhanced: {player.enhanced_score:.1f}\n"
+                tooltip += f"Cash Score: {getattr(player, 'cash_score', player.base_projection):.1f}\n"
+                tooltip += f"GPP Score: {getattr(player, 'gpp_score', player.base_projection):.1f}\n"
+                tooltip += f"\nMultipliers:\n"
+                tooltip += f"Vegas: {getattr(player, 'vegas_score', 1.0):.2f}\n"
+                tooltip += f"Park: {getattr(player, 'park_score', 1.0):.2f}\n"
+                tooltip += f"Weather: {getattr(player, 'weather_score', 1.0):.2f}"
+                return tooltip
 
         return None
 
@@ -922,36 +938,95 @@ class DFSOptimizerGUI(QMainWindow):
         self.log(f"Optimization failed: {error_msg}", "error")
 
     def display_lineups(self, lineups):
-        """Display generated lineups"""
+        """Display generated lineups with enhanced scoring details"""
         self.lineups_text.clear()
 
+        # Determine contest type from GUI
+        contest_type = self.contest_type.currentText().lower()
+
         for i, lineup in enumerate(lineups, 1):
-            self.lineups_text.append(f"Lineup {i}:")
-            self.lineups_text.append("-" * 50)
+            try:
+                # Check if we have enhanced display available
+                if 'EnhancedGUIDisplay' in globals():
+                    # Use enhanced display
+                    display_data = EnhancedGUIDisplay.create_lineup_display(lineup, contest_type)
 
-            total_salary = 0
-            total_proj = 0
+                    self.lineups_text.append(f"Lineup {i}:")
+                    self.lineups_text.append("-" * 80)
 
-            # Sort by position for display
-            players = lineup.get('players', [])
+                    # Headers
+                    self.lineups_text.append(
+                        f"{'Pos':<4} {'Player':<20} {'Team':<4} {'Salary':<8} {'DK Proj':<8} {'Enhanced':<9} {'Using':<8}")
+                    self.lineups_text.append("-" * 80)
 
-            for player in players:
-                pos = player.primary_position
-                name = player.name
-                team = player.team
-                salary = player.salary
-                # Use dff_projection or projection, whichever exists
-                proj = getattr(player, 'dff_projection', getattr(player, 'projection', 0))
+                    # Display each player with all scores
+                    for player_data in display_data['players']:
+                        line = f"{player_data['position']:<4} "
+                        line += f"{player_data['name']:<20} "
+                        line += f"{player_data['team']:<4} "
+                        line += f"{player_data['salary_display']:<8} "
+                        line += f"{player_data['dk_projection']:<8.1f} "
+                        line += f"{player_data['enhanced_score']:<9.1f} "
+                        line += f"{player_data['optimization_score']:<8.1f}"
 
-                total_salary += salary
-                total_proj += proj
+                        self.lineups_text.append(line)
 
-                self.lineups_text.append(f"{pos:<4} {name:<20} {team:<4} ${salary:>6,} {proj:>6.1f}")
-                self.export_tracking_btn.setEnabled(True)
+                    # Totals
+                    self.lineups_text.append("-" * 80)
+                    totals = display_data['totals']
+                    totals_line = f"{'TOTALS:':<37} "
+                    totals_line += f"${totals['salary']:<7,} "
+                    totals_line += f"{totals['dk_projection']:<8.1f} "
+                    totals_line += f"{totals['enhanced_total']:<9.1f} "
+                    totals_line += f"{display_data['optimization_score']:<8.1f}"
 
+                    self.lineups_text.append(totals_line)
 
-            self.lineups_text.append(f"\nTotal Salary: ${total_salary:,} | Projected: {total_proj:.1f}")
-            self.lineups_text.append("\n")
+                    # Show enhancement impact
+                    enhancement_impact = totals['enhanced_total'] - totals['dk_projection']
+                    impact_pct = (enhancement_impact / totals['dk_projection'] * 100) if totals[
+                                                                                             'dk_projection'] > 0 else 0
+
+                    self.lineups_text.append(
+                        f"\nEnhancement Impact: {enhancement_impact:+.1f} pts ({impact_pct:+.1f}%)")
+                    self.lineups_text.append(
+                        f"Contest Type: {contest_type.upper()} | Strategy: {self.selected_strategy}")
+
+                else:
+                    # Fallback to original display if enhanced display not available
+                    self.lineups_text.append(f"Lineup {i}:")
+                    self.lineups_text.append("-" * 50)
+
+                    total_salary = 0
+                    total_proj = 0
+
+                    # Sort by position for display
+                    players = lineup.get('players', [])
+
+                    for player in players:
+                        pos = player.primary_position
+                        name = player.name
+                        team = player.team
+                        salary = player.salary
+                        # Use dff_projection or projection, whichever exists
+                        proj = getattr(player, 'dff_projection', getattr(player, 'projection', 0))
+
+                        total_salary += salary
+                        total_proj += proj
+
+                        self.lineups_text.append(f"{pos:<4} {name:<20} {team:<4} ${salary:>6,} {proj:>6.1f}")
+
+                    self.lineups_text.append(f"\nTotal Salary: ${total_salary:,} | Projected: {total_proj:.1f}")
+
+                self.lineups_text.append("\n")
+
+            except Exception as e:
+                # If any error, fall back to basic display
+                self.log(f"Error in enhanced display: {str(e)}", "warning")
+                self.lineups_text.append(f"Lineup {i}: Error displaying - {str(e)}")
+                self.lineups_text.append("\n")
+
+        self.export_tracking_btn.setEnabled(True)
 
     def display_analysis(self, lineups):
         """Display lineup analysis"""
