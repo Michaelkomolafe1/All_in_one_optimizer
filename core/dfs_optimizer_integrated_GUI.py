@@ -27,6 +27,12 @@ from dfs_optimizer.strategies.strategy_selector import StrategyAutoSelector
 from dfs_optimizer.data.smart_confirmation import SmartConfirmationSystem
 from dfs_optimizer.strategies import STRATEGY_REGISTRY
 from enhanced_gui_display import EnhancedGUIDisplay
+# Try to import enhanced display
+try:
+    from enhanced_gui_display import EnhancedGUIDisplay
+    HAS_ENHANCED_DISPLAY = True
+except ImportError:
+    HAS_ENHANCED_DISPLAY = False
 
 
 # Update the PlayerPoolModel class in your GUI file:
@@ -937,6 +943,48 @@ class DFSOptimizerGUI(QMainWindow):
         QMessageBox.critical(self, "Optimization Error", error_msg)
         self.log(f"Optimization failed: {error_msg}", "error")
 
+    def check_lineup_diversity(self, lineups):
+        """
+        Check and report on lineup diversity
+        """
+        if len(lineups) <= 1:
+            return
+
+        all_players = []
+        lineup_players = []
+
+        for lineup in lineups:
+            players = lineup.get('players', []) if isinstance(lineup, dict) else []
+            player_names = set()
+
+            for p in players:
+                name = p.name if hasattr(p, 'name') else p.get('name', '')
+                all_players.append(name)
+                player_names.add(name)
+
+            lineup_players.append(player_names)
+
+        # Calculate overlap
+        total_unique = len(set(all_players))
+        avg_overlap = 0
+
+        for i in range(len(lineup_players)):
+            for j in range(i + 1, len(lineup_players)):
+                overlap = len(lineup_players[i] & lineup_players[j])
+                avg_overlap += overlap
+
+        if len(lineups) > 1:
+            avg_overlap = avg_overlap / (len(lineups) * (len(lineups) - 1) / 2)
+
+            self.log(f"\nLineup Diversity Report:", "info")
+            self.log(f"Total unique players used: {total_unique}", "info")
+            self.log(f"Average player overlap: {avg_overlap:.1f} players", "info")
+
+            if avg_overlap > 7:
+                self.log("⚠️ High overlap - lineups are too similar", "warning")
+            else:
+                self.log("✅ Good lineup diversity", "success")
+
     def display_lineups(self, lineups):
         """Display generated lineups with enhanced scoring details"""
         self.lineups_text.clear()
@@ -944,89 +992,136 @@ class DFSOptimizerGUI(QMainWindow):
         # Determine contest type from GUI
         contest_type = self.contest_type.currentText().lower()
 
+        # Check if enhanced display is available
+        has_enhanced_display = False
+        try:
+            from enhanced_gui_display import EnhancedGUIDisplay
+            has_enhanced_display = True
+        except ImportError:
+            pass
+
         for i, lineup in enumerate(lineups, 1):
             try:
-                # Check if we have enhanced display available
-                if 'EnhancedGUIDisplay' in globals():
-                    # Use enhanced display
-                    display_data = EnhancedGUIDisplay.create_lineup_display(lineup, contest_type)
+                self.lineups_text.append(f"{'=' * 80}")
+                self.lineups_text.append(f"LINEUP {i}")
+                self.lineups_text.append(f"{'=' * 80}")
 
-                    self.lineups_text.append(f"Lineup {i}:")
-                    self.lineups_text.append("-" * 80)
-
-                    # Headers
-                    self.lineups_text.append(
-                        f"{'Pos':<4} {'Player':<20} {'Team':<4} {'Salary':<8} {'DK Proj':<8} {'Enhanced':<9} {'Using':<8}")
-                    self.lineups_text.append("-" * 80)
-
-                    # Display each player with all scores
-                    for player_data in display_data['players']:
-                        line = f"{player_data['position']:<4} "
-                        line += f"{player_data['name']:<20} "
-                        line += f"{player_data['team']:<4} "
-                        line += f"{player_data['salary_display']:<8} "
-                        line += f"{player_data['dk_projection']:<8.1f} "
-                        line += f"{player_data['enhanced_score']:<9.1f} "
-                        line += f"{player_data['optimization_score']:<8.1f}"
-
-                        self.lineups_text.append(line)
-
-                    # Totals
-                    self.lineups_text.append("-" * 80)
-                    totals = display_data['totals']
-                    totals_line = f"{'TOTALS:':<37} "
-                    totals_line += f"${totals['salary']:<7,} "
-                    totals_line += f"{totals['dk_projection']:<8.1f} "
-                    totals_line += f"{totals['enhanced_total']:<9.1f} "
-                    totals_line += f"{display_data['optimization_score']:<8.1f}"
-
-                    self.lineups_text.append(totals_line)
-
-                    # Show enhancement impact
-                    enhancement_impact = totals['enhanced_total'] - totals['dk_projection']
-                    impact_pct = (enhancement_impact / totals['dk_projection'] * 100) if totals[
-                                                                                             'dk_projection'] > 0 else 0
-
-                    self.lineups_text.append(
-                        f"\nEnhancement Impact: {enhancement_impact:+.1f} pts ({impact_pct:+.1f}%)")
-                    self.lineups_text.append(
-                        f"Contest Type: {contest_type.upper()} | Strategy: {self.selected_strategy}")
-
-                else:
-                    # Fallback to original display if enhanced display not available
-                    self.lineups_text.append(f"Lineup {i}:")
-                    self.lineups_text.append("-" * 50)
-
-                    total_salary = 0
-                    total_proj = 0
-
-                    # Sort by position for display
+                # Get players list from lineup
+                if isinstance(lineup, dict):
                     players = lineup.get('players', [])
+                elif hasattr(lineup, 'players'):
+                    players = lineup.players
+                else:
+                    players = []
 
-                    for player in players:
-                        pos = player.primary_position
-                        name = player.name
-                        team = player.team
-                        salary = player.salary
-                        # Use dff_projection or projection, whichever exists
-                        proj = getattr(player, 'dff_projection', getattr(player, 'projection', 0))
+                if has_enhanced_display and players:
+                    try:
+                        # Use enhanced display
+                        display_data = EnhancedGUIDisplay.create_lineup_display(lineup, contest_type)
 
-                        total_salary += salary
-                        total_proj += proj
+                        # Headers
+                        self.lineups_text.append(
+                            f"{'Pos':<4} {'Player':<20} {'Team':<4} {'Salary':<8} "
+                            f"{'DK Proj':<8} {'Enhanced':<9} {'Using':<8}")
+                        self.lineups_text.append("-" * 80)
 
-                        self.lineups_text.append(f"{pos:<4} {name:<20} {team:<4} ${salary:>6,} {proj:>6.1f}")
+                        # Display each player with all scores
+                        for player_data in display_data['players']:
+                            line = f"{player_data['position']:<4} "
+                            line += f"{player_data['name']:<20} "
+                            line += f"{player_data['team']:<4} "
+                            line += f"{player_data['salary_display']:<8} "
+                            line += f"{player_data['dk_projection']:<8.1f} "
+                            line += f"{player_data['enhanced_score']:<9.1f} "
+                            line += f"{player_data['optimization_score']:<8.1f}"
 
-                    self.lineups_text.append(f"\nTotal Salary: ${total_salary:,} | Projected: {total_proj:.1f}")
+                            self.lineups_text.append(line)
+
+                        # Totals
+                        self.lineups_text.append("-" * 80)
+                        totals = display_data['totals']
+                        totals_line = f"{'TOTALS:':<37} "
+                        totals_line += f"${totals['salary']:<7,} "
+                        totals_line += f"{totals['dk_projection']:<8.1f} "
+                        totals_line += f"{totals['enhanced_total']:<9.1f} "
+                        totals_line += f"{display_data['optimization_score']:<8.1f}"
+
+                        self.lineups_text.append(totals_line)
+
+                        # Show enhancement impact
+                        enhancement_impact = totals['enhanced_total'] - totals['dk_projection']
+                        impact_pct = (enhancement_impact / totals['dk_projection'] * 100) if totals[
+                                                                                                 'dk_projection'] > 0 else 0
+
+                        self.lineups_text.append(
+                            f"\nEnhancement Impact: {enhancement_impact:+.1f} pts ({impact_pct:+.1f}%)")
+                        self.lineups_text.append(
+                            f"Contest Type: {contest_type.upper()} | Strategy: {self.selected_strategy}")
+
+                    except Exception as e:
+                        self.log(f"Enhanced display error: {str(e)}", "warning")
+                        # Fall back to basic display
+                        self._display_basic_lineup(i, players)
+                else:
+                    # Use basic display
+                    self._display_basic_lineup(i, players)
+
+                # Show stacks
+                teams = {}
+                for p in players:
+                    if hasattr(p, 'team'):
+                        team = p.team
+                    elif isinstance(p, dict):
+                        team = p.get('team', 'UNK')
+                    else:
+                        team = 'UNK'
+                    teams[team] = teams.get(team, 0) + 1
+
+                stacks = {t: c for t, c in teams.items() if c >= 2}
+                if stacks:
+                    self.lineups_text.append(f"\n🏟️ Stacks: {stacks}")
 
                 self.lineups_text.append("\n")
 
             except Exception as e:
-                # If any error, fall back to basic display
-                self.log(f"Error in enhanced display: {str(e)}", "warning")
+                # If any error, show basic error message
+                self.log(f"Error displaying lineup {i}: {str(e)}", "error")
                 self.lineups_text.append(f"Lineup {i}: Error displaying - {str(e)}")
                 self.lineups_text.append("\n")
 
-        self.export_tracking_btn.setEnabled(True)
+        # Enable export button if we have lineups
+        if lineups:
+            self.export_btn.setEnabled(True)
+
+    def _display_basic_lineup(self, lineup_num, players):
+        """Helper method for basic lineup display"""
+        self.lineups_text.append(f"Lineup {lineup_num}:")
+        self.lineups_text.append("-" * 50)
+
+        total_salary = 0
+        total_proj = 0
+
+        for player in players:
+            # Handle both object and dict formats
+            if hasattr(player, 'primary_position'):
+                pos = player.primary_position
+                name = player.name
+                team = player.team
+                salary = player.salary
+                proj = getattr(player, 'base_projection', 0)
+            else:
+                pos = player.get('primary_position', 'N/A')
+                name = player.get('name', 'Unknown')
+                team = player.get('team', 'N/A')
+                salary = player.get('salary', 0)
+                proj = player.get('base_projection', 0)
+
+            total_salary += salary
+            total_proj += proj
+
+            self.lineups_text.append(f"{pos:<4} {name:<20} {team:<4} ${salary:>6,} {proj:>6.1f}")
+
+        self.lineups_text.append(f"\nTotal Salary: ${total_salary:,} | Projected: {total_proj:.1f}")
 
     def display_analysis(self, lineups):
         """Display lineup analysis"""

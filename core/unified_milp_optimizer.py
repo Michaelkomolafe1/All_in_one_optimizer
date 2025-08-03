@@ -451,39 +451,32 @@ class UnifiedMILPOptimizer:
 
         return players
 
-    def optimize_lineup(self, players: List, strategy: str = "balanced",
-                        manual_selections: str = "", contest_type: str = "gpp") -> Tuple[List, float]:
-        """Main optimization method with proper strategy application"""
+    def optimize_lineups(self, num_lineups: int, strategy: str, contest_type: str) -> List[Dict]:
+        """
+        Wrapper method that returns lineups in the expected format
+        """
+        # Get optimization results
+        results = self.optimize(
+            players=self.player_pool,
+            strategy=strategy,
+            contest_type=contest_type,
+            num_lineups=num_lineups
+        )
 
-        logger.info(f"OPTIMIZATION: Starting {contest_type.upper()} optimization")
-        logger.info(f"OPTIMIZATION: Strategy: {strategy}")
-        logger.info(f"OPTIMIZATION: Players available: {len(players)}")
+        # Convert to expected format
+        lineups = []
+        for result in results:
+            if result:
+                lineup_dict = {
+                    'players': result.lineup,
+                    'total_score': result.total_score,
+                    'total_salary': sum(getattr(p, 'salary', p.get('salary', 0) if isinstance(p, dict) else 0)
+                                        for p in result.lineup),
+                    'total_projection': result.total_score
+                }
+                lineups.append(lineup_dict)
 
-        # Set contest type on config for use in other methods
-        self.config.contest_type = contest_type
-
-        # Apply strategy filter AND scoring
-        eligible_players = self.apply_strategy_filter(players, strategy)
-
-        if not eligible_players:
-            logger.error("No eligible players after strategy filtering")
-            return [], 0
-
-        # Pre-filter for performance if needed
-        if len(eligible_players) > 200:
-            eligible_players = self._pre_filter_players(eligible_players, strategy)
-
-        # Ensure scores are calculated (but don't overwrite strategy scores)
-        eligible_players = self.calculate_player_scores(eligible_players)
-
-        # Parse manual selections
-        manual_names = []
-        if manual_selections:
-            manual_names = [name.strip() for name in manual_selections.split(',')]
-            logger.info(f"Manual selections: {manual_names}")
-
-        # Now run the MILP optimization with properly scored players
-        return self._run_milp_optimization(eligible_players, manual_names, contest_type)
+        return lineups
 
     def _run_milp_optimization(self, eligible_players: List[Any], manual_selections: str = "",
                                contest_type: str = "gpp") -> Tuple[Optional[List[Any]], float]:
@@ -684,24 +677,80 @@ class UnifiedMILPOptimizer:
 
     def optimize(self, players: List, strategy: str = None,
                  manual_selections: Optional[List[str]] = None,
-                 contest_type: str = "gpp") -> Any:
-        """Optimize lineup (compatibility method) - auto-selects best strategy"""
+                 contest_type: str = "gpp",
+                 num_lineups: int = 1,
+                 used_players: Set[str] = None) -> List[Any]:
+        """
+        Optimize lineup with diversity for multiple lineups
+
+        Args:
+            players: List of players to optimize from
+            strategy: Strategy to use (auto-selects if None)
+            manual_selections: List of player names to force include
+            contest_type: 'cash' or 'gpp'
+            num_lineups: Number of lineups to generate
+            used_players: Set of player names already used (for diversity)
+
+        Returns:
+            List of optimization results
+        """
+        results = []
+
+        # Track all used players across lineups for diversity
+        if used_players is None:
+            used_players = set()
+
         # Convert manual selections list to string if needed
         manual_text = ""
         if manual_selections:
             manual_text = ", ".join(manual_selections)
 
-        # If no strategy provided, it will auto-select
-        lineup, score = self.optimize_lineup(players, strategy, manual_text, contest_type)
+        for lineup_num in range(num_lineups):
+            # For GPP, ensure diversity by excluding overused players
+            if contest_type == "gpp" and lineup_num > 0:
+                # Calculate how many unique players we need
+                min_unique = min(3 + lineup_num, 6)  # Increase unique players per lineup
 
-        # Return a result object for compatibility
-        class OptimizationResult:
-            def __init__(self, lineup, score):
-                self.lineup = lineup
-                self.score = score
-                self.total_score = score
+                # Find most used players
+                player_usage = {}
+                for player_name in used_players:
+                    player_usage[player_name] = player_usage.get(player_name, 0) + 1
 
-        return OptimizationResult(lineup, score) if lineup else None
+                # Sort by usage
+                most_used = sorted(player_usage.items(), key=lambda x: x[1], reverse=True)
+
+                # Create exclusion list (most used players)
+                exclude_players = [name for name, count in most_used[:min_unique]]
+
+                # Filter out overused players for this lineup
+                available_players = [p for p in players
+                                     if (hasattr(p, 'name') and p.name not in exclude_players) or
+                                     (isinstance(p, dict) and p.get('name') not in exclude_players)]
+            else:
+                available_players = players
+
+            # If no strategy provided, it will auto-select
+            lineup, score = self.optimize_lineup(available_players, strategy, manual_text, contest_type)
+
+            if lineup:
+                # Track used players for diversity
+                for player in lineup:
+                    if hasattr(player, 'name'):
+                        used_players.add(player.name)
+                    elif isinstance(player, dict):
+                        used_players.add(player.get('name', ''))
+
+                # Return a result object for compatibility
+                class OptimizationResult:
+                    def __init__(self, lineup, score):
+                        self.lineup = lineup
+                        self.score = score
+                        self.total_score = score
+                        self.players = lineup  # Add this for compatibility
+
+                results.append(OptimizationResult(lineup, score))
+
+        return results
 
 
 def create_unified_optimizer(config: Optional[OptimizationConfig] = None) -> UnifiedMILPOptimizer:

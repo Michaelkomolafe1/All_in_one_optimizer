@@ -129,81 +129,174 @@ class UnifiedCoreSystem:
         self._last_contest_type = contest_type
 
     def load_players_from_csv(self, csv_path: str):
-        """Load players from DraftKings CSV with real projections"""
+        """Load players from DraftKings CSV with complete error handling"""
         logger.info(f"Loading players from {csv_path}")
 
         import pandas as pd
+        import numpy as np
+
         self.players = []
 
-        # Read CSV
-        df = pd.read_csv(csv_path)
+        try:
+            # Read CSV
+            df = pd.read_csv(csv_path)
+            logger.info(f"CSV loaded: {len(df)} rows, columns: {list(df.columns)}")
 
-        # Check if AvgPointsPerGame column exists
-        has_projections = 'AvgPointsPerGame' in df.columns
-        if has_projections:
-            logger.info("✅ Found AvgPointsPerGame column - using real projections")
-        else:
-            logger.info("⚠️ No AvgPointsPerGame column - will use salary-based projections")
+            # Update teams
+            teams = df['TeamAbbrev'].unique().tolist()
+            self.confirmation_system.update_teams(teams)
+            logger.info(f"Updated confirmation system with teams: {teams}")
 
-        # Get unique teams for confirmation system
-        teams = df['TeamAbbrev'].unique().tolist()
-        self.confirmation_system.update_teams(teams)
-        logger.info(f"Updated confirmation system with teams: {teams}")
+            # Check if projection column exists
+            has_projections = 'AvgPointsPerGame' in df.columns
+            if not has_projections:
+                logger.warning("⚠️ No AvgPointsPerGame column found - will use salary-based projections")
 
-        # Load each player
-        for _, row in df.iterrows():
-            # Parse position
-            positions = row['Roster Position'].split('/')
-            primary_position = positions[0]
+            # Count projections for logging
+            projections_found = 0
+            zero_projections = 0
 
-            # Get projection
+            # Load each player
+            for idx, row in df.iterrows():
+                try:
+                    # Parse positions
+                    positions = row['Roster Position'].split('/')
+                    primary_position = positions[0]
+
+                    # Normalize ALL pitcher positions
+                    position_mapping = {
+                        'SP': 'P',
+                        'RP': 'P',
+                        'P': 'P'
+                    }
+                    primary_position = position_mapping.get(primary_position, primary_position)
+
+                    # Get REAL DraftKings projection with error handling
+                    base_projection = 0.0
+
+                    if has_projections:
+                        try:
+                            # Handle NaN, empty, or invalid values
+                            proj_value = row['AvgPointsPerGame']
+                            if pd.notna(proj_value) and proj_value != '':
+                                base_projection = float(proj_value)
+                            else:
+                                base_projection = 0.0
+                        except (ValueError, TypeError):
+                            base_projection = 0.0
+                            logger.warning(f"Invalid projection for {row['Name']}: {row.get('AvgPointsPerGame')}")
+
+                    # Track projection status
+                    if base_projection > 0:
+                        projections_found += 1
+                    else:
+                        zero_projections += 1
+
+                        # Apply salary-based fallback for 0 projections
+                        salary = int(row['Salary'])
+                        if primary_position == 'P':
+                            base_projection = salary * 0.0045  # Pitchers
+                        else:
+                            base_projection = salary * 0.0033  # Hitters
+
+                        logger.debug(f"{row['Name']} has 0 projection, using salary fallback: {base_projection:.1f}")
+
+                    # Create player with projection
+                    player = UnifiedPlayer(
+                        id=str(row['ID']),
+                        name=row['Name'],
+                        team=row['TeamAbbrev'],
+                        salary=int(row['Salary']),
+                        primary_position=primary_position,
+                        positions=positions,
+                        base_projection=base_projection
+                    )
+
+                    # Set additional attributes
+                    player.game_info = row.get('Game Info', '')
+                    player.is_pitcher = (primary_position == 'P')
+
+                    # Extract opponent from game info
+                    game_info = row.get('Game Info', '')
+                    if '@' in game_info:
+                        parts = game_info.split(' ')[0].split('@')
+                        if player.team == parts[0]:
+                            player.opponent = parts[1]
+                        else:
+                            player.opponent = parts[0]
+                    else:
+                        player.opponent = 'UNK'
+
+                    # Initialize ALL score fields with the projection
+                    player.enhanced_score = base_projection
+                    player.cash_score = base_projection
+                    player.gpp_score = base_projection
+                    player.optimization_score = base_projection
+                    player.dk_projection = base_projection
+                    player.projection = base_projection
+                    player.dff_projection = base_projection
+                    player.recent_form_score = base_projection
+
+                    # Initialize enrichment factors
+                    player.vegas_score = 1.0
+                    player.park_score = 1.0
+                    player.weather_score = 1.0
+                    player.matchup_score = 1.0
+                    player.recent_form_score = base_projection
+
+                    # Initialize other required attributes
+                    player.implied_team_score = 4.5
+                    player.team_total = 4.5
+                    player.game_total = 9.0
+                    player.is_home = True
+                    player.batting_order = None
+                    player.projected_ownership = 0.0
+
+                    self.players.append(player)
+
+                except Exception as e:
+                    logger.error(f"Error loading player at row {idx}: {e}")
+                    logger.error(f"Row data: {row.to_dict()}")
+                    continue
+
+            # Report loading results
+            logger.info(f"✅ Loaded {len(self.players)} players from CSV")
+
             if has_projections:
-                base_projection = float(row['AvgPointsPerGame'])
+                logger.info(f"📊 Projections: {projections_found} real, {zero_projections} using fallback")
+
+                # Show sample of real projections
+                real_proj_players = [p for p in self.players if p.base_projection > 0][:5]
+                if real_proj_players:
+                    logger.info("Sample players with DraftKings projections:")
+                    for p in real_proj_players:
+                        logger.info(f"  {p.name}: ${p.salary} → {p.base_projection:.1f} DK pts")
             else:
-                # Fallback to salary-based
-                base_projection = float(row['Salary']) / 400
+                logger.info("📊 All projections calculated from salary (no projection column found)")
 
-            # Create player
-            player = UnifiedPlayer(
-                id=str(row['ID']),
-                name=row['Name'],
-                team=row['TeamAbbrev'],
-                salary=int(row['Salary']),
-                primary_position=primary_position,
-                positions=positions,
-                base_projection=base_projection  # Real or estimated
-            )
+            # Validate we have required positions
+            positions_count = {}
+            for p in self.players:
+                pos = p.primary_position
+                positions_count[pos] = positions_count.get(pos, 0) + 1
 
-            # Set additional attributes
-            player.game_info = row['Game Info']
-            player.is_pitcher = (primary_position == 'P')
+            logger.info(f"Position distribution: {positions_count}")
 
-            # Initialize scores
-            player.enhanced_score = base_projection
-            player.cash_score = base_projection
-            player.gpp_score = base_projection
-            player.optimization_score = base_projection
+            # Check for required positions
+            required = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+            missing = []
+            for pos, needed in required.items():
+                if positions_count.get(pos, 0) < needed:
+                    missing.append(f"{pos} (need {needed}, have {positions_count.get(pos, 0)})")
 
-            # Initialize enrichment factors
-            player.vegas_score = 1.0
-            player.park_score = 1.0
-            player.weather_score = 1.0
-            player.matchup_score = 1.0
-            player.recent_form_score = 1.0
+            if missing:
+                logger.warning(f"⚠️ Missing required positions: {', '.join(missing)}")
 
-            self.players.append(player)
+            self.csv_loaded = True
 
-        logger.info(f"✅ Loaded {len(self.players)} players from CSV")
-        if has_projections:
-            # Show sample of real projections
-            logger.info("Sample projections from CSV:")
-            for p in self.players[:3]:
-                logger.info(f"  {p.name}: ${p.salary} → {p.base_projection:.1f} pts")
-
-        # Store CSV path for reference
-        self.csv_path = csv_path
-        self.csv_loaded = True
-    # ALSO ADD THIS METHOD to normalize positions when building player pool:
+        except Exception as e:
+            logger.error(f"Failed to load CSV: {e}")
+            raise
 
 
     def _normalize_positions(self):
@@ -618,78 +711,100 @@ class UnifiedCoreSystem:
             num_lineups
         )
 
-    def optimize_lineups(self, num_lineups=1, strategy='auto', contest_type='gpp', min_unique_players=3):
-        """Generate optimal lineups with proper strategy application"""
+    def optimize_lineups(self, num_lineups: int, strategy: str, contest_type: str):
+        """Optimize lineups with better diversity for small slates"""
+        logger.info(f"Optimizing {num_lineups} {contest_type} lineups...")
 
-        if not self.player_pool:
-            logger.error("No players in pool! Build player pool first.")
-            return []
+        # Score players if not already done
+        if self._last_contest_type != contest_type:
+            self.score_players(contest_type)
 
-        # Auto-select strategy if needed
-        if strategy == 'auto' or strategy is None:
-            slate_analysis = self.strategy_selector.analyze_slate_from_csv(self.player_pool)
-            strategy, reason = self.strategy_selector.select_strategy(slate_analysis, contest_type)
-            logger.info(f"Auto-selected strategy: {strategy} ({reason})")
-
-        logger.info(f"\n🎯 Optimizing {num_lineups} lineups...")
-        logger.info(f"   Strategy: {strategy}")
-        logger.info(f"   Contest Type: {contest_type}")
-        logger.info(f"   Pool size: {len(self.player_pool)} players")
-
-        # Make sure contest_type is set on the optimizer config
-        self.optimizer.config.contest_type = contest_type
-
-        # Score players first
-        self.score_players(contest_type)
-        # Fix optimization_score before optimization
-        for player in self.player_pool:
-            if not hasattr(player, 'optimization_score') or player.optimization_score == 0:
-                if contest_type == 'cash':
-                    player.optimization_score = player.cash_score
-                else:
-                    player.optimization_score = player.gpp_score
-
-        # Generate lineups
         lineups = []
         used_players = set()
 
+        # Detect small slate
+        is_small_slate = len(self.player_pool) < 300
+
         for i in range(num_lineups):
-            logger.info(f"\n   Lineup {i + 1}/{num_lineups}...")
+            # For GPP diversity
+            if contest_type == 'gpp' and i > 0:
+                if is_small_slate:
+                    # Small slate: Less aggressive exclusion
+                    min_unique = min(2, i)  # Only 2 unique per lineup
+                    exclude_threshold = 0.3  # Exclude top 30% most used
+                else:
+                    # Normal slate: More aggressive
+                    min_unique = max(3, i + 1)
+                    exclude_threshold = 0.2
 
-            # Apply diversity penalty if needed
-            if i > 0 and min_unique_players > 0:
-                self._apply_diversity_penalty(used_players, penalty=0.8)
+                # Calculate player usage
+                player_usage = {}
+                for player_name in used_players:
+                    player_usage[player_name] = player_usage.get(player_name, 0) + 1
 
-            # Optimize single lineup - calls the MILP optimizer
-            lineup_players, total_score = self.optimizer.optimize_lineup(
-                players=self.player_pool,
-                strategy=strategy,
-                manual_selections=','.join(self.manual_selections),
-                contest_type=contest_type
+                # Sort by usage
+                most_used = sorted(player_usage.items(), key=lambda x: x[1], reverse=True)
+
+                # Exclude overused players
+                num_to_exclude = int(len(most_used) * exclude_threshold)
+                exclude_names = [name for name, _ in most_used[:num_to_exclude]]
+
+                # Also randomly exclude some mid-tier players for variety
+                if i > 1 and len(self.player_pool) > 50:
+                    import random
+                    mid_tier_players = sorted(self.player_pool,
+                                              key=lambda p: p.optimization_score,
+                                              reverse=True)[10:30]
+                    random_excludes = random.sample([p.name for p in mid_tier_players],
+                                                    min(5, len(mid_tier_players)))
+                    exclude_names.extend(random_excludes)
+
+                # Filter available players
+                available_players = [p for p in self.player_pool
+                                     if p.name not in exclude_names]
+
+                logger.info(f"Lineup {i + 1}: Excluding {len(exclude_names)} players for diversity")
+
+            else:
+                available_players = self.player_pool
+
+            # Call MILP optimizer
+            result = self.milp_optimizer.optimize(
+                players=available_players,
+                config=self._get_optimizer_config(contest_type, strategy),
+                num_lineups=1
             )
 
-            if lineup_players:
+            if result and result.lineup:
                 # Track used players
-                for player in lineup_players:
+                for player in result.lineup:
                     used_players.add(player.name)
 
                 # Create lineup dict
                 lineup_dict = {
-                    'players': lineup_players,
-                    'total_projection': total_score,
-                    'total_salary': sum(p.salary for p in lineup_players),
-                    'strategy': strategy,
-                    'contest_type': contest_type
+                    'players': result.lineup,
+                    'total_score': result.total_score,
+                    'total_salary': sum(p.salary for p in result.lineup),
+                    'total_projection': result.total_score
                 }
-
                 lineups.append(lineup_dict)
-                logger.info(f"   ✓ Created lineup with score: {total_score:.2f}")
 
-            # Restore original scores after diversity penalty
-            if i > 0:
-                self._restore_original_scores()
+                logger.info(f"✅ Lineup {i + 1}: ${lineup_dict['total_salary']} - "
+                            f"{lineup_dict['total_score']:.1f} pts")
+            else:
+                logger.warning(f"Failed to generate lineup {i + 1}")
 
-        logger.info(f"\n✅ Generated {len(lineups)}/{num_lineups} lineups successfully")
+        # Log diversity stats
+        if contest_type == 'gpp' and len(lineups) > 1:
+            unique_players = len(used_players)
+            logger.info(f"\nDiversity Report:")
+            logger.info(f"  Total unique players: {unique_players}")
+            logger.info(f"  Player pool size: {len(self.player_pool)}")
+            logger.info(f"  Diversity ratio: {unique_players / len(self.player_pool) * 100:.1f}%")
+
+            if is_small_slate:
+                logger.info("  ✅ Small slate detected - adjusted diversity requirements")
+
         return lineups
 
     def verify_strategy_application(self, sample_size=5):
