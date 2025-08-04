@@ -149,3 +149,68 @@ if __name__ == "__main__":
     print(f"Pitcher-friendly: {len(get_pitcher_friendly_parks())}")
     print(f"\nMost hitter-friendly: COL = {get_park_factor('COL')}")
     print(f"Most pitcher-friendly: PIT = {get_park_factor('PIT')}")
+
+
+# Function for backward compatibility
+def get_park_factor_adjustment(team: str) -> float:
+    """Get park factor for a team (backward compatibility)"""
+    team = team.upper()
+    if team in PARK_FACTORS:
+        return PARK_FACTORS[team]["factor"]
+    return 1.0
+
+
+class ParkFactors:
+    """Park factors class for the optimizer"""
+
+    def __init__(self):
+        self.factors = PARK_FACTORS
+        self.logger = None
+        try:
+            import logging
+            self.logger = logging.getLogger(__name__)
+            self.logger.info(f"ParkFactors initialized with {len(self.factors)} stadiums")
+        except:
+            pass
+
+    def get_park_factor(self, team: str) -> float:
+        """Get park factor for a team"""
+        team = team.upper()
+        if team in self.factors:
+            return self.factors[team]["factor"]
+
+        # Try team aliases
+        team_aliases = {
+            'WSH': 'WAS',
+            'SF': 'SFG',
+            'SD': 'SDP',
+            'KC': 'KCR',
+            'TB': 'TBR',
+            'CWS': 'CHW',
+            'LA': 'LAD'
+        }
+
+        if team in team_aliases:
+            alias = team_aliases[team]
+            if alias in self.factors:
+                return self.factors[alias]["factor"]
+
+        # Default to neutral
+        if self.logger:
+            self.logger.debug(f"No park factor found for {team}, using 1.0")
+        return 1.0
+
+    def get_park_type(self, team: str) -> str:
+        """Get park type for a team"""
+        team = team.upper()
+        if team in self.factors:
+            return self.factors[team]["type"]
+        return "neutral"
+
+    def is_hitter_friendly(self, team: str) -> bool:
+        """Check if park is hitter-friendly"""
+        return self.get_park_factor(team) > 1.02
+
+    def is_pitcher_friendly(self, team: str) -> bool:
+        """Check if park is pitcher-friendly"""
+        return self.get_park_factor(team) < 0.98

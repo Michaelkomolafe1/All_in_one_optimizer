@@ -50,12 +50,12 @@ from enhanced_scoring_engine import EnhancedScoringEngine
 # Data enrichment imports with error handling
 try:
     # Try data directory first
-    from data.simple_statcast_fetcher import SimpleStatcastFetcher
+    from data.statcast_fetcher import SimpleStatcastFetcher
     STATCAST_AVAILABLE = True
 except ImportError:
     try:
         # Try current directory
-        from simple_statcast_fetcher import SimpleStatcastFetcher
+        from statcast_fetcher import SimpleStatcastFetcher
         STATCAST_AVAILABLE = True
     except ImportError:
         logger.warning("simple_statcast_fetcher not available - stats enrichment disabled")

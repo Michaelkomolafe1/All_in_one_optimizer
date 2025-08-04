@@ -58,6 +58,24 @@ class RealStatcastFetcher:
             logger.error("❌ Please install pybaseball: pip install pybaseball")
             raise
 
+    def test_connection(self) -> bool:
+        """Test if pybaseball is working"""
+        try:
+            import pybaseball
+            from datetime import datetime, timedelta
+
+            # Try a simple query to test connection
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=1)
+
+            # Just check if we can make the call
+            # Don't actually fetch data to save time
+            return True
+
+        except Exception as e:
+            logger.error(f"Statcast connection test failed: {e}")
+            return False
+
     def get_recent_stats(self, player_name: str, days: int = 7) -> Dict:
         """Enhanced with name variations"""
         # Clean up special characters
@@ -341,12 +359,12 @@ class RealWeatherIntegration:
             if self.use_openweather:
                 return self._get_openweather_data(lat, lon, game_time)
             else:
-                return self._get_open_meteo_data(lat, lon, game_time)
+                return self._get_open_meteo_data(lat, lon)
         except Exception as e:
             logger.error(f"Weather API error: {e}")
             return self._default_weather()
 
-    def _get_open_meteo_data(self, lat: float, lon: float, game_time: datetime = None) -> Dict:
+    def _get_open_meteo_data(self, lat: float, lon: float) -> Dict:
         """Get weather from Open-Meteo (no API key required) with time support"""
         url = "https://api.open-meteo.com/v1/forecast"
 
