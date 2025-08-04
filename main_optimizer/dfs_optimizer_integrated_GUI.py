@@ -32,8 +32,45 @@ from smart_confirmation import SmartConfirmationSystem
 from enhanced_gui_display import EnhancedGUIDisplay
 from enhanced_scoring_engine import EnhancedScoringEngine
 
+
 # ========== FIX 1: PROJECTION LOADING ==========
-# ========== FIX 4: SCORING DISPLAY ==========
+def fix_projection_loading():
+    """Ensure projections are loaded from CSV"""
+    _orig_load = UnifiedCoreSystem.load_players_from_csv
+
+    def new_load_csv(self, csv_path):
+        _orig_load(self, csv_path)
+
+        # Re-read CSV to get projections
+        df = pd.read_csv(csv_path)
+
+        # Create a name-to-projection mapping
+        proj_map = {}
+        for _, row in df.iterrows():
+            name = row.get('Name', '')
+            # Try different column names for projections
+            proj = row.get('AvgPointsPerGame', 0)
+            if proj == 0:
+                proj = row.get('Projection', 0)
+            if proj == 0:
+                proj = row.get('Points', 0)
+
+            if name and proj:
+                proj_map[name] = float(proj)
+
+        # Apply to players
+        for player in self.players:
+            if player.name in proj_map:
+                player.base_projection = proj_map[player.name]
+                player.dff_projection = proj_map[player.name]  # Also set this
+                player.projection = proj_map[player.name]  # And this
+
+        print(f"Loaded projections for {len(proj_map)} players")
+
+    UnifiedCoreSystem.load_players_from_csv = new_load_csv
+
+
+# ========== FIX 2: SCORING DISPLAY ==========
 def fix_scoring_display(UnifiedCoreSystem):
     """Fix the scoring to store calculated values on player objects"""
     _orig_score_players = UnifiedCoreSystem.score_players
@@ -71,27 +108,7 @@ def fix_scoring_display(UnifiedCoreSystem):
     UnifiedCoreSystem.score_players = _new_score_players
 
 
-# Apply the fix
-fix_scoring_display(UnifiedCoreSystem)
-
-# ========== FIX 1: PROJECTION LOADING ==========
-# Fix projection loading from CSV
-_orig_load_csv = UnifiedCoreSystem.load_players_from_csv
-
-
-def _fixed_load_csv(self, csv_path):
-    _orig_load_csv(self, csv_path)
-    df = pd.read_csv(csv_path)
-    for p in self.players:
-        row = df[df['Name'] == p.name]
-        if not row.empty:
-            p.base_projection = float(row.iloc[0].get('AvgPointsPerGame', 0))
-
-
-UnifiedCoreSystem.load_players_from_csv = _fixed_load_csv
-
-
-# ========== FIX 5: ADD REAL DATA ENRICHMENTS ==========
+# ========== FIX 3: REAL DATA ENRICHMENTS ==========
 def add_real_enrichments(UnifiedCoreSystem):
     """Add REAL data enrichments using actual APIs"""
     _orig_enrich = UnifiedCoreSystem.enrich_player_pool
@@ -279,11 +296,7 @@ def add_real_enrichments(UnifiedCoreSystem):
     UnifiedCoreSystem._set_default_enrichments = _set_default_enrichments
 
 
-# Apply the fix (add after other fixes)
-add_real_enrichments(UnifiedCoreSystem)
-
-
-# ========== FIX 2: ENRICHMENT ATTRIBUTES ==========
+# ========== FIX 4: ENRICHMENT ATTRIBUTES ==========
 def fix_player_enrichment(system):
     """Fix attribute names after enrichment to match scoring engine expectations"""
     for player in system.player_pool:
@@ -307,7 +320,7 @@ def fix_player_enrichment(system):
                 player.batting_order = 8
 
 
-# ========== FIX 3: SCORING THRESHOLDS ==========
+# ========== FIX 5: SCORING THRESHOLDS ==========
 # Fix GPP scoring thresholds for better player differentiation
 _orig_ese_init = EnhancedScoringEngine.__init__
 
@@ -326,21 +339,8 @@ def _new_ese_init(self):
 
 EnhancedScoringEngine.__init__ = _new_ese_init
 
-# ========== STRATEGY REGISTRY ==========
-STRATEGY_REGISTRY = {
-    'cash': {
-        'small': 'build_projection_monster',
-        'medium': 'build_pitcher_dominance',
-        'large': 'build_pitcher_dominance'
-    },
-    'gpp': {
-        'small': 'build_correlation_value',
-        'medium': 'build_truly_smart_stack',
-        'large': 'build_matchup_leverage_stack'
-    }
-}
 
-
+# ========== FIX 6: SCORING TO USE ENRICHMENTS ==========
 def fix_scoring_to_use_enrichments(EnhancedScoringEngine):
     """Modify scoring engine to actually use our enrichments"""
 
@@ -359,12 +359,10 @@ def fix_scoring_to_use_enrichments(EnhancedScoringEngine):
         # === APPLY REAL ENRICHMENTS ===
 
         # 1. Recent Form (most important for cash)
-        # If player is hot (>1.2) or cold (<0.8), it matters
         recent_form = getattr(player, 'recent_form', 1.0)
         score *= recent_form
 
         # 2. Consistency (critical for cash games)
-        # High consistency = more reliable for cash
         consistency = getattr(player, 'consistency_score', 1.0)
         score *= consistency
 
@@ -393,6 +391,106 @@ def fix_scoring_to_use_enrichments(EnhancedScoringEngine):
 
         if score == 0:
             return 0
+
+        # === APPLY REAL ENRICHMENTS ===
+
+        # 1. Vegas Team Total (existing)
+        vegas_total = getattr(player, 'implied_team_score', 4.5)
+        if vegas_total >= self.gpp_params['threshold_high']:
+            score *= self.gpp_params['mult_high']
+        elif vegas_total >= self.gpp_params['threshold_med']:
+            score *= self.gpp_params['mult_med']
+        elif vegas_total >= self.gpp_params['threshold_low']:
+            score *= self.gpp_params['mult_low']
+        else:
+            score *= self.gpp_params['mult_none']
+
+        # 2. Recent Form (more extreme for GPP)
+        recent_form = getattr(player, 'recent_form', 1.0)
+        if recent_form > 1.3:  # Very hot
+            score *= 1.25  # Big boost for ceiling
+        elif recent_form > 1.15:  # Hot
+            score *= 1.15
+        elif recent_form < 0.7:  # Very cold
+            score *= 0.6  # Big penalty
+        elif recent_form < 0.85:  # Cold
+            score *= 0.8
+        else:
+            score *= recent_form
+
+        # 3. Park + Weather Combined (huge for GPP)
+        park = getattr(player, 'park_factor', 1.0)
+        weather = getattr(player, 'weather_impact', 1.0)
+        environmental = park * weather
+
+        if environmental > 1.3:  # Coors + hot day
+            score *= 1.3  # Huge ceiling boost
+        elif environmental > 1.15:
+            score *= 1.15
+        elif environmental < 0.85:  # Oracle + cold
+            score *= 0.85
+        else:
+            score *= environmental
+
+        # 4. Batting Order (existing boost)
+        if not player.is_pitcher and hasattr(player, 'batting_order'):
+            if player.batting_order and player.batting_order <= self.gpp_params['batting_positions']:
+                score *= self.gpp_params['batting_boost']
+
+        # 5. Statcast Bonuses (if available from real data)
+        if hasattr(player, 'recent_barrel_rate') and player.recent_barrel_rate > 0:
+            if player.recent_barrel_rate >= 15:  # Elite barrel rate
+                score *= 1.1
+
+        if hasattr(player, 'recent_exit_velo') and player.recent_exit_velo > 0:
+            if player.recent_exit_velo >= 92:  # Hard contact
+                score *= 1.05
+
+        # 6. Pitcher adjustments
+        if player.is_pitcher:
+            # Recent velocity/whiff rate
+            if hasattr(player, 'recent_whiff_rate') and player.recent_whiff_rate > 30:
+                score *= 1.1  # Elite strikeout potential
+
+        return score
+
+    # Replace methods
+    EnhancedScoringEngine.score_player_cash = new_score_player_cash
+    EnhancedScoringEngine.score_player_gpp = new_score_player_gpp
+
+    print("✅ Scoring engine updated to use real enrichments!")
+
+
+# ========== APPLY ALL FIXES IN ORDER ==========
+# 1. Fix projection loading
+fix_projection_loading()
+
+# 2. Try to import and apply scoring integration fixes
+try:
+    from fix_scoring_integration import fix_all_scoring_issues
+
+    fix_all_scoring_issues()
+except ImportError:
+    print("Warning: fix_scoring_integration.py not found - using inline fixes")
+
+# 3. Apply other fixes
+fix_scoring_display(UnifiedCoreSystem)
+add_real_enrichments(UnifiedCoreSystem)
+fix_scoring_to_use_enrichments(EnhancedScoringEngine)
+
+# ========== STRATEGY REGISTRY ==========
+STRATEGY_REGISTRY = {
+    'cash': {
+        'small': 'build_projection_monster',
+        'medium': 'build_pitcher_dominance',
+        'large': 'build_pitcher_dominance'
+    },
+    'gpp': {
+        'small': 'build_correlation_value',
+        'medium': 'build_truly_smart_stack',
+        'large': 'build_matchup_leverage_stack'
+    }
+}
 
         # === APPLY REAL ENRICHMENTS ===
 
@@ -569,7 +667,11 @@ class PlayerPoolModel(QAbstractTableModel):
                 return f"{player.base_projection:.1f}"
             elif col == 6:
                 # Vegas Total for the team
-                vegas = getattr(player, 'implied_team_score', getattr(player, 'team_total', 4.5))
+                vegas = getattr(player, 'implied_team_score', None)
+                if vegas is None:
+                    vegas = getattr(player, 'team_total', None)
+                if vegas is None:
+                    vegas = 4.5  # Default value
                 return f"{vegas:.1f}"
             elif col == 7:
                 # ACTUAL CALCULATED SCORE (the fix!)
@@ -915,6 +1017,11 @@ class DFSOptimizerGUI(QMainWindow):
 
         layout.addWidget(contest_group)
 
+        # In create_control_panel(), add:
+        self.diagnose_btn = QPushButton("🔍 Diagnose Issues")
+        self.diagnose_btn.clicked.connect(self.diagnose_system)
+        actions_layout.addWidget(self.diagnose_btn)
+
         # Action Buttons
         actions_group = QGroupBox("4. Actions")
         actions_layout = QVBoxLayout(actions_group)
@@ -982,6 +1089,52 @@ class DFSOptimizerGUI(QMainWindow):
         layout.addStretch()
 
         return panel
+
+    def diagnose_system(self):
+        """Diagnose common issues"""
+        self.log("\n=== SYSTEM DIAGNOSIS ===", "warning")
+
+        # Check 1: Players loaded
+        if not self.system.players:
+            self.log("❌ No players loaded from CSV", "error")
+            return
+
+        self.log(f"✅ {len(self.system.players)} players loaded", "success")
+
+        # Check 2: Player pool
+        if not self.system.player_pool:
+            self.log("❌ No player pool built", "error")
+            return
+
+        self.log(f"✅ {len(self.system.player_pool)} players in pool", "success")
+
+        # Check 3: Projections
+        sample = self.system.player_pool[:5]
+        self.log("\nSample player projections:", "info")
+        for p in sample:
+            base = getattr(p, 'base_projection', 'MISSING')
+            self.log(f"  {p.name}: {base}", "info")
+
+        # Check 4: Enrichments
+        p = self.system.player_pool[0]
+        self.log(f"\nEnrichments for {p.name}:", "info")
+        self.log(f"  Vegas: {getattr(p, 'implied_team_score', 'MISSING')}", "info")
+        self.log(f"  Park: {getattr(p, 'park_factor', 'MISSING')}", "info")
+        self.log(f"  Weather: {getattr(p, 'weather_impact', 'MISSING')}", "info")
+        self.log(f"  Form: {getattr(p, 'recent_form', 'MISSING')}", "info")
+
+        # Check 5: Try scoring
+        if hasattr(self.system, 'scoring_engine'):
+            try:
+                cash_score = self.system.scoring_engine.score_player_cash(p)
+                gpp_score = self.system.scoring_engine.score_player_gpp(p)
+                self.log(f"\nTest scoring for {p.name}:", "info")
+                self.log(f"  Cash: {cash_score}", "info")
+                self.log(f"  GPP: {gpp_score}", "info")
+            except Exception as e:
+                self.log(f"❌ Scoring error: {e}", "error")
+        else:
+            self.log("❌ No scoring engine!", "error")
 
     def export_lineup_summary(self):
         """Export lineup summary for easy tracking"""
