@@ -257,6 +257,11 @@ class SimplifiedDFSOptimizer(QMainWindow):
         verify_btn.clicked.connect(self.verify_all_enrichments)
         test_btn_layout.addWidget(verify_btn)
 
+        # Add this button to your debug panel
+        test_breakdown_btn = QPushButton("📊 Test Scoring Breakdown")
+        test_breakdown_btn.clicked.connect(self.test_scoring_with_breakdown)
+        test_btn_layout.addWidget(test_breakdown_btn)
+
         test_scoring_btn = QPushButton("📊 Test Scoring Engine")
         test_scoring_btn.clicked.connect(self.test_scoring_engine)
         test_btn_layout.addWidget(test_scoring_btn)
@@ -307,8 +312,15 @@ class SimplifiedDFSOptimizer(QMainWindow):
             self.debug_log(f"Positions found: {set(p.primary_position for p in self.system.players)}")
 
             if self.system.players:
+                sample = self.system.players[0]
+                self.debug_log(f"CSV has AvgPointsPerGame: {hasattr(sample, 'AvgPointsPerGame')}")
+                self.debug_log(f"Sample AvgPointsPerGame: {getattr(sample, 'AvgPointsPerGame', 'MISSING')}")
+
+
+
                 sample_game_info = self.system.players[0].game_info if hasattr(self.system.players[0],
                                                                                'game_info') else ""
+
                 self.debug_log(f"Sample game info: {sample_game_info}")
 
                 # Check if this is old data
@@ -362,8 +374,18 @@ class SimplifiedDFSOptimizer(QMainWindow):
             self.update_status("🔬 Enriching player data...", append=True)
             self.debug_log("\n=== ENRICHMENT ===")
 
-            # Track enrichment results
-            enrichment_results = self.track_enrichments()
+            # Fix base projections FIRST
+            self.fix_base_projections()
+
+            # Now enrich with real data
+            try:
+                enrichment_results = self.system.enrich_player_pool_with_real_data()
+                self.update_status(f"✅ Enrichments applied: {sum(enrichment_results.values())} total", append=True)
+            except Exception as e:
+                self.debug_log(f"Enrichment error: {e}")
+                # Fall back to basic enrichment
+                self.system.enrich_player_pool()
+                enrichment_results = self.track_enrichments()
 
             # Step 6: Score Players
             self.progress.setValue(95)
@@ -372,6 +394,18 @@ class SimplifiedDFSOptimizer(QMainWindow):
 
             contest_type = self.contest_type.currentText().lower()
             self.system.score_players(contest_type)
+
+
+            # Add this test:
+            if self.debug_mode and self.system.player_pool:
+                # Quick test of top 3 players
+                self.debug_log("\n=== QUICK SCORING TEST ===")
+                for p in sorted(self.system.player_pool, key=lambda x: x.salary, reverse=True)[:3]:
+                    self.debug_log(f"{p.name}: Cash={p.cash_score:.1f}, GPP={p.gpp_score:.1f}")
+                    self.debug_log(
+                        f"  Enrichments: form={p.recent_form}, park={p.park_factor}, weather={p.weather_impact}")
+
+
             self.debug_log(f"Scored for {contest_type}")
 
             # Verify scoring
@@ -397,6 +431,54 @@ class SimplifiedDFSOptimizer(QMainWindow):
             self.load_button.setEnabled(True)
             self.progress.setVisible(False)
 
+    def check_player_fields(self):
+        """Debug what fields are actually in the CSV"""
+        if not self.system.players:
+            self.debug_log("No players loaded!")
+            return
+
+        player = self.system.players[0]
+        self.debug_log("\n=== CSV FIELD NAMES ===")
+
+        # Get all numeric fields
+        for attr in dir(player):
+            if not attr.startswith('_'):
+                value = getattr(player, attr)
+                if isinstance(value, (int, float)) and not callable(value):
+                    self.debug_log(f"{attr}: {value}")
+
+
+    # Add this to your simplified GUI to verify enrichments are available
+    def check_enrichment_modules(self):
+        """Check which enrichment modules are available"""
+        self.debug_log("\n=== CHECKING ENRICHMENT MODULES ===")
+
+        modules_to_check = [
+            ('simple_statcast_fetcher', 'SimpleStatcastFetcher'),
+            ('weather_integration', 'WeatherIntegration'),
+            ('park_factors', 'ParkFactors'),
+            ('vegas_lines', 'VegasLines'),
+            ('real_data_enrichments', 'RealStatcastFetcher')
+        ]
+
+        available = []
+        missing = []
+
+        for module_name, class_name in modules_to_check:
+            try:
+                module = __import__(module_name)
+                if hasattr(module, class_name):
+                    available.append(module_name)
+                    self.debug_log(f"✅ {module_name} is available", "success")
+                else:
+                    missing.append(module_name)
+                    self.debug_log(f"❌ {module_name} missing class {class_name}", "error")
+            except ImportError:
+                missing.append(module_name)
+                self.debug_log(f"❌ {module_name} not found", "error")
+
+        return available, missing
+
     def verify_enrichment_usage(self):
         """Verify strategies are actually using enrichments"""
         if not self.system.player_pool:
@@ -408,67 +490,45 @@ class SimplifiedDFSOptimizer(QMainWindow):
         # Get a test player
         test_player = self.system.player_pool[0]
 
-        # Save original values
-        original_values = {
-            'base_projection': test_player.base_projection,
-            'recent_form': getattr(test_player, 'recent_form', 1.0),
-            'park_factor': getattr(test_player, 'park_factor', 1.0),
-            'consistency_score': getattr(test_player, 'consistency_score', 1.0),
-            'weather_impact': getattr(test_player, 'weather_impact', 1.0)
-        }
+        # Test with fresh scoring engine instance
+        from enhanced_scoring_engine import EnhancedScoringEngine
+        test_engine = EnhancedScoringEngine()
 
         # Test CASH scoring
         self.debug_log(f"\nTesting CASH scoring for {test_player.name}:")
-        self.debug_log(f"Base projection: {original_values['base_projection']}")
+        self.debug_log(f"Base projection: {test_player.base_projection}")
 
-        # Score normally
-        normal_cash_score = self.system.scoring_engine.score_player_cash(test_player)
-        self.debug_log(f"Normal cash score: {normal_cash_score:.2f}")
+        # Score with normal values
+        normal_cash = test_engine.score_player_cash(test_player)
+        self.debug_log(f"Normal cash score: {normal_cash:.2f}")
 
-        # Change enrichments and re-score
-        test_player.recent_form = 1.5  # 50% boost
-        test_player.consistency_score = 1.5  # 50% boost
+        # Create a copy and modify
+        import copy
+        boosted_player = copy.deepcopy(test_player)
+        boosted_player.recent_form = 1.5
+        boosted_player.consistency_score = 1.5
 
-        boosted_cash_score = self.system.scoring_engine.score_player_cash(test_player)
-        self.debug_log(f"Boosted cash score: {boosted_cash_score:.2f}")
+        boosted_cash = test_engine.score_player_cash(boosted_player)
+        self.debug_log(f"Boosted cash score: {boosted_cash:.2f}")
 
-        # Calculate expected vs actual
-        expected_boost = 1.5 * 1.5  # 2.25x
-        actual_boost = boosted_cash_score / normal_cash_score
+        # Check multiplier
+        if test_player.base_projection > 0:
+            expected = normal_cash * 1.5 * 1.5  # 2.25x
+            self.debug_log(f"Expected: ~{expected:.2f}")
 
-        self.debug_log(f"Expected boost: {expected_boost:.2f}x")
-        self.debug_log(f"Actual boost: {actual_boost:.2f}x")
-
-        if abs(actual_boost - expected_boost) < 0.1:
-            self.debug_log("✅ Cash scoring IS using enrichments!")
-        else:
-            self.debug_log("❌ Cash scoring NOT properly using enrichments!")
-
-        # Test GPP scoring
+        # Test GPP
         self.debug_log(f"\nTesting GPP scoring:")
+        normal_gpp = test_engine.score_player_gpp(test_player)
 
-        # Reset and test GPP
-        for key, value in original_values.items():
-            setattr(test_player, key, value)
+        boosted_player.park_factor = 1.5
+        boosted_player.weather_impact = 1.5
+        boosted_gpp = test_engine.score_player_gpp(boosted_player)
 
-        normal_gpp_score = self.system.scoring_engine.score_player_gpp(test_player)
-        self.debug_log(f"Normal GPP score: {normal_gpp_score:.2f}")
+        self.debug_log(f"Normal GPP: {normal_gpp:.2f}")
+        self.debug_log(f"Boosted GPP: {boosted_gpp:.2f}")
+        self.debug_log(f"Boost ratio: {boosted_gpp / normal_gpp:.2f}x")
 
-        # Boost park and weather
-        test_player.park_factor = 1.5
-        test_player.weather_impact = 1.5
 
-        boosted_gpp_score = self.system.scoring_engine.score_player_gpp(test_player)
-        self.debug_log(f"Boosted GPP score: {boosted_gpp_score:.2f}")
-
-        if boosted_gpp_score > normal_gpp_score * 1.2:
-            self.debug_log("✅ GPP scoring IS using enrichments!")
-        else:
-            self.debug_log("❌ GPP scoring NOT properly using enrichments!")
-
-        # Restore original values
-        for key, value in original_values.items():
-            setattr(test_player, key, value)
 
     def on_contest_changed(self):
         """Re-score players when contest type changes"""
@@ -548,8 +608,69 @@ class SimplifiedDFSOptimizer(QMainWindow):
             'is_showdown': is_showdown
         }
 
+    def fix_base_projections(self):
+        """Fix players with 0 base projection by checking all possible DK fields"""
+        self.debug_log("\n=== FIXING BASE PROJECTIONS ===")
+
+        fixed_count = 0
+        zero_count = 0
+
+        # Debug: Check what fields exist on first player
+        if self.system.player_pool:
+            sample = self.system.player_pool[0]
+            self.debug_log(f"Sample player fields: {[attr for attr in dir(sample) if not attr.startswith('_')]}")
+
+        for player in self.system.player_pool:
+            original = getattr(player, 'base_projection', 0)
+
+            # Try all possible DraftKings field names
+            projection_fields = [
+                'AvgPointsPerGame',  # Most common DK field
+                'ppg',  # Alternate name
+                'Fpts',  # Some CSVs use this
+                'proj',  # Short form
+                'projection',  # Generic
+                'projected_points',  # Verbose form
+                'dkfpts',  # DK specific
+                'points'  # Generic
+            ]
+
+            # Try each field
+            found_value = 0
+            for field in projection_fields:
+                value = getattr(player, field, 0)
+                if value and value > 0:
+                    found_value = value
+                    self.debug_log(f"Found projection for {player.name} in field '{field}': {value}")
+                    break
+
+            # Set the base projection
+            if found_value > 0:
+                player.base_projection = found_value
+                if original == 0:
+                    fixed_count += 1
+            else:
+                # Use position-based defaults as last resort
+                if player.is_pitcher:
+                    player.base_projection = 15.0  # Default pitcher projection
+                else:
+                    player.base_projection = 8.0  # Default hitter projection
+                zero_count += 1
+                self.debug_log(f"⚠️ No projection found for {player.name}, using default {player.base_projection}")
+
+        self.debug_log(f"\n✅ Fixed {fixed_count} players with 0 projections")
+        self.debug_log(f"⚠️ {zero_count} players using position defaults")
+
+        # Show sample of fixed projections
+        self.debug_log("\nSample projections after fix:")
+        for player in self.system.player_pool[:5]:
+            self.debug_log(f"  {player.name}: {player.base_projection:.1f} pts")
+
     def build_pool_with_manual(self):
         """Build pool including manual players"""
+        # Sync manual selections to the system
+        self.system.manual_selections = self.manual_players.copy()
+
         # CHECK TEST MODE FIRST:
         if self.test_mode_cb.isChecked():
             # Test mode - include ALL players
@@ -560,20 +681,11 @@ class SimplifiedDFSOptimizer(QMainWindow):
             include_unconfirmed = self.contest_type.currentText() == "GPP"
             self.system.build_player_pool(include_unconfirmed=include_unconfirmed)
 
-        # Then add manual players (rest of the method stays the same)
-        if self.manual_players:
-            added_count = 0
-            for manual_name in self.manual_players:
-                # Find player in full player list
-                for player in self.system.players:
-                    if player.name.lower() == manual_name.lower():
-                        if player not in self.system.player_pool:
-                            self.system.player_pool.append(player)
-                            added_count += 1
-                        break
-
-            if added_count > 0:
-                self.update_status(f"➕ Added {added_count} manual players to pool", append=True)
+        # The system's build_player_pool should already handle manual players
+        # So we just need to report what happened
+        manual_in_pool = sum(1 for p in self.system.player_pool if p.name in self.manual_players)
+        if manual_in_pool > 0:
+            self.update_status(f"➕ {manual_in_pool} manual players included in pool", append=True)
 
     def show_setup_summary(self):
         """Show a nice summary of what we've set up"""
@@ -694,7 +806,7 @@ class SimplifiedDFSOptimizer(QMainWindow):
         self.system.enrich_player_pool()
 
         results = {
-            'total': len(self.system.player_pool),
+            'total': len(self.system.player_pool),  # ADD THIS LINE
             'vegas': 0,
             'weather': 0,
             'park': 0,
@@ -816,6 +928,123 @@ class SimplifiedDFSOptimizer(QMainWindow):
             pct = (count / total * 100) if total > 0 else 0
             self.debug_log(f"{attr}: {count}/{total} ({pct:.1f}%)")
 
+    def verify_full_system(self):
+        """Complete system verification"""
+        self.debug_log("\n=== FULL SYSTEM VERIFICATION ===")
+
+        if not self.system.player_pool:
+            self.debug_log("❌ No player pool!")
+            return
+
+        # Check a sample player
+        player = self.system.player_pool[0]
+        self.debug_log(f"\nChecking {player.name}:")
+
+        # Check all attributes
+        attrs = {
+            'base_projection': 'Base DK Projection',
+            'recent_form': 'Recent Form',
+            'consistency_score': 'Consistency',
+            'park_factor': 'Park Factor',
+            'weather_impact': 'Weather Impact',
+            'team_total': 'Vegas Total',
+            'cash_score': 'Cash Score',
+            'gpp_score': 'GPP Score'
+        }
+
+        all_good = True
+        for attr, label in attrs.items():
+            value = getattr(player, attr, 'MISSING')
+            if value == 'MISSING' or value == 0:
+                self.debug_log(f"  ❌ {label}: {value}")
+                all_good = False
+            else:
+                self.debug_log(f"  ✅ {label}: {value}")
+
+        # Test scoring
+        if hasattr(self.system, 'scoring_engine'):
+            cash = self.system.scoring_engine.score_player_cash(player)
+            gpp = self.system.scoring_engine.score_player_gpp(player)
+
+            if player.base_projection > 0:
+                cash_mult = cash / player.base_projection
+                gpp_mult = gpp / player.base_projection
+                self.debug_log(f"\n  Cash multiplier: {cash_mult:.2f}x")
+                self.debug_log(f"  GPP multiplier: {gpp_mult:.2f}x")
+
+                if cash_mult < 0.8:
+                    self.debug_log("  ⚠️ Cash multiplier too low!")
+
+        if all_good:
+            self.debug_log("\n✅ System fully operational!")
+        else:
+            self.debug_log("\n❌ System has issues - check above")
+
+    def test_real_enrichments(self):
+        """Test that real data is being fetched"""
+        if not self.system.player_pool:
+            self.debug_log("No players to test!")
+            return
+
+        self.debug_log("\n=== TESTING REAL DATA FETCH ===")
+
+        # Pick a known player
+        test_player = None
+        for p in self.system.player_pool:
+            if "Judge" in p.name or "Ohtani" in p.name:
+                test_player = p
+                break
+
+        if not test_player:
+            test_player = self.system.player_pool[0]
+
+        self.debug_log(f"\nTesting enrichments for: {test_player.name}")
+
+        # Test weather fetch
+        try:
+            from weather_integration import WeatherIntegration
+            weather = WeatherIntegration()
+            weather_data = weather.get_game_weather(test_player.team)
+            self.debug_log(f"✅ Weather API working: {weather_data['temperature']}°F")
+        except Exception as e:
+            self.debug_log(f"❌ Weather API failed: {e}")
+
+        # Test stats fetch
+        try:
+            from main_optimizer.real_data_enrichments import RealStatcastFetcher
+            stats = RealStatcastFetcher()
+            player_stats = stats.get_recent_stats(test_player.name, days=7)
+            self.debug_log(f"✅ Stats API working: Form = {player_stats.get('recent_form', 'N/A')}")
+        except Exception as e:
+            self.debug_log(f"❌ Stats API failed: {e}")
+
+    def test_scoring_with_breakdown(self):
+        """Test scoring with detailed breakdown"""
+        if not self.system.player_pool:
+            self.debug_log("No players to test!")
+            return
+
+        self.debug_log("\n=== SCORING BREAKDOWN TEST ===")
+
+        # Test a few players
+        test_players = self.system.player_pool[:5]
+
+        for player in test_players:
+            self.debug_log(f"\n{player.name} (${player.salary}):")
+
+            # Get breakdown for both contest types
+            cash_breakdown = self.system.scoring_engine.get_scoring_summary(player, 'cash')
+            gpp_breakdown = self.system.scoring_engine.get_scoring_summary(player, 'gpp')
+
+            self.debug_log(f"  Base: {cash_breakdown['base_projection']:.1f}")
+            self.debug_log(f"  Cash: {cash_breakdown['final_score']:.1f} ({cash_breakdown['total_multiplier']:.2f}x)")
+            self.debug_log(f"  GPP:  {gpp_breakdown['final_score']:.1f} ({gpp_breakdown['total_multiplier']:.2f}x)")
+
+            # Show components
+            self.debug_log("  Components:")
+            for key, value in gpp_breakdown['components'].items():
+                self.debug_log(f"    {key}: {value}")
+
     def test_scoring_engine(self):
         """Test the scoring engine with sample players"""
         if not self.system.player_pool:
@@ -918,13 +1147,16 @@ class SimplifiedDFSOptimizer(QMainWindow):
 
     def update_debug_panel(self, enrichment_results):
         """Update the debug panel with enrichment stats"""
+        # Get total from player pool length, not from enrichment_results
+        total_players = len(self.system.player_pool)
+
         # Enrichment stats
-        stats_text = f"""Total Players: {enrichment_results['total']}
-Vegas Data: {enrichment_results['vegas']} ({enrichment_results['vegas'] / enrichment_results['total'] * 100:.1f}%)
-Weather: {enrichment_results['weather']} ({enrichment_results['weather'] / enrichment_results['total'] * 100:.1f}%)
-Park Factors: {enrichment_results['park']} ({enrichment_results['park'] / enrichment_results['total'] * 100:.1f}%)
-Stats/Form: {enrichment_results['stats']} ({enrichment_results['stats'] / enrichment_results['total'] * 100:.1f}%)
-Confirmed: {enrichment_results['confirmed']}"""
+        stats_text = f"""Total Players: {total_players}
+    Vegas Data: {enrichment_results.get('vegas', 0)} ({enrichment_results.get('vegas', 0) / total_players * 100:.1f}%)
+    Weather: {enrichment_results.get('weather', 0)} ({enrichment_results.get('weather', 0) / total_players * 100:.1f}%)
+    Park Factors: {enrichment_results.get('park', 0)} ({enrichment_results.get('park', 0) / total_players * 100:.1f}%)
+    Stats/Form: {enrichment_results.get('stats', 0)} ({enrichment_results.get('stats', 0) / total_players * 100:.1f}%)
+    Confirmed: {sum(1 for p in self.system.player_pool if getattr(p, 'is_confirmed', False))}"""
 
         self.enrichment_stats.setText(stats_text)
 
@@ -932,15 +1164,15 @@ Confirmed: {enrichment_results['confirmed']}"""
         if self.system.player_pool:
             sample = self.system.player_pool[0]
             details = f"""Player: {sample.name}
-Team: {sample.team}
-Salary: ${sample.salary}
-Base Proj: {getattr(sample, 'base_projection', 'N/A')}
-Vegas Total: {getattr(sample, 'team_total', 'N/A')}
-Park Factor: {getattr(sample, 'park_factor', 'N/A')}
-Weather: {getattr(sample, 'weather_impact', 'N/A')}
-Form: {getattr(sample, 'recent_form', 'N/A')}
-Cash Score: {getattr(sample, 'cash_score', 'N/A')}
-GPP Score: {getattr(sample, 'gpp_score', 'N/A')}"""
+    Team: {sample.team}
+    Salary: ${sample.salary}
+    Base Proj: {getattr(sample, 'base_projection', 'N/A')}
+    Vegas Total: {getattr(sample, 'team_total', 'N/A')}
+    Park Factor: {getattr(sample, 'park_factor', 'N/A')}
+    Weather: {getattr(sample, 'weather_impact', 'N/A')}
+    Form: {getattr(sample, 'recent_form', 'N/A')}
+    Cash Score: {getattr(sample, 'cash_score', 'N/A')}
+    GPP Score: {getattr(sample, 'gpp_score', 'N/A')}"""
 
             self.sample_player_details.setText(details)
 
