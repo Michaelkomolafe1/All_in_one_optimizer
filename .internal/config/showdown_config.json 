@@ -1,0 +1,15 @@
+{
+  "base_on": "gpp",
+  "modifications": {
+    "captain_multiplier": 1.5,
+    "use_util_prices": true,
+    "max_from_team": 6,
+    "min_opposing_players": 1,
+    "captain_ownership_boost": 1.2
+  },
+  "constraints": {
+    "exactly_one_captain": true,
+    "exactly_five_util": true,
+    "total_players": 6
+  }
+}
