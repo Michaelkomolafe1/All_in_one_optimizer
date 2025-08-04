@@ -595,6 +595,96 @@ class DFSOptimizerGUI(QMainWindow):
         else:
             self.log("❌ No scoring engine!", "error")
 
+    def verify_all_enrichments(self):
+        """Verify ALL enrichments are being applied correctly"""
+        if not self.system.player_pool:
+            self.log("No player pool to verify!", "error")
+            return
+
+        self.log("\n🔬 === COMPLETE ENRICHMENT VERIFICATION ===", "warning")
+
+        # Pick different player types for testing
+        test_players = {
+            'pitcher': next((p for p in self.system.player_pool if p.is_pitcher), None),
+            'high_salary': max(self.system.player_pool, key=lambda p: p.salary),
+            'min_salary': min(self.system.player_pool, key=lambda p: p.salary),
+            'random': self.system.player_pool[len(self.system.player_pool) // 2]
+        }
+
+        for player_type, player in test_players.items():
+            if not player:
+                continue
+
+            self.log(f"\n📊 {player_type.upper()}: {player.name} (${player.salary})", "info")
+
+            # Check ALL enrichments
+            enrichments = {
+                'base_projection': getattr(player, 'base_projection', 'MISSING'),
+                'team_total': getattr(player, 'team_total', 'MISSING'),
+                'park_factor': getattr(player, 'park_factor', 'MISSING'),
+                'weather_impact': getattr(player, 'weather_impact', 'MISSING'),
+                'recent_form': getattr(player, 'recent_form', 'MISSING'),
+                'consistency_score': getattr(player, 'consistency_score', 'MISSING'),
+                'matchup_score': getattr(player, 'matchup_score', 'MISSING'),
+                'batting_order': getattr(player, 'batting_order', 'MISSING'),
+                'is_confirmed': getattr(player, 'is_confirmed', False)
+            }
+
+            # Display all enrichments
+            for key, value in enrichments.items():
+                if value == 'MISSING':
+                    self.log(f"  ❌ {key}: MISSING", "error")
+                else:
+                    self.log(f"  ✓ {key}: {value}", "success")
+
+            # Calculate what the scores SHOULD be
+            if hasattr(self.system, 'scoring_engine'):
+                try:
+                    # Get both scores
+                    cash_calc = self.system.scoring_engine.score_player_cash(player)
+                    gpp_calc = self.system.scoring_engine.score_player_gpp(player)
+
+                    # Get stored scores
+                    cash_stored = getattr(player, 'cash_score', 'NOT SET')
+                    gpp_stored = getattr(player, 'gpp_score', 'NOT SET')
+
+                    self.log(f"\n  💰 CASH SCORING:", "warning")
+                    self.log(f"    Calculated: {cash_calc:.2f}", "info")
+                    self.log(f"    Stored: {cash_stored}", "info")
+                    self.log(f"    Match: {'✓' if abs(cash_calc - cash_stored) < 0.01 else '❌'}",
+                             "success" if abs(cash_calc - cash_stored) < 0.01 else "error")
+
+                    self.log(f"\n  🎯 GPP SCORING:", "warning")
+                    self.log(f"    Calculated: {gpp_calc:.2f}", "info")
+                    self.log(f"    Stored: {gpp_stored}", "info")
+
+                    # Show the multiplier effect
+                    if player.base_projection > 0:
+                        cash_mult = cash_calc / player.base_projection
+                        gpp_mult = gpp_calc / player.base_projection
+                        self.log(f"\n  📈 Multiplier Effect:", "warning")
+                        self.log(f"    Cash: {cash_mult:.2f}x", "info")
+                        self.log(f"    GPP: {gpp_mult:.2f}x", "info")
+
+                except Exception as e:
+                    self.log(f"  ❌ Scoring error: {e}", "error")
+
+        # Summary check
+        self.log("\n📋 ENRICHMENT SUMMARY:", "warning")
+        missing_counts = {}
+
+        for player in self.system.player_pool:
+            for attr in ['team_total', 'park_factor', 'weather_impact', 'recent_form']:
+                if not hasattr(player, attr) or getattr(player, attr) == 'MISSING':
+                    missing_counts[attr] = missing_counts.get(attr, 0) + 1
+
+        if missing_counts:
+            self.log("Missing enrichments:", "error")
+            for attr, count in missing_counts.items():
+                self.log(f"  - {attr}: {count} players", "error")
+        else:
+            self.log("✓ All enrichments present!", "success")
+
     def export_lineup_summary(self):
         """Export lineup summary for easy tracking"""
         if not self.lineups:
