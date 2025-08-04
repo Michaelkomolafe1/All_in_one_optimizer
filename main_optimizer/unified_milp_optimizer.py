@@ -10,6 +10,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
 
 import pulp
 
@@ -227,8 +228,8 @@ class UnifiedMILPOptimizer:
         logger.info(f"Contest type in apply_strategy_filter: {contest_type}")
 
         # Import strategy functions
-        from cash_strategies import build_projection_monster, build_pitcher_dominance
-        from gpp_strategies import build_correlation_value, build_truly_smart_stack, build_matchup_leverage_stack
+        from main_optimizer.cash_strategies import build_projection_monster, build_pitcher_dominance
+        from main_optimizer.gpp_strategies import build_correlation_value, build_truly_smart_stack, build_matchup_leverage_stack
 
         # Map strategy names to functions
         strategy_functions = {
@@ -244,9 +245,14 @@ class UnifiedMILPOptimizer:
         eligible = [p for p in players if self._is_valid_player(p)]
 
         # Apply the strategy function if it exists
+        # In apply_strategy_filter, add this:
         if strategy in strategy_functions:
             logger.info(f"Applying strategy: {strategy}")
-            # Strategy functions modify player.optimization_score
+
+            # FORCEFUL DEBUG - Write to file
+            with open('/tmp/strategy_debug.log', 'a') as f:
+                f.write(f"{datetime.now()}: Applying {strategy} to {len(eligible)} players\n")
+
             eligible = strategy_functions[strategy](eligible)
             logger.info(f"Strategy {strategy} applied to {len(eligible)} players")
         else:
