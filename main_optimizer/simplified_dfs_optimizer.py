@@ -268,6 +268,10 @@ class SimplifiedDFSOptimizer(QMainWindow):
         test_breakdown_btn.clicked.connect(self.test_scoring_with_breakdown)
         test_btn_layout.addWidget(test_breakdown_btn)
 
+        test_ownership_btn = QPushButton("💰 Test Ownership Projections")
+        test_ownership_btn.clicked.connect(self.test_ownership_projections)
+        test_btn_layout.addWidget(test_ownership_btn)
+
         test_scoring_btn = QPushButton("📊 Test Scoring Engine")
         test_scoring_btn.clicked.connect(self.test_scoring_engine)
         test_btn_layout.addWidget(test_scoring_btn)
@@ -388,12 +392,14 @@ class SimplifiedDFSOptimizer(QMainWindow):
             # Fix base projections FIRST
             self.fix_base_projections()
 
+
             # Now enrich with real data
             try:
                 enrichment_results = self.system.enrich_player_pool_with_real_data()
                 self.update_status(f"✅ Enrichments applied: {sum(enrichment_results.values())} total", append=True)
             except Exception as e:
-                self.debug_log(f"Enrichment error: {e}")
+                self.debug_log(f"Real enrichment error: {e}")
+                self.debug_log("Falling back to basic enrichment")
                 # Fall back to basic enrichment
                 self.system.enrich_player_pool()
                 enrichment_results = self.track_enrichments()
@@ -992,6 +998,34 @@ class SimplifiedDFSOptimizer(QMainWindow):
             self.debug_log("\n❌ System has issues - check above")
 
     # In your SimplifiedDFSOptimizer class, add this method:
+
+    def test_imports(self):
+        """Test all import paths"""
+        import os
+        import sys
+
+        self.debug_log("\n=== IMPORT PATH TEST ===")
+        self.debug_log(f"Current working dir: {os.getcwd()}")
+        self.debug_log(f"Script dir: {os.path.dirname(os.path.abspath(__file__))}")
+
+        # Check if files exist
+        files_to_check = [
+            'park_factors.py',
+            'vegas_lines.py',
+            'weather_integration.py',
+            '../park_factors.py',  # Parent directory
+            '../vegas_lines.py',
+            '../weather_integration.py'
+        ]
+
+        for file in files_to_check:
+            full_path = os.path.join(os.path.dirname(__file__), file)
+            exists = os.path.exists(full_path)
+            self.debug_log(f"{file}: {'✅ EXISTS' if exists else '❌ NOT FOUND'}")
+            if exists:
+                self.debug_log(f"  Full path: {os.path.abspath(full_path)}")
+
+
     def test_real_enrichments(self):
         """Test the real data enrichment system"""
         self.debug_log("\n=== TESTING REAL DATA SOURCES ===")
@@ -1052,6 +1086,76 @@ class SimplifiedDFSOptimizer(QMainWindow):
             self.debug_log(f"❌ Error: {e}")
             import traceback
             self.debug_log(traceback.format_exc())
+
+    def test_ownership_projections(self):
+        """Test ownership projection system"""
+        if not self.system.player_pool:
+            self.debug_log("No players to test!")
+            return
+
+        self.debug_log("\n=== OWNERSHIP PROJECTION TEST ===")
+
+        # Get highest owned players
+        by_ownership = sorted(self.system.player_pool,
+                              key=lambda p: getattr(p, 'ownership_projection', 0),
+                              reverse=True)
+
+        self.debug_log("\nHIGHEST PROJECTED OWNERSHIP:")
+        for p in by_ownership[:10]:
+            own = getattr(p, 'ownership_projection', 0)
+            self.debug_log(f"{p.name:<20} ${p.salary:<6,} {own:>5.1f}%")
+
+        # Check for value plays
+        self.debug_log("\nVALUE PLAYS (<$4000):")
+        value_plays = [p for p in self.system.player_pool if p.salary <= 4000]
+        value_by_own = sorted(value_plays,
+                              key=lambda p: getattr(p, 'ownership_projection', 0),
+                              reverse=True)[:5]
+
+        for p in value_by_own:
+            own = getattr(p, 'ownership_projection', 0)
+            self.debug_log(f"{p.name:<20} ${p.salary:<6,} {own:>5.1f}%")
+
+        # Check pitcher ownership
+        self.debug_log("\nPITCHER OWNERSHIP:")
+        pitchers = [p for p in self.system.player_pool if p.is_pitcher]
+        pitcher_by_own = sorted(pitchers,
+                                key=lambda p: getattr(p, 'ownership_projection', 0),
+                                reverse=True)[:5]
+
+        for p in pitcher_by_own:
+            own = getattr(p, 'ownership_projection', 0)
+            opp = getattr(p, 'opponent_implied_total', 'N/A')
+            self.debug_log(f"{p.name:<20} ${p.salary:<6,} {own:>5.1f}% (vs {opp})")
+
+        # Show ownership distribution
+        self.debug_log("\nOWNERSHIP DISTRIBUTION:")
+        own_ranges = {
+            "0-5%": 0,
+            "5-10%": 0,
+            "10-15%": 0,
+            "15-20%": 0,
+            "20-30%": 0,
+            "30%+": 0
+        }
+
+        for p in self.system.player_pool:
+            own = getattr(p, 'ownership_projection', 0)
+            if own <= 5:
+                own_ranges["0-5%"] += 1
+            elif own <= 10:
+                own_ranges["5-10%"] += 1
+            elif own <= 15:
+                own_ranges["10-15%"] += 1
+            elif own <= 20:
+                own_ranges["15-20%"] += 1
+            elif own <= 30:
+                own_ranges["20-30%"] += 1
+            else:
+                own_ranges["30%+"] += 1
+
+        for range_name, count in own_ranges.items():
+            self.debug_log(f"  {range_name}: {count} players")
 
     def test_scoring_with_breakdown(self):
         """Test scoring with detailed breakdown"""

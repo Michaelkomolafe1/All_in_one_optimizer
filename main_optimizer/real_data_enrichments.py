@@ -82,6 +82,43 @@ class RealStatcastFetcher:
             if result['games_analyzed'] > 0:
                 return result
 
+    def _try_lookup(self, player_name: str, days: int) -> Dict:
+        """Try to lookup player stats with pybaseball"""
+        try:
+            # Get date range
+            end_date = self.season_end
+            start_date = end_date - timedelta(days=days)
+
+            # Format dates for pybaseball
+            start_str = start_date.strftime('%Y-%m-%d')
+            end_str = end_date.strftime('%Y-%m-%d')
+
+            # Try to get player stats
+            from pybaseball import statcast_batter, statcast_pitcher
+
+            # First try as batter
+            try:
+                df = statcast_batter(start_dt=start_str, end_dt=end_str, player_name=player_name)
+                if df is not None and len(df) > 0:
+                    return self._process_batting_stats(df, player_name)
+            except:
+                pass
+
+            # Then try as pitcher
+            try:
+                df = statcast_pitcher(start_dt=start_str, end_dt=end_str, player_name=player_name)
+                if df is not None and len(df) > 0:
+                    return self._process_pitching_stats(df, player_name)
+            except:
+                pass
+
+            # No data found
+            return self._default_stats()
+
+        except Exception as e:
+            logger.error(f"Error in _try_lookup for {player_name}: {e}")
+            return self._default_stats()
+
     def _process_batting_stats(self, df: pd.DataFrame, player_name: str) -> Dict:
         """Process batting statcast data"""
         # Filter to balls in play and calculate metrics
@@ -397,7 +434,7 @@ class RealWeatherIntegration:
     def _get_openweather_data(self, lat: float, lon: float, game_time: datetime = None) -> Dict:
         """Get weather from OpenWeatherMap (requires API key)"""
         if not self.api_key:
-            return self._get_open_meteo_data(lat, lon, game_time)
+            return self._get_open_meteo_data(lat, lon)  # Remove game_time parameter
 
         # OpenWeather has different endpoints for current vs forecast
         if game_time and (game_time - datetime.now()).total_seconds() > 3600:
