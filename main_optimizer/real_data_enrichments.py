@@ -24,69 +24,63 @@ class RealStatcastFetcher:
         try:
             import pybaseball as pyb
             self.pyb = pyb
-            self.pyb.cache.enable()  # Enable caching for faster repeated queries
-            logger.info("✅ Pybaseball initialized with caching")
+            self.pyb.cache.enable()
+
+            # UPDATED: Dynamic date handling for current season
+            from datetime import datetime, timedelta
+
+            # Get current date
+            today = datetime.now()
+            current_year = today.year
+
+            # MLB season runs April-October
+            # For 2025, use the current season data
+            if current_year >= 2025:
+                # Start of 2025 season
+                self.season_start = datetime(2025, 4, 1)
+                # Use current date or end of regular season, whichever is earlier
+                regular_season_end = datetime(2025, 10, 1)
+                self.season_end = min(today, regular_season_end)
+            else:
+                # For previous years
+                self.season_start = datetime(current_year, 4, 1)
+                self.season_end = today
+
+            # Format for pybaseball
+            self.start_str = self.season_start.strftime('%Y-%m-%d')
+            self.end_str = self.season_end.strftime('%Y-%m-%d')
+
+            logger.info(f"✅ Pybaseball initialized")
+            logger.info(f"   Season: {self.start_str} to {self.end_str}")
+            logger.info(f"   Today: {today.strftime('%Y-%m-%d')}")
+
         except ImportError:
             logger.error("❌ Please install pybaseball: pip install pybaseball")
             raise
 
     def get_recent_stats(self, player_name: str, days: int = 7) -> Dict:
-        """
-        Get actual recent performance stats for a player
+        """Enhanced with name variations"""
+        # Clean up special characters
+        cleaned_name = player_name.replace('ñ', 'n').replace('é', 'e').replace('á', 'a')
 
-        Args:
-            player_name: Full player name (e.g., "Mike Trout")
-            days: Number of days to look back
+        # Try original name first
+        result = self._try_lookup(player_name, days)
+        if result['games_analyzed'] > 0:
+            return result
 
-        Returns:
-            Dict with recent performance metrics
-        """
-        try:
-            # Split name for lookup
-            parts = player_name.split()
-            if len(parts) >= 2:
-                first_name = parts[0]
-                last_name = ' '.join(parts[1:])
-            else:
-                return self._default_stats()
+        # Try cleaned name
+        if cleaned_name != player_name:
+            result = self._try_lookup(cleaned_name, days)
+            if result['games_analyzed'] > 0:
+                return result
 
-            # Look up player ID
-            player_lookup = self.pyb.playerid_lookup(last_name, first_name)
-
-            if player_lookup.empty:
-                logger.warning(f"Player not found: {player_name}")
-                return self._default_stats()
-
-            # Get MLB AM ID
-            mlbam_id = int(player_lookup.iloc[0]['key_mlbam'])
-
-            # Calculate date range
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=days)
-
-            # Format dates
-            start_str = start_date.strftime('%Y-%m-%d')
-            end_str = end_date.strftime('%Y-%m-%d')
-
-            # Check if pitcher or hitter based on recent games
-            # Try batting first
-            batting_stats = self.pyb.statcast_batter(start_str, end_str, mlbam_id)
-
-            if not batting_stats.empty:
-                return self._process_batting_stats(batting_stats, player_name)
-
-            # Try pitching
-            pitching_stats = self.pyb.statcast_pitcher(start_str, end_str, mlbam_id)
-
-            if not pitching_stats.empty:
-                return self._process_pitching_stats(pitching_stats, player_name)
-
-            logger.info(f"No recent stats found for {player_name}")
-            return self._default_stats()
-
-        except Exception as e:
-            logger.error(f"Error fetching stats for {player_name}: {e}")
-            return self._default_stats()
+        # Try common variations
+        if "Jr." in player_name:
+            # Try without Jr.
+            alt_name = player_name.replace(" Jr.", "").strip()
+            result = self._try_lookup(alt_name, days)
+            if result['games_analyzed'] > 0:
+                return result
 
     def _process_batting_stats(self, df: pd.DataFrame, player_name: str) -> Dict:
         """Process batting statcast data"""
@@ -275,11 +269,16 @@ class RealWeatherIntegration:
 
         Args:
             home_team: Home team abbreviation (e.g., 'NYY')
-            game_time: Game datetime (defaults to today)
+            game_time: Game datetime (defaults to TODAY/NOW)
 
         Returns:
             Dict with weather impact metrics
         """
+        # Use current date/time if not specified
+        if game_time is None:
+            from datetime import datetime
+            game_time = datetime.now()
+
         # Check if dome stadium
         if home_team in self.dome_stadiums:
             return {
@@ -289,7 +288,8 @@ class RealWeatherIntegration:
                 'precipitation': 0,
                 'weather_impact': 1.0,
                 'is_dome': True,
-                'conditions': 'Dome - Perfect'
+                'conditions': 'Dome - Perfect',
+                'game_time': game_time.strftime('%Y-%m-%d %H:%M')
             }
 
         # Get coordinates
@@ -302,12 +302,170 @@ class RealWeatherIntegration:
 
         try:
             if self.use_openweather:
-                return self._get_openweather_data(lat, lon)
+                return self._get_openweather_data(lat, lon, game_time)
             else:
-                return self._get_open_meteo_data(lat, lon)
+                return self._get_open_meteo_data(lat, lon, game_time)
         except Exception as e:
             logger.error(f"Weather API error: {e}")
             return self._default_weather()
+
+    def _get_open_meteo_data(self, lat: float, lon: float, game_time: datetime = None) -> Dict:
+        """Get weather from Open-Meteo (no API key required) with time support"""
+        url = "https://api.open-meteo.com/v1/forecast"
+
+        # Format the time for the API
+        if game_time:
+            # Open-Meteo wants ISO format
+            time_str = game_time.strftime('%Y-%m-%dT%H:00')
+
+            params = {
+                'latitude': lat,
+                'longitude': lon,
+                'hourly': 'temperature_2m,windspeed_10m,precipitation,weathercode',
+                'temperature_unit': 'fahrenheit',
+                'windspeed_unit': 'mph',
+                'precipitation_unit': 'inch',
+                'timezone': 'America/New_York',
+                'start_date': game_time.strftime('%Y-%m-%d'),
+                'end_date': game_time.strftime('%Y-%m-%d')
+            }
+        else:
+            # Current weather
+            params = {
+                'latitude': lat,
+                'longitude': lon,
+                'current_weather': True,
+                'temperature_unit': 'fahrenheit',
+                'windspeed_unit': 'mph',
+                'precipitation_unit': 'inch'
+            }
+
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        if game_time and 'hourly' in data:
+            # Find the closest hour
+            target_hour = game_time.hour
+
+            # Get data for the specific hour
+            temps = data['hourly']['temperature_2m']
+            winds = data['hourly']['windspeed_10m']
+            precips = data['hourly']['precipitation']
+            codes = data['hourly']['weathercode']
+
+            # Use the target hour (or closest available)
+            idx = min(target_hour, len(temps) - 1)
+
+            temp = temps[idx]
+            wind = winds[idx]
+            rain = precips[idx]
+            weather_code = codes[idx]
+        else:
+            # Use current weather
+            current = data.get('current_weather', {})
+            temp = current.get('temperature', 72)
+            wind = current.get('windspeed', 5)
+            rain = 0
+            weather_code = current.get('weathercode', 0)
+
+        # Interpret weather code
+        if weather_code <= 1:
+            conditions = "Clear"
+        elif weather_code <= 3:
+            conditions = "Partly cloudy"
+        elif weather_code <= 48:
+            conditions = "Cloudy"
+        elif weather_code <= 67:
+            conditions = "Light rain"
+            rain = max(rain, 0.1)
+        else:
+            conditions = "Rain"
+            rain = max(rain, 0.5)
+
+        return {
+            'temperature': temp,
+            'wind_speed': wind,
+            'humidity': 60,  # Default, Open-Meteo doesn't provide in free tier
+            'precipitation': rain,
+            'conditions': conditions,
+            'weather_impact': self._calculate_weather_impact(temp, wind, rain),
+            'is_dome': False,
+            'game_time': game_time.strftime('%Y-%m-%d %H:%M') if game_time else 'current'
+        }
+
+    def _get_openweather_data(self, lat: float, lon: float, game_time: datetime = None) -> Dict:
+        """Get weather from OpenWeatherMap (requires API key)"""
+        if not self.api_key:
+            return self._get_open_meteo_data(lat, lon, game_time)
+
+        # OpenWeather has different endpoints for current vs forecast
+        if game_time and (game_time - datetime.now()).total_seconds() > 3600:
+            # Future weather - use forecast endpoint
+            url = "https://api.openweathermap.org/data/2.5/forecast"
+            params = {
+                'lat': lat,
+                'lon': lon,
+                'appid': self.api_key,
+                'units': 'imperial',
+                'cnt': 40  # Get multiple forecasts
+            }
+        else:
+            # Current weather
+            url = "https://api.openweathermap.org/data/2.5/weather"
+            params = {
+                'lat': lat,
+                'lon': lon,
+                'appid': self.api_key,
+                'units': 'imperial'
+            }
+
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        if 'list' in data and game_time:
+            # Find closest forecast to game time
+            target_timestamp = int(game_time.timestamp())
+            closest_forecast = min(data['list'],
+                                   key=lambda x: abs(x['dt'] - target_timestamp))
+
+            temp = closest_forecast['main']['temp']
+            wind = closest_forecast['wind']['speed']
+            humidity = closest_forecast['main']['humidity']
+            rain = closest_forecast.get('rain', {}).get('3h', 0) / 3  # Convert 3h to 1h
+            desc = closest_forecast['weather'][0]['description']
+        else:
+            # Current weather
+            temp = data['main']['temp']
+            wind = data['wind']['speed']
+            humidity = data['main']['humidity']
+            rain = data.get('rain', {}).get('1h', 0)
+            desc = data['weather'][0]['description']
+
+        return {
+            'temperature': temp,
+            'wind_speed': wind,
+            'humidity': humidity,
+            'precipitation': rain,
+            'conditions': desc,
+            'weather_impact': self._calculate_weather_impact(temp, wind, rain),
+            'is_dome': False,
+            'game_time': game_time.strftime('%Y-%m-%d %H:%M') if game_time else 'current'
+        }
+
+    def _default_weather(self) -> Dict:
+        """Default weather when API fails"""
+        return {
+            'temperature': 72,
+            'wind_speed': 5,
+            'humidity': 50,
+            'precipitation': 0,
+            'weather_impact': 1.0,
+            'is_dome': False,
+            'conditions': 'Unknown',
+            'game_time': 'unknown'
+        }
 
     def _get_openweather_data(self, lat: float, lon: float) -> Dict:
         """Get weather from OpenWeatherMap (requires API key)"""

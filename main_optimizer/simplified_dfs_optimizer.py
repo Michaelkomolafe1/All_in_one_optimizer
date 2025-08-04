@@ -121,6 +121,10 @@ class SimplifiedDFSOptimizer(QMainWindow):
         self.test_mode_cb.setStyleSheet("color: orange; font-weight: bold;")
         settings_layout.addWidget(self.test_mode_cb)
 
+
+
+
+
         settings_layout.addStretch()
         control_layout.addLayout(settings_layout)
 
@@ -135,6 +139,8 @@ class SimplifiedDFSOptimizer(QMainWindow):
         self.add_player_btn = QPushButton("Add")
         self.add_player_btn.clicked.connect(self.add_manual_player)
         manual_layout.addWidget(self.add_player_btn)
+
+
 
         self.manual_label = QLabel("Manual: None")
         self.manual_label.setStyleSheet("color: #666; font-style: italic;")
@@ -273,6 +279,11 @@ class SimplifiedDFSOptimizer(QMainWindow):
         check_enrichments_btn = QPushButton("🔍 Check Enrichment Usage")
         check_enrichments_btn.clicked.connect(self.verify_enrichment_usage)
         test_btn_layout.addWidget(check_enrichments_btn)
+
+        # ADD THIS NEW BUTTON HERE! ↓↓↓
+        test_real_data_btn = QPushButton("🌐 Test Real Data Sources")
+        test_real_data_btn.clicked.connect(self.test_real_enrichments)
+        test_btn_layout.addWidget(test_real_data_btn)
 
         layout.addLayout(test_btn_layout)
 
@@ -980,43 +991,67 @@ class SimplifiedDFSOptimizer(QMainWindow):
         else:
             self.debug_log("\n❌ System has issues - check above")
 
+    # In your SimplifiedDFSOptimizer class, add this method:
     def test_real_enrichments(self):
-        """Test that real data is being fetched"""
-        if not self.system.player_pool:
-            self.debug_log("No players to test!")
-            return
+        """Test the real data enrichment system"""
+        self.debug_log("\n=== TESTING REAL DATA SOURCES ===")
 
-        self.debug_log("\n=== TESTING REAL DATA FETCH ===")
-
-        # Pick a known player
-        test_player = None
-        for p in self.system.player_pool:
-            if "Judge" in p.name or "Ohtani" in p.name:
-                test_player = p
-                break
-
-        if not test_player:
-            test_player = self.system.player_pool[0]
-
-        self.debug_log(f"\nTesting enrichments for: {test_player.name}")
-
-        # Test weather fetch
         try:
-            from weather_integration import WeatherIntegration
-            weather = WeatherIntegration()
-            weather_data = weather.get_game_weather(test_player.team)
-            self.debug_log(f"✅ Weather API working: {weather_data['temperature']}°F")
-        except Exception as e:
-            self.debug_log(f"❌ Weather API failed: {e}")
+            from main_optimizer.real_data_enrichments import (
+                RealStatcastFetcher,
+                RealWeatherIntegration,
+                check_and_install_dependencies
+            )
 
-        # Test stats fetch
-        try:
-            from main_optimizer.real_data_enrichments import RealStatcastFetcher
-            stats = RealStatcastFetcher()
-            player_stats = stats.get_recent_stats(test_player.name, days=7)
-            self.debug_log(f"✅ Stats API working: Form = {player_stats.get('recent_form', 'N/A')}")
+            # Check dependencies
+            self.debug_log("Checking dependencies...")
+            if check_and_install_dependencies():
+                self.debug_log("✅ All dependencies installed!")
+
+                # Test on a known player - use the EXISTING method
+                self.debug_log("\nTesting Statcast data...")
+                stats = RealStatcastFetcher()
+
+                # Test a few players
+                test_players = ["Aaron Judge", "Shohei Ohtani", "Mike Trout"]
+
+                for player_name in test_players:
+                    try:
+                        # Use the existing get_recent_stats method
+                        data = stats.get_recent_stats(player_name, days=7)
+
+                        if data.get('games_analyzed', 0) > 0:
+                            self.debug_log(
+                                f"✅ {player_name}: {data.get('games_analyzed')} games, form={data.get('recent_form', 1.0):.3f}")
+                        else:
+                            # Try 14 days
+                            data = stats.get_recent_stats(player_name, days=14)
+                            if data.get('games_analyzed', 0) > 0:
+                                self.debug_log(
+                                    f"✅ {player_name}: {data.get('games_analyzed')} games (14d), form={data.get('recent_form', 1.0):.3f}")
+                            else:
+                                self.debug_log(f"⚠️ {player_name}: No recent games")
+
+                    except Exception as e:
+                        self.debug_log(f"Error with {player_name}: {e}")
+
+                # Test weather
+                self.debug_log("\nTesting Weather data...")
+                weather = RealWeatherIntegration()
+                weather_data = weather.get_game_weather('NYY')
+                self.debug_log(
+                    f"Yankees weather: Temp={weather_data.get('temperature')}°F, Impact={weather_data.get('weather_impact')}")
+
+            else:
+                self.debug_log("❌ Missing dependencies")
+
+        except ImportError as e:
+            self.debug_log(f"❌ Import Error: {e}")
+            self.debug_log("Make sure real_data_enrichments.py exists in main_optimizer/")
         except Exception as e:
-            self.debug_log(f"❌ Stats API failed: {e}")
+            self.debug_log(f"❌ Error: {e}")
+            import traceback
+            self.debug_log(traceback.format_exc())
 
     def test_scoring_with_breakdown(self):
         """Test scoring with detailed breakdown"""
