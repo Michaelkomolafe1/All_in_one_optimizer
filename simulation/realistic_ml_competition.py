@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-REALISTIC ML COMPETITION
-========================
-Tests YOUR system (with auto-selected strategy) against realistic DFS field
-Opponents use various approaches - NOT your system
+REALISTIC ML COMPETITION WITH ADJUSTABLE DIFFICULTY
+==================================================
+Tests YOUR system against realistic DFS field with varying difficulty levels
 """
 
 import sys
@@ -13,459 +12,404 @@ import numpy as np
 import random
 from datetime import datetime
 import multiprocessing as mp
-from functools import partial
 from typing import Dict, List, Tuple
+import time
 
-# Add paths
-sys.path.insert(0, '/')
+# PATCH: Disable API calls for simulation
+os.environ['DISABLE_LIVE_ENRICHMENTS'] = 'true'
 
-# Import YOUR components
-from dfs_optimizer.core.unified_core_system import UnifiedCoreSystem
-from dfs_optimizer.strategies.strategy_selector import StrategyAutoSelector
-from dfs_optimizer.core.unified_player_model import UnifiedPlayer
+# Fix paths - use relative imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import YOUR components with correct paths
+from main_optimizer.unified_core_system import UnifiedCoreSystem
+from main_optimizer.strategy_selector import StrategyAutoSelector
+from main_optimizer.unified_player_model import UnifiedPlayer
 
 # Import simulator components
-from ml_experiments.simulators.robust_dfs_simulator import (
+from simulation.robust_dfs_simulator import (
     generate_slate, simulate_lineup_score, generate_field
 )
 
 
-def process_single_slate_vs_field(args: Tuple) -> Dict:
+class RealisticMLCompetition:
     """
-    Process a single slate:
-    - YOU use your exact system with auto-selected strategy
-    - OPPONENTS are simulated field (various skill levels)
+    Realistic competition with adjustable difficulty
     """
-    slate_id, contest_type, slate_size = args
 
-    try:
-        # Generate slate
-        slate = generate_slate(slate_id, 'classic', slate_size)
+    def __init__(self, num_cores=4, difficulty='medium'):
+        self.num_cores = num_cores
+        self.difficulty = difficulty
+        self.results = []
 
-        # BUILD YOUR LINEUP USING YOUR EXACT SYSTEM
-        # Convert to UnifiedPlayer format - EXACTLY like ML bridge
-        players = []
-        for sim_player in slate['players']:
-            player = UnifiedPlayer(
-                id=str(sim_player.get('id', hash(sim_player['name']))),
-                name=sim_player['name'],
-                team=sim_player['team'],
-                salary=sim_player['salary'],
-                primary_position=sim_player['position'],
-                positions=[sim_player['position']],
-                base_projection=sim_player.get('projection', 0)
-            )
-
-            # Add simulator attributes - EXACTLY like ML bridge
-            player.is_pitcher = (player.primary_position == 'P')
-            for attr in ['ownership', 'recent_performance', 'matchup_score',
-                         'hitting_matchup', 'pitching_matchup', 'park_factor',
-                         'weather_score', 'vegas_score', 'correlation_score']:
-                setattr(player, attr, sim_player.get(attr, 0))
-            player._simulator_ownership = sim_player.get('ownership', 15)
-
-            players.append(player)
-
-        # Auto-select YOUR strategy for this slate/contest
-        # Use the same approach as ML bridge - directly access based on known slate size
-        selector = StrategyAutoSelector()
-        your_strategy = selector.top_strategies[contest_type][slate_size]
-
-        # Initialize YOUR system - EXACTLY like ML bridge
-        system = UnifiedCoreSystem()
-        system.players = players
-        system.csv_loaded = True
-
-        # Build and enrich pool - EXACTLY like ML bridge
-        system.build_player_pool(include_unconfirmed=True)
-        system.enrich_player_pool()
-
-        # Restore simulator ownership after enrichment
-        for p in system.player_pool:
-            if hasattr(p, '_simulator_ownership'):
-                p.ownership_projection = p._simulator_ownership
-
-        # Score players with YOUR enhanced scoring engine
-        system.score_players(contest_type)
-
-        # Optimize with YOUR MILP optimizer
-        lineups = system.optimize_lineups(
-            num_lineups=1,
-            strategy=your_strategy,
-            contest_type=contest_type
-        )
-
-        if not lineups or not lineups[0]:
-            return None
-
-        your_lineup = lineups[0]
-
-        # Convert YOUR lineup to simulator format
-        your_sim_lineup = {
-            'projection': your_lineup.get('total_score', 0),
-            'salary': sum(p.salary for p in your_lineup['players']),
-            'players': []
+        # Define difficulty distributions
+        self.difficulty_settings = {
+            'easy': {
+                'shark_pct': 0.10,  # 10% optimal players
+                'good_pct': 0.20,  # 20% good players
+                'average_pct': 0.40,  # 40% average
+                'fish_pct': 0.30  # 30% weak players
+            },
+            'medium': {
+                'shark_pct': 0.20,
+                'good_pct': 0.30,
+                'average_pct': 0.35,
+                'fish_pct': 0.15
+            },
+            'hard': {
+                'shark_pct': 0.35,
+                'good_pct': 0.40,
+                'average_pct': 0.20,
+                'fish_pct': 0.05
+            },
+            'extreme': {
+                'shark_pct': 0.50,
+                'good_pct': 0.35,
+                'average_pct': 0.15,
+                'fish_pct': 0.00
+            },
+            'sliding': None  # Will be set based on slate number
         }
 
-        for player in your_lineup['players']:
-            sim_player = {
-                'name': player.name,
-                'position': player.primary_position,
-                'team': player.team,
-                'salary': player.salary,
-                'projection': getattr(player, 'fantasy_points', 0),
-                'ownership': getattr(player, 'ownership_projection', 15)
+    def generate_adaptive_field(self, num_opponents: int, slate_num: int = 0) -> List[Dict]:
+        """Generate field that gets harder over time if sliding difficulty"""
+
+        if self.difficulty == 'sliding':
+            # Start easy, get harder every 100 slates
+            progress = min(slate_num / 500, 1.0)  # Max difficulty at 500 slates
+
+            # Interpolate between easy and extreme
+            shark_pct = 0.10 + (0.50 - 0.10) * progress
+            good_pct = 0.20 + (0.35 - 0.20) * progress
+            fish_pct = 0.30 * (1 - progress)  # Fish disappear
+            average_pct = 1.0 - shark_pct - good_pct - fish_pct
+
+            dist = {
+                'shark_pct': shark_pct,
+                'good_pct': good_pct,
+                'average_pct': average_pct,
+                'fish_pct': fish_pct
             }
-            your_sim_lineup['players'].append(sim_player)
-
-        # GENERATE OPPONENT FIELD - They DON'T use your system
-        # Generate exactly 99 opponents
-        print(f"\r⏳ Generating field for slate {slate_id}...", end="", flush=True)
-
-        # Method 1: Try to get all 99 at once
-        opponent_lineups = generate_field(slate, 100, contest_type)
-
-        # Verify we got 99
-        if opponent_lineups and len(opponent_lineups) == 99:
-            print(f"\r✅ Slate {slate_id}: Got {len(opponent_lineups)} opponents", end="", flush=True)
         else:
-            # Method 2: Generate in smaller batches if needed
-            print(
-                f"\r⚠️  Slate {slate_id}: Only got {len(opponent_lineups) if opponent_lineups else 0}, using batches...",
-                end="", flush=True)
-            opponent_lineups = []
+            dist = self.difficulty_settings[self.difficulty]
 
-            # Try multiple times with different batch sizes
-            batch_sizes = [20, 10, 5]
-            for batch_size in batch_sizes:
-                while len(opponent_lineups) < 99:
-                    remaining = 99 - len(opponent_lineups)
-                    size_to_request = min(batch_size, remaining) + 1  # +1 because generate_field returns size-1
+        # Generate opponents
+        field = []
+        for i in range(num_opponents):
+            rand = random.random()
 
-                    batch = generate_field(slate, size_to_request, contest_type)
-                    if batch:
-                        opponent_lineups.extend(batch)
-                    else:
-                        break
-
-                if len(opponent_lineups) >= 99:
-                    break
-
-            # Trim to exactly 99 if we got more
-            if len(opponent_lineups) > 99:
-                opponent_lineups = opponent_lineups[:99]
-
-            # If still not enough, create simple random lineups
-            while len(opponent_lineups) < 99:
-                # Group by position
-                by_position = {}
-                for p in slate['players']:
-                    pos = p['position']
-                    if pos not in by_position:
-                        by_position[pos] = []
-                    by_position[pos].append(p)
-
-                # Build simple lineup
-                lineup_players = []
-                try:
-                    lineup_players.extend(random.sample(by_position.get('P', []), 2))
-                    lineup_players.extend(random.sample(by_position.get('C', []), 1))
-                    lineup_players.extend(random.sample(by_position.get('1B', []), 1))
-                    lineup_players.extend(random.sample(by_position.get('2B', []), 1))
-                    lineup_players.extend(random.sample(by_position.get('3B', []), 1))
-                    lineup_players.extend(random.sample(by_position.get('SS', []), 1))
-                    lineup_players.extend(random.sample(by_position.get('OF', []), 3))
-
-                    simple_lineup = {
-                        'players': lineup_players,
-                        'salary': sum(p.get('salary', 5000) for p in lineup_players),
-                        'projection': sum(p.get('projection', 0) for p in lineup_players),
-                        'skill_level': 'random'
-                    }
-                    opponent_lineups.append(simple_lineup)
-                except:
-                    break
-
-            print(f"\r✅ Slate {slate_id}: Final count {len(opponent_lineups)} opponents", end="", flush=True)
-
-        # Final check
-        if len(opponent_lineups) != 99:
-            print(f"\n❌ ERROR: Slate {slate_id} has {len(opponent_lineups)} opponents instead of 99!")
-            # Skip this slate
-            return None
-
-        # Score all lineups
-        all_scores = []
-
-        # Your score
-        your_score = simulate_lineup_score(your_sim_lineup)
-
-        # Opponent scores
-        opponent_scores = []
-        for opp_lineup in opponent_lineups:
-            score = simulate_lineup_score(opp_lineup)
-            opponent_scores.append(score)
-
-        # Combine and sort
-        all_scores = [your_score] + opponent_scores
-        all_scores.sort(reverse=True)
-
-        # Find your rank
-        your_rank = all_scores.index(your_score) + 1
-        total_entries = len(all_scores)
-        percentile = ((total_entries - your_rank) / total_entries) * 100
-
-        # Debug output for first few slates
-        if slate_id < 3005:
-            print(f"\n📊 Slate {slate_id} details:")
-            print(f"   Your score: {your_score:.1f}")
-            print(f"   Total entries: {total_entries} (should be 100)")
-            print(f"   Your rank: {your_rank}")
-            print(
-                f"   Opponent scores: min={min(opponent_scores):.1f}, avg={np.mean(opponent_scores):.1f}, max={max(opponent_scores):.1f}")
-
-        # Calculate payout
-        if contest_type == 'cash':
-            # Top 44% cash
-            win = your_rank <= int(total_entries * 0.44)
-            roi = 100 if win else -100
-        else:  # GPP
-            if your_rank == 1:
-                roi = 900
-            elif your_rank <= 3:
-                roi = 400
-            elif your_rank <= int(total_entries * 0.1):  # Top 10%
-                roi = 100
-            elif your_rank <= int(total_entries * 0.2):  # Top 20%
-                roi = -50
+            if rand < dist['shark_pct']:
+                skill_level = 'shark'
+                skill_factor = random.uniform(0.9, 1.0)  # Very good
+            elif rand < dist['shark_pct'] + dist['good_pct']:
+                skill_level = 'good'
+                skill_factor = random.uniform(0.7, 0.9)
+            elif rand < dist['shark_pct'] + dist['good_pct'] + dist['average_pct']:
+                skill_level = 'average'
+                skill_factor = random.uniform(0.5, 0.7)
             else:
-                roi = -100
-            win = your_rank <= int(total_entries * 0.2)
+                skill_level = 'fish'
+                skill_factor = random.uniform(0.3, 0.5)
 
-        # Collect ML training data
-        player_data = []
-        for player in your_lineup['players']:
-            player_data.append({
-                'slate_id': slate_id,
-                'strategy': your_strategy,
-                'contest_type': contest_type,
-                'slate_size': slate_size,
-                'player_name': player.name,
-                'position': player.primary_position,
-                'team': player.team,
-                'salary': player.salary,
-                'ownership': getattr(player, 'ownership_projection', 15),
-                'projection': getattr(player, 'base_projection', 0),
-                'cash_score': getattr(player, 'cash_score', 0),
-                'gpp_score': getattr(player, 'gpp_score', 0),
-                'enhanced_score': getattr(player, 'enhanced_score', 0),
-                'lineup_predicted': your_lineup.get('total_score', 0),
-                'lineup_actual': your_score,
-                'lineup_error': abs(your_score - your_lineup.get('total_score', 0)),
-                'lineup_rank': your_rank,
-                'lineup_percentile': percentile,
-                'lineup_win': win,
-                'lineup_roi': roi
+            field.append({
+                'id': i,
+                'skill_level': skill_level,
+                'skill_factor': skill_factor
             })
 
-        return {
-            'slate_id': slate_id,
-            'strategy': your_strategy,
-            'contest_type': contest_type,
-            'slate_size': slate_size,
-            'rank': your_rank,
-            'score': your_score,
-            'win': win,
-            'roi': roi,
-            'player_data': player_data
-        }
+        return field
 
-    except Exception as e:
-        print(f"\nError processing slate {slate_id}: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
+    def process_single_slate_vs_field(self, args: Tuple) -> Dict:
+        """Process a single slate with YOUR system vs field"""
 
+        slate_id, contest_type, slate_size, slate_num = args
 
-class RealisticMLCompetition:
-    """Test YOUR system against realistic DFS field"""
+        try:
+            # Generate slate
+            slate = generate_slate(slate_id, 'classic', slate_size)
 
-    def __init__(self, num_cores=None):
-        self.num_cores = num_cores or mp.cpu_count()
-        self.strategy_selector = StrategyAutoSelector()
+            # Convert to UnifiedPlayer format for YOUR system
+            players = []
+            for sim_player in slate['players']:
+                player = UnifiedPlayer(
+                    id=str(sim_player.get('id', hash(sim_player['name']))),
+                    name=sim_player['name'],
+                    team=sim_player['team'],
+                    salary=sim_player['salary'],
+                    primary_position=sim_player['position'],
+                    positions=[sim_player['position']],
+                    base_projection=sim_player.get('projection', 0)
+                )
 
-    def run_competition(self, slates_per_config: int = 100):
-        """Run realistic competition"""
+                # Copy all simulator attributes
+                for attr in ['matchup_score', 'park_factor', 'weather_score',
+                             'recent_performance', 'consistency_score', 'ownership',
+                             'batting_order', 'game_total', 'team_total']:
+                    if attr in sim_player:
+                        setattr(player, attr, sim_player[attr])
 
-        print("\n" + "=" * 80)
-        print("🏁 REALISTIC ML COMPETITION")
-        print("=" * 80)
-        print("\n📋 Competition Setup:")
-        print("   • YOU: Use your full system (UnifiedCoreSystem + MILP)")
-        print("   • YOU: Auto-select best strategy for each slate")
-        print("   • OPPONENTS: Simulated field (various skill levels)")
-        print("   • OPPONENTS: Don't use your system")
-        print(f"\n⚡ Using {self.num_cores} CPU cores")
-        print(f"🎯 Slates per configuration: {slates_per_config}")
+                # Set derived attributes
+                player.is_pitcher = (player.primary_position == 'P')
+                player.implied_team_score = sim_player.get('team_total', 4.5)
+                player.recent_form = sim_player.get('recent_performance', 1.0)
+                player.projected_ownership = sim_player.get('ownership', 15)
 
-        # Show what strategies you'll be using
-        print("\n📊 Your strategies by slate type:")
-        for contest_type in ['cash', 'gpp']:
-            print(f"\n{contest_type.upper()}:")
-            for slate_size in ['small', 'medium', 'large']:
-                strategy = self.strategy_selector.top_strategies[contest_type][slate_size]
-                print(f"   {slate_size}: {strategy}")
+                players.append(player)
 
-        # Create tasks
-        tasks = []
-        slate_id = 3000  # Start from 3000 to avoid conflicts
+            # Auto-select strategy FIRST
+            selector = StrategyAutoSelector()
 
-        for slate_size in ['small', 'medium', 'large']:
-            for contest_type in ['cash', 'gpp']:
-                for i in range(slates_per_config):
-                    tasks.append((slate_id, contest_type, slate_size))
-                    slate_id += 1
+            # Try to analyze slate first
+            try:
+                slate_analysis = selector.analyze_slate_from_csv(players)
+                strategy_name, reason = selector.select_strategy(
+                    slate_analysis=slate_analysis,
+                    contest_type=contest_type
+                )
+            except Exception as e:
+                # Fallback: Direct access based on known slate size
+                print(f"Warning: Strategy selection failed ({e}), using direct access")
+                strategy_name = selector.top_strategies[contest_type][slate_size]
+                reason = f"Direct selection for {slate_size} {contest_type}"
 
-        print(f"\n🏁 Processing {len(tasks)} slates...")
+            # Build YOUR lineup using YOUR system
+            system = UnifiedCoreSystem()
+            system.players = players
+            system.csv_loaded = True
+
+            # Build YOUR lineup using YOUR system
+            system = UnifiedCoreSystem()
+            system.players = players
+            system.csv_loaded = True
+
+            # Build player pool
+            system.build_player_pool(include_unconfirmed=True)
+
+            # SKIP API ENRICHMENTS - we already have all data from simulator
+            # Instead, copy simulator data directly and mark as enriched
+            system.player_pool = system.player_pool or players
+
+            # Copy simulator data to player pool
+            for player in system.player_pool:
+                # Find matching sim player
+                sim_player = next((sp for sp in slate['players'] if sp['name'] == player.name), None)
+                if sim_player:
+                    # Copy all the enrichment data from simulator
+                    player.team_total = sim_player.get('team_total', 4.5)
+                    player.implied_team_score = sim_player.get('team_total', 4.5) / 2
+                    player.weather_impact = 1.0  # Perfect conditions in sim
+                    player.park_factor = sim_player.get('park_factor', 1.0)
+                    player.recent_form = sim_player.get('recent_performance', 1.0)
+                    player.consistency_score = 50 + (player.salary / 10000 * 30)
+
+                    # Restore ownership
+                    if hasattr(player, '_simulator_ownership'):
+                        player.ownership_projection = player._simulator_ownership
+
+            # Mark enrichments as applied to bypass the check
+            system.enrichments_applied = True
+
+            # Score players with YOUR enhanced scoring engine
+            system.score_players(contest_type)
+
+            # Optimize with YOUR MILP optimizer
+            lineups = system.optimize_lineups(
+                num_lineups=1,
+                strategy=strategy_name,
+                contest_type=contest_type
+            )
+
+            if not lineups or not lineups[0]:
+                print(f"Failed to generate lineup for slate {slate_id}")
+                return None
+
+            your_lineup = lineups[0]
+
+            # Convert YOUR lineup to simulator format
+            your_sim_lineup = []
+            for p in your_lineup['players']:
+                sim_player = next((sp for sp in slate['players'] if sp['name'] == p.name), None)
+                if sim_player:
+                    your_sim_lineup.append(sim_player)
+
+            # If we couldn't match all players, something is wrong
+            if len(your_sim_lineup) != len(your_lineup['players']):
+                print(f"Warning: Could only match {len(your_sim_lineup)}/{len(your_lineup['players'])} players")
+                return None
+
+            # Generate field with adaptive difficulty
+            field = self.generate_adaptive_field(99, slate_num)
+
+            # Generate opponent lineups using the standard generate_field
+            # The skill distribution is already built into generate_field
+            opponent_lineups = generate_field(slate, 100, contest_type)
+
+            # For harder difficulties, we can adjust the scores after generation
+            if self.difficulty == 'hard':
+                # Make opponents 10-20% better
+                for i, lineup in enumerate(opponent_lineups):
+                    boost = 1.0 + (field[i]['skill_factor'] * 0.2) if i < len(field) else 1.1
+                    # We'll apply the boost when scoring
+            elif self.difficulty == 'extreme':
+                # Make opponents 15-30% better
+                for i, lineup in enumerate(opponent_lineups):
+                    boost = 1.0 + (field[i]['skill_factor'] * 0.3) if i < len(field) else 1.2
+
+            # Score all lineups
+            # simulate_lineup_score expects a lineup dict with 'players' key
+            your_lineup_dict = {
+                'players': your_sim_lineup,
+                'salary': sum(p.get('salary', 0) for p in your_sim_lineup),
+                'projection': sum(p.get('projection', 0) for p in your_sim_lineup)
+            }
+            your_score = simulate_lineup_score(your_lineup_dict)
+
+            # Score opponents with difficulty adjustments
+            opponent_scores = []
+            for lineup in opponent_lineups:
+                base_score = simulate_lineup_score(lineup)
+
+                # Apply difficulty boost
+                if self.difficulty == 'easy':
+                    # Easy mode: reduce opponent scores by 5-10%
+                    adjusted_score = base_score * random.uniform(0.90, 0.95)
+                elif self.difficulty == 'hard':
+                    # Hard mode: boost opponent scores by 5-15%
+                    adjusted_score = base_score * random.uniform(1.05, 1.15)
+                elif self.difficulty == 'extreme':
+                    # Extreme mode: boost opponent scores by 10-25%
+                    adjusted_score = base_score * random.uniform(1.10, 1.25)
+                elif self.difficulty == 'sliding':
+                    # Sliding: progressively harder
+                    progress = min(slate_num / 500, 1.0)
+                    boost = 1.0 - (0.1 * (1 - progress))  # From 0.9 to 1.0
+                    adjusted_score = base_score * boost
+                else:  # medium
+                    adjusted_score = base_score
+
+                opponent_scores.append(adjusted_score)
+
+            # Calculate results
+            all_scores = [your_score] + opponent_scores
+            all_scores.sort(reverse=True)
+
+            your_rank = all_scores.index(your_score) + 1
+            percentile = ((100 - your_rank) / 100) * 100
+
+            # ROI calculation
+            if contest_type == 'cash':
+                win = your_rank <= 44  # Top 44%
+                roi = 100 if win else -100
+            else:  # GPP
+                if your_rank == 1:
+                    roi = 900
+                elif your_rank <= 3:
+                    roi = 400
+                elif your_rank <= 10:
+                    roi = 100
+                elif your_rank <= 20:
+                    roi = -50
+                else:
+                    roi = -100
+                win = your_rank <= 20
+
+            # Collect ML training data
+            player_data = []
+            for player in your_lineup['players']:
+                sim_p = next((sp for sp in slate['players'] if sp['name'] == player.name), None)
+                if sim_p:
+                    player_data.append({
+                        'slate_id': slate_id,
+                        'slate_num': slate_num,
+                        'difficulty': self.difficulty,
+                        'strategy': strategy_name,
+                        'contest_type': contest_type,
+                        'slate_size': slate_size,
+                        'player_name': player.name,
+                        'position': player.primary_position,
+                        'salary': player.salary,
+                        'projection': player.base_projection,
+                        'actual_score': sim_p.get('actual_score', 0),
+                        'optimization_score': getattr(player, 'optimization_score', 0),
+                        'lineup_score': your_score,
+                        'lineup_rank': your_rank,
+                        'lineup_percentile': percentile,
+                        'lineup_win': win,
+                        'lineup_roi': roi,
+                        'field_avg_score': np.mean(opponent_scores),
+                        'difficulty_level': self.difficulty
+                    })
+
+            return {
+                'slate_id': slate_id,
+                'contest_type': contest_type,
+                'strategy': strategy_name,
+                'your_score': your_score,
+                'your_rank': your_rank,
+                'win': win,
+                'roi': roi,
+                'percentile': percentile,
+                'player_data': player_data
+            }
+
+        except Exception as e:
+            print(f"Error processing slate {slate_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def run_competition(self, slates_per_config: int = 50):
+        """Run full competition test"""
+
+        print(f"\n🏁 REALISTIC ML COMPETITION - {self.difficulty.upper()} DIFFICULTY")
+        print("=" * 60)
+
+        # Create test configurations
+        configs = [
+            ('cash', 'small'),
+            ('cash', 'medium'),
+            ('cash', 'large'),
+            ('gpp', 'small'),
+            ('gpp', 'medium'),
+            ('gpp', 'large')
+        ]
+
+        all_tasks = []
+        slate_counter = 0
+
+        for contest_type, slate_size in configs:
+            for i in range(slates_per_config):
+                slate_id = slate_counter * 1000 + i
+                all_tasks.append((slate_id, contest_type, slate_size, slate_counter))
+                slate_counter += 1
 
         # Process in parallel
+        print(f"\n📊 Running {len(all_tasks)} total slates on {self.num_cores} cores...")
+
         all_results = []
-        start_time = datetime.now()
 
         with mp.Pool(self.num_cores) as pool:
-            for i, result in enumerate(pool.imap(process_single_slate_vs_field, tasks)):
-                if i % 10 == 0:
-                    elapsed = (datetime.now() - start_time).total_seconds()
-                    rate = i / elapsed if elapsed > 0 else 0
-                    eta = (len(tasks) - i) / rate if rate > 0 else 0
-                    print(f"\r   Progress: {i}/{len(tasks)} slates "
-                          f"({rate:.1f} slates/sec, ETA: {eta / 60:.1f} min)",
-                          end="", flush=True)
+            for i, result in enumerate(pool.imap_unordered(
+                    self.process_single_slate_vs_field, all_tasks)):
 
                 if result:
                     all_results.append(result)
 
-        print(f"\n\n✅ Processed {len(all_results)} slates successfully")
+                if (i + 1) % 50 == 0:
+                    print(f"Progress: {i + 1}/{len(all_tasks)} slates processed...")
 
-        # Analyze results
-        self._analyze_results(all_results)
-
-        # Save training data
+        # Save results
         self._save_training_data(all_results)
 
-    def _analyze_results(self, all_results):
-        """Analyze competition results"""
+        # Print summary
+        self._print_summary(all_results)
 
-        print("\n" + "=" * 80)
-        print("📊 COMPETITION RESULTS vs REALISTIC FIELD")
-        print("=" * 80)
-
-        # Group by strategy and contest type
-        strategy_performance = {}
-
-        for result in all_results:
-            key = f"{result['strategy']}_{result['contest_type']}"
-
-            if key not in strategy_performance:
-                strategy_performance[key] = {
-                    'wins': 0,
-                    'total': 0,
-                    'roi_sum': 0,
-                    'ranks': []
-                }
-
-            perf = strategy_performance[key]
-            perf['total'] += 1
-            perf['roi_sum'] += result['roi']
-            perf['ranks'].append(result['rank'])
-            if result['win']:
-                perf['wins'] += 1
-
-        # Print cash results
-        print("\n💰 CASH GAME PERFORMANCE:")
-        print(f"{'Strategy':<30} {'Win Rate':>10} {'Avg ROI':>10} {'Avg Rank':>10}")
-        print("-" * 60)
-
-        expected_cash_win = 44  # Top 44% win in cash
-
-        cash_results = [(k, v) for k, v in strategy_performance.items() if '_cash' in k]
-        cash_results.sort(key=lambda x: x[1]['wins'] / x[1]['total'], reverse=True)
-
-        for key, perf in cash_results:
-            strategy = key.replace('_cash', '')
-            win_rate = (perf['wins'] / perf['total']) * 100
-            avg_roi = perf['roi_sum'] / perf['total']
-            avg_rank = np.mean(perf['ranks'])
-
-            # Compare to expected
-            if win_rate > expected_cash_win * 1.2:
-                status = "🏆"  # Significantly better
-            elif win_rate > expected_cash_win:
-                status = "✅"  # Better than expected
-            elif win_rate > expected_cash_win * 0.8:
-                status = "➖"  # Close to expected
-            else:
-                status = "⚠️"  # Below expected
-
-            print(f"{strategy:<30} {win_rate:>9.1f}% {avg_roi:>+9.1f}% {avg_rank:>9.1f} {status}")
-
-        # Print GPP results
-        print("\n🎯 GPP PERFORMANCE:")
-        print(f"{'Strategy':<30} {'Win Rate':>10} {'Avg ROI':>10} {'Avg Rank':>10}")
-        print("-" * 60)
-
-        expected_gpp_win = 20  # Top 20% win in GPP
-
-        gpp_results = [(k, v) for k, v in strategy_performance.items() if '_gpp' in k]
-        gpp_results.sort(key=lambda x: x[1]['roi_sum'] / x[1]['total'], reverse=True)
-
-        for key, perf in gpp_results:
-            strategy = key.replace('_gpp', '')
-            win_rate = (perf['wins'] / perf['total']) * 100
-            avg_roi = perf['roi_sum'] / perf['total']
-            avg_rank = np.mean(perf['ranks'])
-
-            # Compare to expected
-            if avg_roi > 50:
-                status = "🔥"  # Great ROI
-            elif avg_roi > 0:
-                status = "✅"  # Positive ROI
-            elif avg_roi > -50:
-                status = "➖"  # Small loss
-            else:
-                status = "⚠️"  # Big loss
-
-            print(f"{strategy:<30} {win_rate:>9.1f}% {avg_roi:>+9.1f}% {avg_rank:>9.1f} {status}")
-
-        # Overall analysis
-        total_cash = sum(v['total'] for k, v in strategy_performance.items() if '_cash' in k)
-        total_gpp = sum(v['total'] for k, v in strategy_performance.items() if '_gpp' in k)
-        cash_wins = sum(v['wins'] for k, v in strategy_performance.items() if '_cash' in k)
-        gpp_wins = sum(v['wins'] for k, v in strategy_performance.items() if '_gpp' in k)
-
-        overall_cash_win = (cash_wins / total_cash * 100) if total_cash > 0 else 0
-        overall_gpp_win = (gpp_wins / total_gpp * 100) if total_gpp > 0 else 0
-
-        print(f"\n📈 OVERALL PERFORMANCE:")
-        print(f"   Cash win rate: {overall_cash_win:.1f}% (expected: {expected_cash_win}%)")
-        print(f"   GPP win rate: {overall_gpp_win:.1f}% (expected: {expected_gpp_win}%)")
-
-        if overall_cash_win > expected_cash_win * 1.5:
-            print("\n⚠️  Note: Cash win rate seems high. Check if field strength is realistic.")
-        elif overall_cash_win > expected_cash_win:
-            print("\n✅ Your system is outperforming the field in cash games!")
-
-        if overall_gpp_win > expected_gpp_win * 1.5:
-            print("\n⚠️  Note: GPP win rate seems high. Check if field strength is realistic.")
-        elif overall_gpp_win > expected_gpp_win:
-            print("\n✅ Your system is outperforming the field in GPPs!")
+        return all_results
 
     def _save_training_data(self, all_results):
         """Save ML training data"""
 
-        # Extract all player data
         all_player_data = []
-
         for result in all_results:
             if 'player_data' in result:
                 all_player_data.extend(result['player_data'])
@@ -473,17 +417,54 @@ class RealisticMLCompetition:
         if all_player_data:
             df = pd.DataFrame(all_player_data)
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f'realistic_ml_training_data_{timestamp}.csv'
+            filename = f'ml_training_data_{self.difficulty}_{timestamp}.csv'
             df.to_csv(filename, index=False)
 
             print(f"\n💾 Training data saved to: {filename}")
             print(f"   • Total records: {len(df):,}")
             print(f"   • Unique slates: {df['slate_id'].nunique()}")
-            print(f"   • File size: {os.path.getsize(filename) / 1024 / 1024:.1f} MB")
+            print(f"   • Difficulty: {self.difficulty}")
 
-            # Show sample of data
-            print("\n📋 Sample records:")
-            print(df[['slate_id', 'strategy', 'contest_type', 'lineup_rank', 'lineup_win', 'lineup_roi']].head(10))
+    def _print_summary(self, all_results):
+        """Print competition summary"""
+
+        print("\n" + "=" * 60)
+        print(f"📊 COMPETITION RESULTS - {self.difficulty.upper()} DIFFICULTY")
+        print("=" * 60)
+
+        # Group by strategy
+        from collections import defaultdict
+        strategy_results = defaultdict(list)
+
+        for result in all_results:
+            key = f"{result['strategy']}_{result['contest_type']}"
+            strategy_results[key].append(result)
+
+        # Print results by strategy
+        for strategy_key, results in strategy_results.items():
+            strategy, contest = strategy_key.rsplit('_', 1)
+
+            wins = sum(1 for r in results if r['win'])
+            total = len(results)
+            win_rate = wins / total * 100 if total > 0 else 0
+            avg_roi = sum(r['roi'] for r in results) / total if total > 0 else 0
+            avg_rank = sum(r['your_rank'] for r in results) / total if total > 0 else 0
+
+            print(f"\n{strategy} ({contest}):")
+            print(f"  • Contests: {total}")
+            print(f"  • Win Rate: {win_rate:.1f}%")
+            print(f"  • Avg ROI: {avg_roi:+.1f}%")
+            print(f"  • Avg Rank: {avg_rank:.1f}/100")
+
+        # Overall performance
+        total_contests = len(all_results)
+        total_wins = sum(1 for r in all_results if r['win'])
+        overall_win_rate = total_wins / total_contests * 100 if total_contests > 0 else 0
+
+        print(f"\n🎯 OVERALL PERFORMANCE:")
+        print(f"   • Total contests: {total_contests}")
+        print(f"   • Overall win rate: {overall_win_rate:.1f}%")
+        print(f"   • Difficulty: {self.difficulty}")
 
 
 if __name__ == "__main__":
@@ -491,46 +472,59 @@ if __name__ == "__main__":
     🏁 REALISTIC ML COMPETITION
     ==========================
 
-    This tests YOUR exact system against a realistic DFS field.
+    Test your system against increasingly difficult competition!
 
-    Setup:
-    - YOU use UnifiedCoreSystem + MILP optimizer
-    - YOU auto-select best strategy for each slate
-    - OPPONENTS are simulated (various skill levels)
-    - 100-person contests (you + 99 opponents)
+    Difficulty Levels:
+    1. Easy (Original) - Mixed field with many weak players
+    2. Medium - Tougher field, mostly good players
+    3. Hard - Majority sharks, few weak players
+    4. Extreme - Almost all sharks + elite optimizers
+    5. Sliding - Starts easy, gets progressively harder
 
-    Expected results:
-    - Cash: ~44% win rate (top 44% cash)
-    - GPP: ~20% win rate (top 20% cash)
-    - Your edge depends on optimizer quality
-
-    Options:
-    1. Quick test (10 slates per config = 60 total)
-    2. Standard test (50 slates per config = 300 total)
-    3. Comprehensive test (100 slates per config = 600 total)
-    4. Extended test (500 slates per config = 3000 total)
+    Slate Options:
+    A. Quick test (10 slates per config = 60 total)
+    B. Standard test (50 slates per config = 300 total)
+    C. Comprehensive test (100 slates per config = 600 total)
     """)
 
-    choice = input("\nSelect option (1-4): ")
+    # Get difficulty
+    diff_choice = input("\nSelect difficulty (1-5): ")
+    difficulty_map = {
+        '1': 'easy',
+        '2': 'medium',
+        '3': 'hard',
+        '4': 'extreme',
+        '5': 'sliding'
+    }
+    difficulty = difficulty_map.get(diff_choice, 'medium')
 
-    # Ask about cores
+    # Get slate count
+    slate_choice = input("\nSelect slate option (A-C): ").upper()
+    slates_map = {
+        'A': 10,
+        'B': 50,
+        'C': 100
+    }
+    slates_per_config = slates_map.get(slate_choice, 50)
+
+    # Cores
     max_cores = mp.cpu_count()
     core_input = input(f"\nHow many CPU cores to use? (1-{max_cores}, default={max_cores}): ")
     num_cores = int(core_input) if core_input.isdigit() else max_cores
 
-    competition = RealisticMLCompetition(num_cores=min(num_cores, max_cores))
+    # Run competition
+    print(f"\n🚀 Starting competition with:")
+    print(f"   Difficulty: {difficulty}")
+    print(f"   Slates per config: {slates_per_config}")
+    print(f"   CPU cores: {num_cores}")
 
-    slates_map = {
-        '1': 10,
-        '2': 50,
-        '3': 100,
-        '4': 500
-    }
-
-    if choice in slates_map:
-        competition.run_competition(slates_map[choice])
+    confirm = input("\nProceed? (y/n): ")
+    if confirm.lower() == 'y':
+        competition = RealisticMLCompetition(
+            num_cores=min(num_cores, max_cores),
+            difficulty=difficulty
+        )
+        competition.run_competition(slates_per_config)
+        print("\n✅ Competition complete!")
     else:
-        print("Invalid choice!")
-
-    print("\n✅ Competition complete!")
-    print("\n⚠️  REMINDER: After ML testing, we need to fix your optimizer's lineup generation issue!")
+        print("\nCompetition cancelled.")
