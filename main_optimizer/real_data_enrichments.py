@@ -101,36 +101,48 @@ class RealStatcastFetcher:
                 return result
 
     def _try_lookup(self, player_name: str, days: int) -> Dict:
-        """Try to lookup player stats with pybaseball"""
+        """Fixed version that actually works with pybaseball"""
         try:
-            # Get date range
+            from pybaseball import playerid_lookup, statcast
+
+            # Split name for lookup
+            parts = player_name.split()
+            if len(parts) >= 2:
+                first = parts[0]
+                last = ' '.join(parts[1:])  # Handle names like "Ronald Acuna Jr."
+            else:
+                return self._default_stats()
+
+            # Get player ID
+            try:
+                lookup = playerid_lookup(last, first)
+                if lookup.empty:
+                    return self._default_stats()
+                player_id = int(lookup.iloc[0]['key_mlbam'])
+            except:
+                return self._default_stats()
+
+            # Get statcast data
             end_date = self.season_end
             start_date = end_date - timedelta(days=days)
 
-            # Format dates for pybaseball
-            start_str = start_date.strftime('%Y-%m-%d')
-            end_str = end_date.strftime('%Y-%m-%d')
+            df = statcast(start_dt=start_date.strftime('%Y-%m-%d'),
+                          end_dt=end_date.strftime('%Y-%m-%d'))
 
-            # Try to get player stats
-            from pybaseball import statcast_batter, statcast_pitcher
+            if df.empty:
+                return self._default_stats()
 
-            # First try as batter
-            try:
-                df = statcast_batter(start_dt=start_str, end_dt=end_str, player_name=player_name)
-                if df is not None and len(df) > 0:
-                    return self._process_batting_stats(df, player_name)
-            except:
-                pass
+            # Filter for this player
+            player_data = df[df['batter'] == player_id]
 
-            # Then try as pitcher
-            try:
-                df = statcast_pitcher(start_dt=start_str, end_dt=end_str, player_name=player_name)
-                if df is not None and len(df) > 0:
-                    return self._process_pitching_stats(df, player_name)
-            except:
-                pass
+            if not player_data.empty:
+                return self._process_batting_stats(player_data, player_name)
 
-            # No data found
+            # Try as pitcher
+            player_data = df[df['pitcher'] == player_id]
+            if not player_data.empty:
+                return self._process_pitching_stats(player_data, player_name)
+
             return self._default_stats()
 
         except Exception as e:

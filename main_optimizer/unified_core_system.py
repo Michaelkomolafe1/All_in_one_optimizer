@@ -49,18 +49,13 @@ from enhanced_scoring_engine import EnhancedScoringEngine
 
 # Data enrichment imports with error handling
 try:
-    # Try data directory first
-    from data.statcast_fetcher import SimpleStatcastFetcher
+    from real_data_enrichments import RealStatcastFetcher as SimpleStatcastFetcher
     STATCAST_AVAILABLE = True
+    logger.info("✅ Statcast initialized via RealStatcastFetcher")
 except ImportError:
-    try:
-        # Try current directory
-        from statcast_fetcher import SimpleStatcastFetcher
-        STATCAST_AVAILABLE = True
-    except ImportError:
-        logger.warning("simple_statcast_fetcher not available - stats enrichment disabled")
-        STATCAST_AVAILABLE = False
-        SimpleStatcastFetcher = None
+    logger.warning("Statcast not available - stats enrichment disabled")
+    STATCAST_AVAILABLE = False
+    SimpleStatcastFetcher = None
 
 try:
     from smart_confirmation import SmartConfirmationSystem
@@ -129,6 +124,7 @@ try:
 
     TRACKING_AVAILABLE = True
 except ImportError:
+    TRACKING_AVAILABLE = False
     TRACKING_AVAILABLE = False
     PerformanceTracker = None
     logger.warning("Performance tracker not available")
@@ -602,6 +598,38 @@ class UnifiedCoreSystem:
         if missing_manual:
             self.log(f"Warning: {len(missing_manual)} manual selections not found in player list", "warning")
 
+    def _calculate_consistency_score(self, player):
+        """Calculate consistency score based on player attributes"""
+        if player.is_pitcher:
+            if player.salary >= 9500:
+                return 1.20  # Elite aces
+            elif player.salary >= 8000:
+                return 1.10  # Quality starters
+            elif player.salary >= 6500:
+                return 1.00  # Mid-tier
+            else:
+                return 0.85  # Back-end starters
+        else:
+            # Hitters
+            consistency = 1.0
+
+            # Batting order adjustment
+            if hasattr(player, 'batting_order') and player.batting_order:
+                if player.batting_order <= 3:
+                    consistency *= 1.10
+                elif player.batting_order <= 5:
+                    consistency *= 1.05
+                elif player.batting_order >= 8:
+                    consistency *= 0.90
+
+            # Salary adjustment
+            if player.salary >= 5000:
+                consistency *= 1.05
+            elif player.salary <= 3000:
+                consistency *= 0.90
+
+            return round(consistency, 2)
+
     def debug_player_matching(self):
         """Debug method to show why players aren't matching"""
         print("\n" + "=" * 60)
@@ -651,90 +679,46 @@ class UnifiedCoreSystem:
     """
 
     def enrich_player_pool(self):
-        """Enhanced player pool enrichment with priority filtering and smart defaults"""
+        """Enhanced player pool enrichment - uses correct API methods and data structures"""
         if not self.player_pool:
             self.log("No players in pool to enrich")
             return {}
 
-        self.log("🔬 Enriching player pool with additional data...")
+        self.log(f"🔬 Enriching ALL {len(self.player_pool)} players in pool...")
 
-        # STEP 1: Separate priority vs default players
-        priority_players = []
-        default_players = []
-
-        for player in self.player_pool:
-            # Ensure player has is_pitcher attribute
-            if not hasattr(player, 'is_pitcher'):
-                player.is_pitcher = (player.primary_position == 'P')
-
-            # Priority: confirmed, manual selection, or high salary
-            if (getattr(player, 'is_confirmed', False) or
-                    player.name in getattr(self, 'manual_selections', set()) or
-                    player.salary >= 8000):
-                priority_players.append(player)
-            else:
-                default_players.append(player)
-
-        self.log(f"📊 Priority players: {len(priority_players)}, Default players: {len(default_players)}")
-
-        # STEP 2: Initialize data sources
+        # Initialize data sources with CORRECT imports
         vegas_fetcher = None
         weather_fetcher = None
         park_factors_fetcher = None
-        statcast_fetcher = None
+        stats_fetcher = None
 
         try:
-            # Add parent directory to path if needed
-            import sys
-            import os
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            parent_dir = os.path.dirname(current_dir)
-            if parent_dir not in sys.path:
-                sys.path.insert(0, parent_dir)
-
-            # Import data sources
-            try:
-                from vegas_lines import VegasLines
-                vegas_fetcher = VegasLines()
-                self.log("✅ Vegas lines loaded")
-            except Exception as e:
-                self.log(f"⚠️ Vegas lines unavailable: {e}")
-
-            try:
-                from weather_integration import WeatherIntegration
-                weather_fetcher = WeatherIntegration()
-                self.log("✅ Weather integration loaded")
-            except Exception as e:
-                self.log(f"⚠️ Weather integration unavailable: {e}")
-
-            try:
-                from park_factors import ParkFactors
-                park_factors_fetcher = ParkFactors()
-                self.log("✅ Park factors loaded")
-            except Exception as e:
-                self.log(f"⚠️ Park factors unavailable: {e}")
-
-            try:
-                from real_data_enrichments import RealStatcastFetcher
-                statcast_fetcher = RealStatcastFetcher()
-                self.log("✅ Statcast data loaded")
-            except Exception as e:
-                self.log(f"⚠️ Statcast unavailable: {e}")
-
+            from vegas_lines import VegasLines
+            vegas_fetcher = VegasLines()
+            self.log("✅ Vegas module loaded")
         except Exception as e:
-            self.log(f"Error setting up data sources: {e}")
+            self.log(f"⚠️ Vegas not available: {e}")
 
-        # STEP 3: Hardcoded park factors as fallback
-        default_park_factors = {
-            'COL': 1.33, 'CIN': 1.18, 'TEX': 1.12, 'BOS': 1.08,
-            'TOR': 1.07, 'PHI': 1.06, 'BAL': 1.05, 'MIL': 1.04,
-            'CHC': 1.02, 'NYY': 1.01, 'MIN': 1.00, 'ATL': 0.99,
-            'CWS': 0.99, 'WSH': 0.97, 'ARI': 0.96, 'HOU': 0.95,
-            'STL': 0.94, 'NYM': 0.92, 'TB': 0.91, 'OAK': 0.90,
-            'SD': 0.89, 'SEA': 0.88, 'SF': 0.87, 'MIA': 0.86,
-            'LAD': 0.93, 'LAA': 0.98, 'KC': 0.97, 'PIT': 0.96,
-            'DET': 0.98, 'CLE': 0.97
-        }
+        try:
+            from real_data_enrichments import RealWeatherIntegration
+            weather_fetcher = RealWeatherIntegration()
+            self.log("✅ Weather module loaded")
+        except Exception as e:
+            self.log(f"⚠️ Weather not available: {e}")
+
+        try:
+            from park_factors import ParkFactors
+            park_factors_fetcher = ParkFactors()
+            self.log("✅ Park factors module loaded")
+        except Exception as e:
+            self.log(f"⚠️ Park factors not available: {e}")
+
+        try:
+            from real_data_enrichments import RealStatcastFetcher
+            stats_fetcher = RealStatcastFetcher()
+            self.log("✅ Statcast module loaded")
+        except Exception as e:
+            self.log(f"⚠️ Statcast not available: {e}")
 
         # Track enrichment results
         enrichment_stats = {
@@ -742,107 +726,266 @@ class UnifiedCoreSystem:
             'weather': 0,
             'park': 0,
             'stats': 0,
+            'consistency': 0,
             'total': len(self.player_pool)
         }
 
-        # STEP 4: Enrich priority players with real data
-        for i, player in enumerate(priority_players):
-            if i % 20 == 0 and i > 0:
-                self.log(f"Progress: {i}/{len(priority_players)} priority players...")
-
+        # VEGAS - Handle the dict structure correctly
+        if vegas_fetcher:
             try:
-                # Vegas data
-                if vegas_fetcher:
-                    try:
-                        vegas_fetcher.enrich_player(player)
-                        if hasattr(player, 'team_total') and player.team_total > 0:
-                            enrichment_stats['vegas'] += 1
-                    except:
-                        player.team_total = 4.5  # Default
-                else:
-                    player.team_total = 4.5
+                lines = vegas_fetcher.get_vegas_lines()
 
-                # Weather data
-                if weather_fetcher:
-                    try:
-                        weather_data = weather_fetcher.get_game_weather(player.team)
-                        player.weather_impact = weather_data.get('weather_impact', 1.0)
-                        if player.weather_impact != 1.0:
-                            enrichment_stats['weather'] += 1
-                    except:
-                        player.weather_impact = 1.0
-                else:
-                    player.weather_impact = 1.0
+                if lines and isinstance(lines, dict):
+                    for player in self.player_pool:
+                        # Set defaults first
+                        player.team_total = 4.5
+                        player.implied_team_score = 4.5
 
-                # Park factors
-                if park_factors_fetcher:
-                    try:
-                        player.park_factor = park_factors_fetcher.get_park_factor(player.team)
-                        enrichment_stats['park'] += 1
-                    except:
-                        player.park_factor = default_park_factors.get(player.team, 1.0)
-                else:
-                    player.park_factor = default_park_factors.get(player.team, 1.0)
+                        # Check if player's team has data
+                        team_data = lines.get(player.team)
+                        if team_data and isinstance(team_data, dict):
+                            total = team_data.get('total', 4.5)
+                            player.team_total = float(total)
+                            # Implied team score is roughly half the total
+                            player.implied_team_score = float(total) / 2
 
-                # Recent form / stats (simplified for now)
-                # Value-based form adjustment
-                value = player.base_projection / (player.salary / 1000) if player.salary > 0 else 3.0
-                if value > 4.0:  # Good value
-                    player.recent_form = 1.08
-                elif value > 3.0:  # Decent value
-                    player.recent_form = 1.0
-                else:  # Poor value
-                    player.recent_form = 0.95
-
-                # Consistency score
-                player.consistency_score = 1.0
-
-                # Matchup score based on projection
-                if player.base_projection > 15:
-                    player.matchup_score = 1.06
-                elif player.base_projection < 8:
-                    player.matchup_score = 0.94
-                else:
-                    player.matchup_score = 1.00
+                            if player.team_total != 4.5:
+                                enrichment_stats['vegas'] += 1
 
             except Exception as e:
-                self.log(f"Error enriching {player.name}: {e}")
-                # Set defaults on error
-                player.team_total = 4.5
-                player.park_factor = 1.0
-                player.weather_impact = 1.0
-                player.recent_form = 1.0
-                player.consistency_score = 1.0
-                player.matchup_score = 1.0
+                self.log(f"Vegas enrichment error: {e}")
+                # Set defaults for all players on error
+                for player in self.player_pool:
+                    player.team_total = 4.5
+                    player.implied_team_score = 4.5
 
-        # STEP 5: Give smart defaults to non-priority players
-        for player in default_players:
-            player.team_total = 4.5
-            player.park_factor = default_park_factors.get(player.team, 1.0)
+        # Process each player for other enrichments
+        for i, player in enumerate(self.player_pool):
+            if i % 10 == 0 and i > 0:
+                self.log(f"Progress: {i}/{len(self.player_pool)} players enriched...")
+
+            # Ensure defaults are set
+            if not hasattr(player, 'implied_team_score'):
+                player.implied_team_score = 4.5
             player.weather_impact = 1.0
+            player.park_factor = 1.0
             player.recent_form = 1.0
             player.consistency_score = 1.0
             player.matchup_score = 1.0
 
-        # STEP 6: Add ownership projections to all players
-        self._calculate_ownership_projections()
+            # Ensure is_pitcher
+            if not hasattr(player, 'is_pitcher'):
+                player.is_pitcher = (player.primary_position == 'P')
 
-        # STEP 7: Set any missing implied_team_score (for compatibility)
+            try:
+                # WEATHER - Use the pre-calculated impact
+                if weather_fetcher:
+                    try:
+                        weather_data = weather_fetcher.get_game_weather(player.team)
+                        if weather_data and isinstance(weather_data, dict):
+                            # The weather_impact is ALREADY CALCULATED in the data
+                            impact = weather_data.get('weather_impact', 1.0)
+                            player.weather_impact = float(impact)
+
+                            # Also store other weather data for reference
+                            player.game_temperature = weather_data.get('temperature', 72)
+                            player.game_wind = weather_data.get('wind_speed', 0)
+                            player.is_dome = weather_data.get('is_dome', False)
+
+                            if player.weather_impact != 1.0:
+                                enrichment_stats['weather'] += 1
+                    except Exception as e:
+                        # Silent fail - keep default
+                        pass
+
+                # PARK FACTORS
+                if park_factors_fetcher:
+                    try:
+                        factor = park_factors_fetcher.get_park_factor(player.team)
+                        if factor and factor != 1.0:
+                            player.park_factor = float(factor)
+                            enrichment_stats['park'] += 1
+                    except:
+                        pass
+
+                # CONSISTENCY SCORE
+                if hasattr(self, '_calculate_consistency_score'):
+                    player.consistency_score = self._calculate_consistency_score(player)
+                else:
+                    # Simple consistency based on salary
+                    if player.is_pitcher:
+                        player.consistency_score = 1.1 if player.salary >= 8000 else 0.95
+                    else:
+                        player.consistency_score = 1.05 if player.salary >= 4500 else 0.90
+
+                if player.consistency_score != 1.0:
+                    enrichment_stats['consistency'] += 1
+
+                # BATTING ORDER (for hitters)
+                if not player.is_pitcher and not hasattr(player, 'batting_order'):
+                    if player.salary >= 5000:
+                        player.batting_order = 3
+                    elif player.salary >= 4000:
+                        player.batting_order = 5
+                    elif player.salary >= 3000:
+                        player.batting_order = 7
+                    else:
+                        player.batting_order = 9
+
+            except Exception as e:
+                self.log(f"Error enriching {player.name}: {str(e)}")
+
+        # HYBRID RECENT FORM - Real data for stars, estimates for others
+        # HYBRID RECENT FORM - Real data for stars, estimates for others
+        self.log("Applying hybrid recent form (statcast for top 50%, salary for bottom 50%)...")
+
+        # Sort players by salary to find median
+        sorted_players = sorted(self.player_pool, key=lambda p: p.salary, reverse=True)
+        median_index = len(sorted_players) // 2
+        median_salary = sorted_players[median_index].salary
+
+        self.log(f"Pool size: {len(self.player_pool)} players")
+        self.log(f"Median salary: ${median_salary}")
+        self.log(f"Getting real stats for players above ${median_salary}")
+
+        # Count for each method
+        statcast_count = 0
+        salary_based_count = 0
+        statcast_attempts = 0
+
+        # PHASE 1: Try statcast for HIGH SALARY players (top 50%)
+        for player in sorted_players[:median_index]:  # Top half by salary
+            if stats_fetcher and not player.is_pitcher:  # Focus on hitters
+                try:
+                    statcast_attempts += 1
+                    self.log(f"  Fetching stats for {player.name} (${player.salary})...")
+
+                    # NO TIMEOUT - just get the data (7 days only)
+                    stats = stats_fetcher.get_recent_stats(player.name, days=7)
+
+                    if stats and stats.get('games_analyzed', 0) > 0:
+                        # Apply real stats
+                        avg = stats.get('batting_avg', stats.get('avg', 0))
+                        ops = stats.get('ops', 0)
+
+                        # More nuanced scoring for premium players
+                        if avg > 0.300 or ops > 0.900:
+                            player.recent_form = 1.15
+                        elif avg > 0.270 or ops > 0.800:
+                            player.recent_form = 1.10
+                        elif avg > 0.250 or ops > 0.750:
+                            player.recent_form = 1.05
+                        elif avg < 0.200 or ops < 0.650:
+                            player.recent_form = 0.90
+                        else:
+                            player.recent_form = 1.00
+
+                        statcast_count += 1
+                        enrichment_stats['stats'] += 1
+                        self.log(f"    ✅ Got stats: AVG={avg:.3f}, Form={player.recent_form}")
+                        continue
+                    else:
+                        # No data returned - use salary fallback
+                        self.log(f"    ❌ No stats found, using salary-based")
+
+                except Exception as e:
+                    self.log(f"    ❌ Error: {str(e)}, using salary-based")
+
+            # FALLBACK: If statcast failed or no data, use salary-based
+            if not hasattr(player, 'recent_form') or player.recent_form == 1.0:
+                if player.is_pitcher:
+                    player.recent_form = 1.05 if player.salary >= 9000 else 1.02
+                else:
+                    # High salary hitter without stats
+                    if player.salary >= 6000:
+                        player.recent_form = 1.08
+                    elif player.salary >= 5000:
+                        player.recent_form = 1.06
+                    else:
+                        player.recent_form = 1.04
+                salary_based_count += 1
+                enrichment_stats['stats'] += 1
+
+        # PHASE 2: Salary-based for LOWER SALARY players (bottom 50%)
+        self.log(f"\nApplying salary-based form for players below ${median_salary}...")
+
         for player in self.player_pool:
-            if not hasattr(player, 'implied_team_score'):
-                player.implied_team_score = getattr(player, 'team_total', 4.5)
+            if not hasattr(player, 'recent_form') or player.recent_form == 1.0:
+                if not player.is_pitcher:
+                    # Value hitters
+                    if player.salary >= 4500:
+                        player.recent_form = 1.03
+                    elif player.salary >= 3500:
+                        player.recent_form = 1.00
+                    elif player.salary >= 3000:
+                        player.recent_form = 0.97
+                    else:
+                        player.recent_form = 0.92  # Punt plays
+                else:
+                    # Value pitchers
+                    if player.salary >= 6500:
+                        player.recent_form = 1.00
+                    else:
+                        player.recent_form = 0.95
 
-        # Log final results
-        self.log(f"✅ Enrichment complete:")
-        self.log(f"   Priority players enriched: {len(priority_players)}")
-        self.log(f"   Vegas data: {enrichment_stats['vegas']}")
-        self.log(f"   Weather data: {enrichment_stats['weather']}")
-        self.log(f"   Park factors: {enrichment_stats['park']}")
+                salary_based_count += 1
+                enrichment_stats['stats'] += 1
 
-        # Set flag
+        # VERIFICATION: Ensure everyone has recent form
+        for player in self.player_pool:
+            if not hasattr(player, 'recent_form'):
+                player.recent_form = 1.0
+                self.log(f"⚠️ Missing form for {player.name}, set to 1.0")
+
+        # Summary
+        self.log(f"\n📊 Recent Form Summary:")
+        self.log(f"  Statcast attempts: {statcast_attempts}")
+        self.log(f"  Statcast success: {statcast_count}")
+        self.log(f"  Salary-based: {salary_based_count}")
+        self.log(f"  Total enriched: {statcast_count + salary_based_count}/{len(self.player_pool)}")
+        # Calculate ownership projections if method exists
+        if hasattr(self, '_calculate_ownership_projections'):
+            self._calculate_ownership_projections()
+
+        # Find value plays
+        value_plays = [p for p in self.player_pool
+                       if p.salary <= 3500 and p.base_projection > 0
+                       and p.base_projection / (p.salary / 1000) > 2.0]
+
+        if value_plays:
+            # Show Coors Field players
+            coors_players = [p for p in self.player_pool
+                             if p.team in ['COL'] or (hasattr(p, 'opponent') and p.opponent == 'COL')]
+            for p in sorted(coors_players, key=lambda x: x.salary, reverse=True):
+                self.log(f"🏔️ Coors chalk: {p.name}")
+
+            # Show top value plays
+            for p in sorted(value_plays, key=lambda x: x.base_projection, reverse=True)[:3]:
+                value = p.base_projection / (p.salary / 1000)
+                self.log(f"💰 Value chalk: {p.name} (${p.salary}, {p.base_projection} proj)")
+
+        # Mark enrichments as applied
         self.enrichments_applied = True
 
+        # Log final results
+        self.log(f"\n✅ Enrichment Complete:")
+        self.log(f"  Total players: {len(self.player_pool)}")
+        self.log(f"  Vegas data: {enrichment_stats['vegas']}")
+        self.log(f"  Weather data: {enrichment_stats['weather']}")
+        self.log(f"  Park factors: {enrichment_stats['park']}")
+        self.log(f"  Recent stats: {enrichment_stats['stats']}")
+        self.log(f"  Consistency: {enrichment_stats['consistency']}")
+
+        # Show sample enriched player
+        if self.player_pool:
+            sample = self.player_pool[0]
+            self.log(f"\n📊 Sample - {sample.name}:")
+            self.log(f"  Vegas: {getattr(sample, 'implied_team_score', 'N/A')}")
+            self.log(f"  Weather: {getattr(sample, 'weather_impact', 'N/A')}")
+            self.log(f"  Park: {getattr(sample, 'park_factor', 'N/A')}")
+
         return enrichment_stats
+
 
 
     def _calculate_ownership_projections(self):

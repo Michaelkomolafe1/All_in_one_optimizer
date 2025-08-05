@@ -74,127 +74,51 @@ class VegasLines:
             else:
                 return 1.0
 
-    def get_vegas_lines(self, force_refresh: bool = False, **kwargs) -> Dict:
-        """Get MLB game totals with caching - compatible method name"""
+    def get_vegas_lines(self):
+        """Get Vegas lines with better cache handling"""
+        # Debug info
+        self.verbose_print(f"📁 Cache file: {self.cache_file}")
+        self.verbose_print(f"⏱️ Cache duration: {self.cache_duration / 3600:.1f} hours")
 
-        # Import cache manager
-        from enhanced_caching_system import get_cache_manager
-        from datetime import datetime
+        # Try to load from cache
+        cached_data = self.load_from_cache()
 
-        cache_manager = get_cache_manager()
+        if cached_data and isinstance(cached_data, dict) and len(cached_data) > 0:
+            self.verbose_print(f"✅ Using cached Vegas data ({len(cached_data)} games)")
+            self.lines = cached_data
+            return cached_data
 
-        # Check cache first unless force refresh
-        if not force_refresh:
-            # Create cache key with hourly granularity
-            cache_key = cache_manager.cache_key(
-                'vegas_all',
-                datetime.now().strftime('%Y%m%d_%H')
-            )
-
-            # Try to get from cache
-            cached = cache_manager.get_cache('vegas').get(cache_key)
-            if cached:
-                self.verbose_print("✅ Using cached Vegas data")
-                logger.info("✅ Using cached Vegas data")
-                self.lines = cached
-                return cached
-
-        # If not cached or force refresh, fetch from API
-        self.verbose_print("🎰 Fetching fresh Vegas lines...")
-        logger.info("🎰 Fetching fresh Vegas lines from API...")
-
-        url = f"{self.base_url}/sports/baseball_mlb/odds"
-
-        params = {
-            'apiKey': self.api_key,
-            'regions': 'us',
-            'markets': 'totals',
-            'oddsFormat': 'american',
-            'dateFormat': 'iso'
-        }
+        # Cache miss - fetch fresh
+        self.verbose_print("🎰 Fetching fresh Vegas lines from API...")
 
         try:
-            response = requests.get(url, params=params)
+            response = requests.get(
+                f"{self.base_url}/v1/odds",
+                headers={"x-api-key": self.api_key},
+                params={
+                    "sport": "baseball_mlb",
+                    "markets": "totals",
+                    "dateFormat": "iso"
+                },
+                timeout=10
+            )
 
             if response.status_code == 200:
-                games = response.json()
-                self.verbose_print(f"🎰 Found {len(games)} games from Vegas API")
+                data = response.json()
+                processed_lines = self._process_odds_data(data)
 
-                # Clear existing lines
-                self.lines = {}
+                # Cache the processed data
+                if processed_lines:
+                    self.save_to_cache(processed_lines)
+                    self.lines = processed_lines
 
-                for game in games:
-                    home_team = self._normalize_team(game['home_team'])
-                    away_team = self._normalize_team(game['away_team'])
-
-                    # Get total from first bookmaker
-                    if game.get('bookmakers'):
-                        for bookmaker in game['bookmakers']:
-                            for market in bookmaker.get('markets', []):
-                                if market['key'] == 'totals':
-                                    for outcome in market['outcomes']:
-                                        if outcome['name'] == 'Over':
-                                            total = outcome['point']
-                                            self.lines[home_team] = {
-                                                'total': total,
-                                                'home': True,
-                                                'opponent': away_team
-                                            }
-                                            self.lines[away_team] = {
-                                                'total': total,
-                                                'home': False,
-                                                'opponent': home_team
-                                            }
-                                            break
-                                    break
-
-                self.verbose_print(f"✅ Loaded Vegas totals for {len(self.lines)} teams")
-                self.verbose_print(f"📊 API calls remaining: {response.headers.get('x-requests-remaining', 'N/A')}")
-
-                # Cache the successful result
-                if self.lines:
-                    # Create cache key again (in case it wasn't created above)
-                    cache_key = cache_manager.cache_key(
-                        'vegas_all',
-                        datetime.now().strftime('%Y%m%d_%H')
-                    )
-
-                    cache_manager.get_cache('vegas').put(cache_key, self.lines)
-                    logger.info(f"💾 Cached {len(self.lines)} Vegas lines")
-                    self.verbose_print(f"💾 Cached Vegas lines for faster future access")
-
-                return self.lines
+                return processed_lines
             else:
-                self.verbose_print(f"❌ Vegas API Error: {response.status_code}")
-                logger.error(f"Vegas API Error: {response.status_code}")
-
-                # Try to return cached data even if stale
-                try:
-                    stale_cached = cache_manager.get_cache('vegas').cache.get(cache_key)
-                    if stale_cached:
-                        logger.warning("Using stale cached Vegas data due to API error")
-                        self.lines = stale_cached.value
-                        return self.lines
-                except:
-                    pass
-
+                self.verbose_print(f"❌ API error: {response.status_code}")
                 return {}
 
         except Exception as e:
-            self.verbose_print(f"❌ Error fetching Vegas odds: {e}")
-            logger.error(f"Error fetching Vegas odds: {e}")
-
-            # Try to return cached data on error
-            try:
-                if 'cache_key' in locals():
-                    stale_cached = cache_manager.get_cache('vegas').cache.get(cache_key)
-                    if stale_cached:
-                        logger.warning(f"Using stale cached Vegas data due to error: {e}")
-                        self.lines = stale_cached.value
-                        return self.lines
-            except:
-                pass
-
+            self.verbose_print(f"❌ Error fetching Vegas: {e}")
             return {}
     
     def _normalize_team(self, team_name: str) -> str:

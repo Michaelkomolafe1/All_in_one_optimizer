@@ -6,15 +6,28 @@ A standalone 2-button interface with debug mode
 
 import sys
 import os
+import traceback
+from datetime import datetime
+
+# PyQt5 imports
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-from datetime import datetime
-import traceback
 
-# Import your existing system components
+# Your DFS system imports
 from unified_core_system import UnifiedCoreSystem
 from enhanced_scoring_engine import EnhancedScoringEngine
+# If you use pandas for CSV handling
+import pandas as pd
+
+# If you need JSON for debugging
+import json
+
+# If you use logging
+import logging
+
+# Your optimizer
+from unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
 
 
 class SimplifiedDFSOptimizer(QMainWindow):
@@ -304,149 +317,110 @@ class SimplifiedDFSOptimizer(QMainWindow):
             self.update_status("Debug mode disabled", append=True)
 
     def load_and_setup(self):
-        """Enhanced with debug tracking"""
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select DraftKings CSV", "", "CSV Files (*.csv)")
+        """Load CSV and set everything up"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select DraftKings CSV",
+            "",
+            "CSV Files (*.csv)"
+        )
+
         if not file_path:
             return
 
+        # Store path for later reference
+        self.csv_path = file_path
+
         try:
-            self.progress.setVisible(True)
-            self.load_button.setEnabled(False)
+            # Clear previous data
+            self.manual_players.clear()
+            self.manual_label.setText("Manual: None")
 
-            # Clear debug info
-            self.debug_display.clear()
-
-            # Step 1: Load CSV
-            self.progress.setValue(20)
-            self.update_status("📂 Loading CSV...")
-            self.debug_log("=== LOADING CSV ===")
-
+            # Load CSV
+            self.update_status(f"📁 Loading {os.path.basename(file_path)}...")
             self.system.load_players_from_csv(file_path)
-            self.update_status(f"✅ Loaded {len(self.system.players)} players", append=True)
-            self.debug_log(f"Loaded {len(self.system.players)} players from {file_path}")
-            self.debug_log(f"Positions found: {set(p.primary_position for p in self.system.players)}")
+            self.update_status(f"✅ Loaded {len(self.system.players)} players")
 
-            if self.system.players:
-                sample = self.system.players[0]
-                self.debug_log(f"CSV has AvgPointsPerGame: {hasattr(sample, 'AvgPointsPerGame')}")
-                self.debug_log(f"Sample AvgPointsPerGame: {getattr(sample, 'AvgPointsPerGame', 'MISSING')}")
+            # Build initial pool to have players to fix
+            self.system.build_player_pool(include_unconfirmed=True)
 
-
-
-                sample_game_info = self.system.players[0].game_info if hasattr(self.system.players[0],
-                                                                               'game_info') else ""
-
-                self.debug_log(f"Sample game info: {sample_game_info}")
-
-                # Check if this is old data
-                today = datetime.now().strftime('%m/%d')
-                if today not in sample_game_info:
-                    self.update_status("⚠️ CSV appears to be from a different date than today", append=True)
-                    self.update_status("💡 Consider enabling Test Mode for testing", append=True)
-                    # Auto-enable test mode for old CSVs
-                    self.test_mode_cb.setChecked(True)
-
-            # Step 2: Detect Slate & Strategy
-            self.progress.setValue(30)
-            self.update_status("🔍 Analyzing slate...", append=True)
-            self.debug_log("\n=== SLATE ANALYSIS ===")
-
-            slate_info = self.analyze_and_select_strategy()
-            self.update_status(f"✅ {slate_info['slate_size'].upper()} slate | {slate_info['num_games']} games",
-                               append=True)
-            self.debug_log(f"Slate: {slate_info}")
-
-            # Use manual strategy if selected
-            if self.manual_strategy_cb.isChecked():
-                self.selected_strategy = self.strategy_combo.currentText()
-                self.update_status(f"📋 Strategy: {self.selected_strategy} (manual)", append=True)
-            else:
-                self.update_status(f"📋 Strategy: {self.selected_strategy} (auto)", append=True)
-            self.debug_log(f"Selected strategy: {self.selected_strategy}")
-
-            # Step 3: Fetch Confirmations
-            self.progress.setValue(50)
-            self.update_status("🔄 Fetching confirmed lineups...", append=True)
-            self.debug_log("\n=== CONFIRMATIONS ===")
-
-            confirmed = self.system.fetch_confirmed_players()
-            self.update_status(f"✅ Found {len(confirmed)} confirmed players", append=True)
-            self.debug_log(f"Confirmed: {len(confirmed)} players")
-            if self.debug_mode and confirmed:
-                self.debug_log(f"Sample: {list(confirmed)[:5]}")
-
-            # Step 4: Build Pool
-            self.progress.setValue(70)
-            self.update_status("🏗️ Building player pool...", append=True)
-            self.debug_log("\n=== PLAYER POOL ===")
-
-            self.build_pool_with_manual()
-            self.update_status(f"✅ Pool: {len(self.system.player_pool)} players", append=True)
-            self.debug_log(f"Pool size: {len(self.system.player_pool)}")
-
-            # Step 5: Enrich Data
-            self.progress.setValue(85)
-            self.update_status("🔬 Enriching player data...", append=True)
-            self.debug_log("\n=== ENRICHMENT ===")
-
-            # Fix base projections FIRST
+            # Fix projections using your existing method
             self.fix_base_projections()
 
+            # Fetch confirmations
+            self.update_status("🔄 Fetching confirmed lineups...", append=True)
+            confirmations = self.system.fetch_confirmed_players()
+            if confirmations:
+                self.update_status(f"✅ Found {confirmations} confirmed players", append=True)
+            else:
+                self.update_status("⚠️ No confirmations found (might be too early)", append=True)
 
-            # Now enrich with real data
-            try:
-                enrichment_results = self.system.enrich_player_pool_with_real_data()
-                self.update_status(f"✅ Enrichments applied: {sum(enrichment_results.values())} total", append=True)
-            except Exception as e:
-                self.debug_log(f"Real enrichment error: {e}")
-                self.debug_log("Falling back to basic enrichment")
-                # Fall back to basic enrichment
-                self.system.enrich_player_pool()
-                enrichment_results = self.track_enrichments()
+            # Auto-detect and select strategy
+            self.analyze_and_select_strategy()
 
-            # Step 6: Score Players
-            self.progress.setValue(95)
-            self.update_status("📊 Calculating scores...", append=True)
-            self.debug_log("\n=== SCORING ===")
+            # Rebuild pool with proper settings
+            include_unconfirmed = self.contest_type.currentText() == "GPP"
+            self.system.build_player_pool(include_unconfirmed=include_unconfirmed)
+            self.update_status(f"📊 Player pool: {len(self.system.player_pool)} players", append=True)
 
+            # Enrich player pool
+            self.update_status("🔄 Enriching player data...", append=True)
+            enrichment_stats = self.system.enrich_player_pool()
+
+            # Check if we got real data
+            if isinstance(enrichment_stats, dict):
+                vegas_count = enrichment_stats.get('vegas', 0)
+                weather_count = enrichment_stats.get('weather', 0)
+                park_count = enrichment_stats.get('park', 0)
+
+                # Report what we got
+                if vegas_count > 0:
+                    self.update_status(f"✅ Vegas data: {vegas_count} players", append=True)
+                if weather_count > 0:
+                    self.update_status(f"✅ Weather data: {weather_count} players", append=True)
+                if park_count > 0:
+                    self.update_status(f"✅ Park factors: {park_count} players", append=True)
+
+                # If no real enrichment data, apply static data
+                if vegas_count == 0 and weather_count == 0 and park_count == 0:
+                    self.update_status("⚠️ APIs returned no real data", append=True)
+
+                    # Test APIs to see what's wrong (only in debug mode)
+                    if self.debug_mode:
+                        self.update_status("🔍 Testing APIs...", append=True)
+                        api_results = self.test_all_apis()
+
+                    # Apply real static data instead
+                    if hasattr(self, 'apply_real_static_data'):
+                        self.apply_real_static_data()
+                        self.update_status("✅ Applied real park factors and team averages", append=True)
+
+            # Score players for current contest type
             contest_type = self.contest_type.currentText().lower()
             self.system.score_players(contest_type)
+            self.update_status(f"📊 Scored {len(self.system.player_pool)} players for {contest_type.upper()}",
+                               append=True)
 
+            # Verify scoring is working (only in debug mode)
+            if self.debug_mode and hasattr(self, 'verify_scoring_multipliers'):
+                self.verify_scoring_multipliers()
 
-            # Add this test:
-            if self.debug_mode and self.system.player_pool:
-                # Quick test of top 3 players
-                self.debug_log("\n=== QUICK SCORING TEST ===")
-                for p in sorted(self.system.player_pool, key=lambda x: x.salary, reverse=True)[:3]:
-                    self.debug_log(f"{p.name}: Cash={p.cash_score:.1f}, GPP={p.gpp_score:.1f}")
-                    self.debug_log(
-                        f"  Enrichments: form={p.recent_form}, park={p.park_factor}, weather={p.weather_impact}")
-
-
-            self.debug_log(f"Scored for {contest_type}")
-
-            # Verify scoring
-            self.verify_scoring_distribution()
-
-            # Done!
-            self.progress.setValue(100)
-            self.update_status("✅ READY TO OPTIMIZE!", append=True)
-            self.optimize_button.setEnabled(True)
-            self.load_button.setEnabled(True)
-            self.progress.setVisible(False)
-
-            # Show summaries
-            self.show_setup_summary()
+            # Update displays
             self.update_pool_display()
+            self.show_setup_summary()
 
-            if self.debug_mode:
-                self.update_debug_panel(enrichment_results)
+            # Enable optimize button
+            self.optimize_button.setEnabled(True)
+            self.update_status("✅ Setup complete! Click OPTIMIZE to generate lineup.", append=True)
 
         except Exception as e:
             self.update_status(f"❌ Error: {str(e)}", append=True)
-            self.debug_log(f"ERROR: {str(e)}\n{traceback.format_exc()}")
-            self.load_button.setEnabled(True)
-            self.progress.setVisible(False)
+            self.debug_log(f"ERROR: {traceback.format_exc()}")
+
+            # Try to recover
+            if self.system.players:
+                self.update_status("🔧 Attempting recovery...", append=True)
+                self.optimize_button.setEnabled(True)
 
     def check_player_fields(self):
         """Debug what fields are actually in the CSV"""
@@ -462,8 +436,164 @@ class SimplifiedDFSOptimizer(QMainWindow):
             if not attr.startswith('_'):
                 value = getattr(player, attr)
                 if isinstance(value, (int, float)) and not callable(value):
-                    self.debug_log(f"{attr}: {value}")
+                    self.debug_log(f"{attr}: {value}")  # Added missing closing parenthesis
 
+        # Also show string fields that might contain data
+        self.debug_log("\n=== STRING FIELDS ===")
+        for attr in dir(player):
+            if not attr.startswith('_'):
+                value = getattr(player, attr)
+                if isinstance(value, str) and not callable(value):
+                    self.debug_log(f"{attr}: '{value}'")
+
+        # Show all fields sorted by type
+        self.debug_log("\n=== ALL PLAYER ATTRIBUTES ===")
+        all_attrs = []
+        for attr in dir(player):
+            if not attr.startswith('_') and not callable(getattr(player, attr)):
+                value = getattr(player, attr)
+                attr_type = type(value).__name__
+                all_attrs.append((attr, value, attr_type))
+
+        # Sort by type then by name
+        all_attrs.sort(key=lambda x: (x[2], x[0]))
+
+        for attr, value, attr_type in all_attrs:
+            if attr_type == 'str':
+                self.debug_log(f"{attr:<25} {attr_type:<10} '{value}'")
+            else:
+                self.debug_log(f"{attr:<25} {attr_type:<10} {value}")
+
+
+    def test_data_sources(self):
+        """Test each data source individually"""
+        self.debug_log("\n=== TESTING DATA SOURCES ===")
+
+        # Test Vegas API
+        try:
+            from vegas_lines import VegasLines
+            vegas = VegasLines()
+            self.debug_log("\n1. Testing Vegas Lines...")
+
+            # Try to get data for a known team
+            test_teams = ['NYY', 'LAD', 'HOU']
+            for team in test_teams:
+                # Create a dummy player to test
+                class TestPlayer:
+                    def __init__(self, team):
+                        self.team = team
+                        self.name = f"Test {team}"
+
+                test_player = TestPlayer(team)
+                vegas.enrich_player(test_player)
+
+                if hasattr(test_player, 'team_total'):
+                    self.debug_log(f"   ✅ {team}: {test_player.team_total} runs")
+                else:
+                    self.debug_log(f"   ❌ {team}: No data")
+        except Exception as e:
+            self.debug_log(f"   ❌ Vegas API Error: {str(e)}")
+
+        # Test Weather API
+        try:
+            from weather_integration import WeatherIntegration
+            weather = WeatherIntegration()
+            self.debug_log("\n2. Testing Weather...")
+
+            data = weather.get_game_weather('NYY')
+            if data:
+                self.debug_log(f"   ✅ Weather data: {data}")
+            else:
+                self.debug_log(f"   ❌ No weather data")
+        except Exception as e:
+            self.debug_log(f"   ❌ Weather API Error: {str(e)}")
+
+        # Test Park Factors
+        try:
+            from park_factors import ParkFactors
+            parks = ParkFactors()
+            self.debug_log("\n3. Testing Park Factors...")
+
+            factor = parks.get_park_factor('COL')
+            self.debug_log(f"   ✅ Coors Field factor: {factor}")
+        except Exception as e:
+            self.debug_log(f"   ❌ Park Factors Error: {str(e)}")
+
+    def debug_vegas_data(self):
+        """Debug what Vegas actually returns"""
+        from vegas_lines import VegasLines
+        vegas = VegasLines()
+
+        print("\n=== VEGAS DEBUG ===")
+
+        # Test what get_vegas_lines returns
+        lines = vegas.get_vegas_lines()
+        print(f"get_vegas_lines type: {type(lines)}")
+        if lines:
+            print(f"Sample data: {list(lines.items())[:2]}")
+
+        # Test apply_to_players with one player
+        class TestPlayer:
+            def __init__(self):
+                self.name = "Aaron Judge"
+                self.team = "NYY"
+
+        test = TestPlayer()
+        vegas.apply_to_players([test])
+
+        print(f"\nAfter apply_to_players:")
+        for attr in dir(test):
+            if not attr.startswith('_'):
+                print(f"  {attr}: {getattr(test, attr)}")
+
+
+
+    def debug_enrichment_data(self):
+        """Check what enrichment data we have"""
+        self.debug_log("\n=== ENRICHMENT DEBUG ===")
+
+        # Check a few players
+        sample_size = min(5, len(self.system.player_pool))
+        for i, player in enumerate(self.system.player_pool[:sample_size]):
+            self.debug_log(f"\n{i + 1}. {player.name} ({player.team}):")
+            self.debug_log(f"   Position: {player.primary_position}")
+            self.debug_log(f"   Salary: ${player.salary:,}")
+            self.debug_log(f"   Base Projection: {getattr(player, 'base_projection', 'MISSING')}")
+            self.debug_log(f"   DFF Projection: {getattr(player, 'dff_projection', 'MISSING')}")
+            self.debug_log(f"   Team Total: {getattr(player, 'implied_team_score', 'MISSING')}")
+            self.debug_log(f"   Batting Order: {getattr(player, 'batting_order', 'MISSING')}")
+            self.debug_log(f"   Weather Impact: {getattr(player, 'weather_impact', 'MISSING')}")
+            self.debug_log(f"   Park Factor: {getattr(player, 'park_factor', 'MISSING')}")
+            self.debug_log(f"   Recent Form: {getattr(player, 'recent_form', 'MISSING')}")
+            self.debug_log(f"   Ownership Proj: {getattr(player, 'ownership_projection', 'MISSING')}")
+
+    def verify_scoring_multipliers(self):
+        """Check if scoring is applying multipliers correctly"""
+        self.debug_log("\n=== SCORING VERIFICATION ===")
+
+        # Find players with different characteristics
+        test_cases = [
+            ("High Salary Pitcher", lambda p: p.is_pitcher and p.salary >= 9000),
+            ("Low Salary Hitter", lambda p: not p.is_pitcher and p.salary <= 3000),
+            ("Mid Salary Hitter", lambda p: not p.is_pitcher and 4000 <= p.salary <= 6000)
+        ]
+
+        for label, condition in test_cases:
+            player = next((p for p in self.system.player_pool if condition(p)), None)
+            if player:
+                self.debug_log(f"\n{label}: {player.name}")
+                self.debug_log(f"  Base Projection: {player.base_projection}")
+                self.debug_log(f"  Cash Score: {player.cash_score}")
+                if player.base_projection > 0:
+                    multiplier = player.cash_score / player.base_projection
+                    self.debug_log(f"  Multiplier: {multiplier:.2f}x")
+
+                    if multiplier > 1.05:
+                        self.debug_log("  ✅ Enhancements ARE being applied!")
+                    elif 0.95 <= multiplier <= 1.05:
+                        self.debug_log("  ⚠️ Default multipliers (no real enrichment)")
+                    else:
+                        self.debug_log("  📉 Negative multipliers applied")
 
     # Add this to your simplified GUI to verify enrichments are available
     def check_enrichment_modules(self):
@@ -584,24 +714,27 @@ class SimplifiedDFSOptimizer(QMainWindow):
         positions = {p.primary_position for p in self.system.players}
         is_showdown = 'CPT' in positions or 'UTIL' in positions
 
-        # Count unique games (simplified)
+        # Count unique games
         teams = set(p.team for p in self.system.players if hasattr(p, 'team'))
         num_games = len(teams) // 2  # Rough estimate
 
-        # Determine slate size
+        # Store for debugging
+        self.detected_games = num_games
+
+        # Determine slate size - MATCHING StrategyAutoSelector thresholds
         if is_showdown:
             slate_size = 'showdown'
-        elif num_games <= 3:
+        elif num_games <= 4:  # 1-4 games = small
             slate_size = 'small'
-        elif num_games <= 8:
+        elif num_games <= 9:  # 5-9 games = medium
             slate_size = 'medium'
-        else:
+        else:  # 10+ games = large
             slate_size = 'large'
 
         # Select strategy based on contest type and slate size
         contest_type = self.contest_type.currentText().lower()
 
-        # Use the strategy registry
+        # Use the strategy registry - FIXED MAPPINGS
         if slate_size == 'showdown':
             self.selected_strategy = 'showdown_leverage'
         else:
@@ -613,16 +746,25 @@ class SimplifiedDFSOptimizer(QMainWindow):
                 },
                 'gpp': {
                     'small': 'correlation_value',
-                    'medium': 'smart_stack',
-                    'large': 'matchup_leverage'
+                    'medium': 'truly_smart_stack',  # FIXED from 'smart_stack'
+                    'large': 'matchup_leverage_stack'
                 }
             }
-            self.selected_strategy = strategies[contest_type][slate_size]
 
-        return {
-            'slate_size': slate_size,
-            'num_games': num_games,
-            'is_showdown': is_showdown
+            self.selected_strategy = strategies.get(contest_type, strategies['gpp']).get(
+                slate_size, 'balanced_optimal'
+            )
+
+        # Update display with detection info
+        self.update_status(f"📊 Detected: {num_games} games = {slate_size} slate", append=True)
+        self.update_status(f"🎯 Strategy: {self.selected_strategy} ({contest_type})", append=True)
+
+        # Store slate info for debugging
+        self.slate_info = {
+            'games': num_games,
+            'size': slate_size,
+            'contest': contest_type,
+            'strategy': self.selected_strategy
         }
 
     def fix_base_projections(self):
@@ -711,6 +853,8 @@ class SimplifiedDFSOptimizer(QMainWindow):
             SETUP COMPLETE
     ========================================
     📊 Players: {len(self.system.player_pool)}
+    🎮 Games: {getattr(self, 'detected_games', '?')}
+    📏 Slate Size: {getattr(self, 'slate_info', {}).get('size', '?')}
     🎯 Contest: {self.contest_type.currentText()}
     📋 Strategy: {self.selected_strategy.replace('_', ' ').title()}
     ➕ Manual Players: {len(self.manual_players)}
@@ -758,20 +902,37 @@ class SimplifiedDFSOptimizer(QMainWindow):
         contest_type = self.contest_type.currentText().lower()
 
         try:
+            # Final check on strategy
             self.update_status(f"🚀 Optimizing {contest_type.upper()} lineup...", append=True)
+            self.update_status(f"📋 Strategy: {self.selected_strategy}", append=True)
 
+            # Debug slate info
+            if hasattr(self, 'slate_info'):
+                self.update_status(f"📊 Slate: {self.slate_info['games']} games ({self.slate_info['size']})",
+                                   append=True)
+
+            # Run optimization
             lineups = self.system.optimize_lineups(
-                num_lineups=1,  # Just 1 for cash, could make this configurable for GPP
+                num_lineups=1,
                 strategy=self.selected_strategy,
                 contest_type=contest_type,
                 min_unique_players=3
             )
 
-            if lineups:
+            if lineups and lineups[0]:
                 self.display_lineup(lineups[0])
                 self.update_status("✅ Optimization complete!", append=True)
+
+                # Debug: Check what scores were used
+                if self.debug_mode:
+                    lineup = lineups[0]
+                    self.debug_log("\n=== LINEUP SCORES ===")
+                    for player in lineup['players']:
+                        self.debug_log(f"{player.name}: base={player.base_projection:.1f}, "
+                                       f"opt_score={getattr(player, 'optimization_score', 0):.1f}")
             else:
                 self.update_status("❌ No valid lineups found", append=True)
+                self.debug_log("Failed to generate lineup - check constraints")
 
         except Exception as e:
             self.update_status(f"❌ Optimization error: {str(e)}", append=True)
@@ -875,6 +1036,198 @@ class SimplifiedDFSOptimizer(QMainWindow):
             self.debug_log(f"  Max: {max(scores):.2f}")
             self.debug_log(f"  Avg: {sum(scores) / len(scores):.2f}")
             self.debug_log(f"  Zero scores: {scores.count(0)}")
+
+    def test_all_apis(self):
+        """Test each API to see what's actually working"""
+        self.debug_log("\n=== COMPREHENSIVE API TEST ===")
+
+        results = {
+            'vegas': False,
+            'weather': False,
+            'park': False,
+            'stats': False
+        }
+
+        # 1. Test Vegas Lines
+        self.debug_log("\n1. VEGAS LINES API TEST:")
+        try:
+            from vegas_lines import VegasLines
+            vegas = VegasLines()
+
+            # Check if it has the right methods
+            self.debug_log(f"   Methods available: {[m for m in dir(vegas) if not m.startswith('_')]}")
+
+            # Try different approaches
+            if hasattr(vegas, 'get_game_totals'):
+                totals = vegas.get_game_totals()
+                self.debug_log(f"   Game totals: {totals}")
+                if totals:
+                    results['vegas'] = True
+
+            if hasattr(vegas, 'fetch_current_lines'):
+                lines = vegas.fetch_current_lines()
+                self.debug_log(f"   Current lines: {lines}")
+                if lines:
+                    results['vegas'] = True
+
+        except Exception as e:
+            self.debug_log(f"   ❌ Vegas API Error: {str(e)}")
+
+        # 2. Test Weather API
+        self.debug_log("\n2. WEATHER API TEST:")
+        try:
+            from weather_integration import WeatherIntegration
+            weather = WeatherIntegration()
+
+            # Test for today's games
+            test_stadiums = ['Yankee Stadium', 'Fenway Park', 'Dodger Stadium']
+            for stadium in test_stadiums:
+                try:
+                    data = weather.get_weather_for_stadium(stadium)
+                    if data:
+                        self.debug_log(f"   ✅ {stadium}: {data}")
+                        results['weather'] = True
+                        break
+                except:
+                    pass
+
+        except Exception as e:
+            self.debug_log(f"   ❌ Weather API Error: {str(e)}")
+
+        # 3. Test Real Stats
+        self.debug_log("\n3. STATCAST API TEST:")
+        try:
+            # Try different possible module names
+            stats_module_found = False
+            stats = None
+
+            # Try different import names that might exist in your project
+            try:
+                from simple_statcast_fetcher import SimpleStatcastFetcher
+                stats = SimpleStatcastFetcher()
+                stats_module_found = True
+            except ImportError:
+                try:
+                    from statcast_fetcher import StatcastFetcher
+                    stats = StatcastFetcher()
+                    stats_module_found = True
+                except ImportError:
+                    try:
+                        from real_data_enrichments import RealDataEnrichments
+                        stats = RealDataEnrichments()
+                        stats_module_found = True
+                    except ImportError:
+                        self.debug_log("   ❌ No Statcast module found - skipping test")
+
+            if stats_module_found and stats:
+                # Test a known player
+                test_players = ['Aaron Judge', 'Shohei Ohtani', 'Ronald Acuna Jr.']
+                for player_name in test_players:
+                    try:
+                        # Try different method names
+                        data = None
+                        if hasattr(stats, 'get_recent_stats'):
+                            data = stats.get_recent_stats(player_name, days=7)
+                        elif hasattr(stats, 'get_player_stats'):
+                            data = stats.get_player_stats(player_name)
+                        elif hasattr(stats, 'fetch_stats'):
+                            data = stats.fetch_stats(player_name)
+
+                        if data and data.get('games_analyzed', 0) > 0:
+                            self.debug_log(f"   ✅ {player_name}: {data.get('games_analyzed')} games")
+                            results['stats'] = True
+                            break
+                    except Exception as e:
+                        self.debug_log(f"   Error testing {player_name}: {str(e)}")
+
+        except Exception as e:
+            self.debug_log(f"   ❌ Statcast API Error: {str(e)}")
+
+            # Test a known player
+            test_players = ['Aaron Judge', 'Shohei Ohtani', 'Ronald Acuna Jr.']
+            for player_name in test_players:
+                try:
+                    data = stats.get_recent_stats(player_name, days=7)
+                    if data and data.get('games_analyzed', 0) > 0:
+                        self.debug_log(f"   ✅ {player_name}: {data.get('games_analyzed')} games")
+                        results['stats'] = True
+                        break
+                except:
+                    pass
+
+        except Exception as e:
+            self.debug_log(f"   ❌ Statcast API Error: {str(e)}")
+
+        # Summary
+        self.debug_log("\n=== API TEST SUMMARY ===")
+        for api, working in results.items():
+            status = "✅ WORKING" if working else "❌ NOT WORKING"
+            self.debug_log(f"   {api.upper()}: {status}")
+
+        return results
+
+    def debug_enrichment_apis(self):
+        """Test each enrichment API individually"""
+        self.debug_log("\n=== TESTING ENRICHMENT APIs ===")
+
+        # Get a test player
+        if not self.system.player_pool:
+            self.debug_log("No players in pool to test!")
+            return
+
+        test_player = self.system.player_pool[0]
+        self.debug_log(f"Test player: {test_player.name} ({test_player.team})")
+
+        # 1. Test Vegas
+        self.debug_log("\n1. VEGAS TEST:")
+        try:
+            from vegas_lines import VegasLines
+            vegas = VegasLines()
+
+            # Create a copy to test
+            test_copy = type('Player', (), {})()
+            test_copy.name = test_player.name
+            test_copy.team = test_player.team
+
+            # Try to enrich
+            vegas.enrich_player(test_copy)
+
+            # Check what was added
+            for attr in ['team_total', 'implied_team_score', 'game_total', 'vegas_score']:
+                if hasattr(test_copy, attr):
+                    self.debug_log(f"   {attr}: {getattr(test_copy, attr)}")
+
+            if not any(hasattr(test_copy, attr) for attr in ['team_total', 'implied_team_score']):
+                self.debug_log("   ❌ No Vegas data added")
+
+        except Exception as e:
+            self.debug_log(f"   ❌ Vegas error: {str(e)}")
+
+        # 2. Test Weather
+        self.debug_log("\n2. WEATHER TEST:")
+        try:
+            from weather_integration import WeatherIntegration
+            weather = WeatherIntegration()
+
+            # Test method
+            result = weather.get_game_weather(test_player.team)
+            self.debug_log(f"   Result: {result}")
+
+        except Exception as e:
+            self.debug_log(f"   ❌ Weather error: {str(e)}")
+
+        # 3. Test Park Factors
+        self.debug_log("\n3. PARK FACTORS TEST:")
+        try:
+            from park_factors import ParkFactors
+            parks = ParkFactors()
+
+            # Test method
+            factor = parks.get_park_factor(test_player.team)
+            self.debug_log(f"   {test_player.team} park factor: {factor}")
+
+        except Exception as e:
+            self.debug_log(f"   ❌ Park factors error: {str(e)}")
 
     def verify_all_enrichments(self):
         """Detailed enrichment verification"""
