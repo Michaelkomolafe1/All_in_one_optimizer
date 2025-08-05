@@ -3,6 +3,7 @@ Enhanced Cash Game Strategies with Tunable Parameters
 ====================================================
 """
 from collections import defaultdict
+
 import numpy as np
 
 
@@ -56,6 +57,59 @@ def build_projection_monster(players, params=None):
                 final_proj * (1 - params['value_bonus_weight']) +
                 value_score * params['value_bonus_weight'] * 10  # Scale to match projections
             )
+
+        # Apply tournament enhancements
+    for player in players:
+        if player.primary_position == 'P':
+            # K-rate is KING in cash
+            k_rate = getattr(player, 'k_rate', 20)
+            if k_rate >= 25:
+                player.optimization_score *= 1.18  # Big boost
+                player.cash_elite = True
+            elif k_rate >= 22:
+                player.optimization_score *= 1.08
+            elif k_rate < 18:
+                player.optimization_score *= 0.75  # Heavy penalty
+
+            # Win probability crucial
+            win_prob = getattr(player, 'win_probability', 0.5)
+            if win_prob >= 0.65:
+                player.optimization_score *= 1.15
+            elif win_prob >= 0.60:
+                player.optimization_score *= 1.05
+            elif win_prob < 0.40:
+                player.optimization_score *= 0.70
+
+        else:  # Hitters
+            # Batting order is MASSIVE in cash
+            batting_order = getattr(player, 'batting_order', 9)
+            if batting_order in [1, 2]:
+                player.optimization_score *= 1.25  # 29% more PAs!
+            elif batting_order in [3, 4]:
+                player.optimization_score *= 1.12
+            elif batting_order == 5:
+                player.optimization_score *= 1.02
+            elif batting_order >= 7:
+                player.optimization_score *= 0.75  # Avoid bottom third
+
+            # Walk rate for floor
+            bb_rate = getattr(player, 'bb_rate', 8)
+            if bb_rate >= 12:
+                player.optimization_score *= 1.08
+                player.high_floor = True
+            elif bb_rate >= 10:
+                player.optimization_score *= 1.03
+
+            # Contact rate for safety
+            k_rate = getattr(player, 'k_rate', 22)
+            if k_rate <= 15:  # High contact
+                player.optimization_score *= 1.05
+            elif k_rate >= 28:  # Strikeout prone
+                player.optimization_score *= 0.92
+
+            # Slight road team edge (51.6% of PAs)
+            if not getattr(player, 'is_home', True):
+                player.optimization_score *= 1.02
 
     return players
 
@@ -239,3 +293,7 @@ def build_enhanced_cash_strategy(players, params=None):
         player.optimization_score = normalized_score * risk_factor
 
     return players
+
+# ============== ADD TO BOTTOM OF cash_strategies.py ==============
+
+

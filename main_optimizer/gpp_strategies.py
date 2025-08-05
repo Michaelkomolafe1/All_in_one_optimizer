@@ -93,7 +93,43 @@ def build_correlation_value(players, params=None):
                     own_mult
             )
 
-    return players
+        # Apply tournament GPP patterns
+        for player in players:
+            if player.primary_position != 'P':
+                # Mark stackable players
+                team_total = getattr(player, 'implied_team_score', 4.5)
+                batting_order = getattr(player, 'batting_order', 9)
+
+                # Elite stacking candidates
+                if team_total >= 5.5 and batting_order <= 5:
+                    player.optimization_score *= 1.25
+                    player.elite_stack = True
+
+                    # Consecutive batting order bonus
+                    if batting_order <= 4:
+                        player.stack_correlation = 1.15
+
+                # Low ownership leverage
+                ownership = getattr(player, 'ownership_projection', 15)
+                if ownership < 10 and team_total >= 5.0:
+                    player.optimization_score *= 1.18
+                    player.leverage_play = True
+                elif ownership < 15:
+                    player.optimization_score *= 1.08
+
+                # Park factor for GPP upside
+                park_factor = getattr(player, 'park_factor', 1.0)
+                if park_factor >= 1.15:  # Coors, etc
+                    player.optimization_score *= 1.12
+
+            else:  # Pitchers
+                # GPP pitcher strategy - ceiling over floor
+                k_upside = getattr(player, 'k_rate', 20)
+                if k_upside >= 30:  # Elite K upside
+                    player.optimization_score *= 1.15
+
+        return players
+
 
 def build_truly_smart_stack(players, params=None):
     """
@@ -221,6 +257,38 @@ def build_truly_smart_stack(players, params=None):
                 # Non-stack hitters get reduced score
                 player.optimization_score = player.base_projection * 0.7
 
+    players = build_truly_smart_stack(players)
+
+    # Group by team for stack analysis
+    teams = {}
+    for player in players:
+        if player.primary_position != 'P':
+            if player.team not in teams:
+                teams[player.team] = []
+            teams[player.team].append(player)
+
+    # Apply stack bonuses
+    for team, team_players in teams.items():
+        # Sort by batting order
+        team_players.sort(key=lambda p: getattr(p, 'batting_order', 9))
+
+        # Check if we can build 4-5 man stack
+        if len(team_players) >= 4:
+            team_total = getattr(team_players[0], 'implied_team_score', 4.5)
+
+            if team_total >= 5.0:
+                # Apply correlation bonuses for consecutive batters
+                for i in range(len(team_players) - 1):
+                    bo1 = getattr(team_players[i], 'batting_order', 9)
+                    bo2 = getattr(team_players[i + 1], 'batting_order', 9)
+
+                    if abs(bo1 - bo2) == 1 and bo1 <= 5:
+                        # Consecutive batters in top 5
+                        team_players[i].optimization_score *= 1.12
+                        team_players[i + 1].optimization_score *= 1.12
+                        team_players[i].stack_correlation = True
+                        team_players[i + 1].stack_correlation = True
+
     return players
 
 
@@ -317,6 +385,31 @@ def build_matchup_leverage_stack(players, params=None):
             else:
                 # Non-target teams get standard scoring
                 player.optimization_score = player.base_projection * 0.9
+
+    players = build_matchup_leverage_stack(players, params)
+
+    # Apply tournament leverage patterns
+    for player in players:
+        ownership = getattr(player, 'ownership_projection', 15)
+
+        if player.primary_position == 'P':
+            # Extreme leverage on low-owned pitchers
+            if ownership < 5:
+                player.optimization_score *= 1.30
+                player.extreme_leverage = True
+            elif ownership < 10:
+                player.optimization_score *= 1.15
+
+        else:  # Hitters
+            # Leverage + good spots
+            team_total = getattr(player, 'implied_team_score', 4.5)
+            if ownership < 10 and team_total >= 5.0:
+                player.optimization_score *= 1.25
+                player.leverage_smash = True
+
+            # Fade mega-chalk
+            if ownership > 35:
+                player.optimization_score *= params['ownership_fade']
 
     return players
 
@@ -431,3 +524,5 @@ def build_experimental_gpp_strategy(players, params=None):
         player.optimization_score = base_score
 
     return players
+
+#from tournament_winner_gpp_strategy import build_tournament_winner_gpp#

@@ -18,19 +18,16 @@ class StrategyAutoSelector:
 
     def __init__(self):
         # Define #1 strategies based on test results
-        self.top_strategies = {
+        self.strategies = {
             'cash': {
-                'small': 'projection_monster',  # 54.0% win rate
-                'medium': 'pitcher_dominance',  # 55.4% win rate
-                'large': 'pitcher_dominance'  # 56.5% win rate
+                'small': 'projection_monster_enhanced',  # Enhanced version
+                'medium': 'pitcher_dominance_enhanced',  # Enhanced version
+                'large': 'pitcher_dominance_enhanced'  # Enhanced version
             },
             'gpp': {
-                'small': 'correlation_value',  # +24.7% ROI
-                'medium': 'truly_smart_stack',  # Your new one!
-                'large': 'matchup_leverage_stack'  # +40.1% ROI
-            },
-            'showdown': {
-                'all': 'balanced_showdown_fixed'  # Best showdown strategy
+                'small': 'tournament_winner_gpp',  # NEW strategy!
+                'medium': 'tournament_winner_gpp',  # NEW strategy!
+                'large': 'tournament_winner_gpp'  # NEW strategy!
             }
         }
 

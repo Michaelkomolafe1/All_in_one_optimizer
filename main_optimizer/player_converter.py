@@ -1,184 +1,58 @@
-# test_strategies_fixed.py
+# player_converter.py
 # Save in main_optimizer/
-"""Test strategies with proper player conversion"""
+"""Convert dict to UnifiedPlayer objects for old strategies"""
 
-import sys
-import os
-
-# Fix imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-sys.path.insert(0, parent_dir)
-sys.path.insert(0, os.path.join(parent_dir, 'simulation'))
-
-# Import simulation
-from simulation.robust_dfs_simulator import generate_slate
-
-# Import converter
-from player_converter import convert_sim_players_to_unified
-
-# Import strategies
-from data_driven_cash_strategy import build_data_driven_cash
-from correlation_gpp_strategy import build_correlation_gpp
-from cash_strategies import build_projection_monster, build_pitcher_dominance
-from gpp_strategies import build_correlation_value, build_truly_smart_stack, build_matchup_leverage_stack
+from unified_player_model import UnifiedPlayer
 
 
-def test_strategy(strategy_func, strategy_name, slate_size='medium', use_unified=True):
-    """Test if a strategy works"""
-    print("\nTesting {} on {} slate...".format(strategy_name, slate_size))
+def convert_sim_players_to_unified(sim_players):
+    """Convert simulator dict players to UnifiedPlayer objects"""
+    unified_players = []
 
-    # Generate test slate
-    slate = generate_slate(1234 + hash(strategy_name), 'classic', slate_size)
-    print("Generated slate with {} players".format(len(slate['players'])))
+    for p in sim_players:
+        # Create UnifiedPlayer with required parameters
+        player = UnifiedPlayer(
+            id=str(p.get('id', hash(p['name']))),
+            name=p['name'],
+            team=p['team'],
+            salary=p['salary'],
+            primary_position=p['position'],
+            positions=[p['position']],  # Single position for now
+            base_projection=p.get('projection', 0)
+        )
 
-    # Convert players based on strategy type
-    if use_unified:
-        # Old strategies need UnifiedPlayer objects
-        print("Converting to UnifiedPlayer objects...")
-        players = convert_sim_players_to_unified(slate['players'])
-    else:
-        # New strategies use dict format
-        players = slate['players']
+        # Add simulator attributes that old strategies expect
+        player.is_pitcher = (p['position'] == 'P')
+        player.batting_order = p.get('batting_order', 0)
+        player.implied_team_score = p.get('game_data', {}).get('team_total', 4.5)
+        player.game_total = p.get('game_data', {}).get('game_total', 9.0)
+        player.ownership_projection = p.get('ownership', 15)
+        player.projected_ownership = p.get('ownership', 15)
 
-    try:
-        # Test the strategy
-        if 'gpp' in strategy_name.lower() and strategy_func == build_correlation_gpp:
-            # New GPP strategy expects slate_size parameter
-            lineup = strategy_func(players, slate_size)
-        else:
-            # All other strategies just take players
-            lineup = strategy_func(players)
+        # Add matchup attributes
+        player.matchup_score = p.get('matchup_score', 1.0)
+        player.park_factor = p.get('park_factor', 1.0)
+        player.weather_score = p.get('weather_score', 1.0)
+        player.recent_performance = p.get('recent_performance', 50)
+        player.consistency_score = p.get('consistency_score', 50)
 
-        if lineup and lineup.get('players') and len(lineup['players']) == 10:
-            print("SUCCESS! Generated valid lineup")
-            print("   Salary: ${}".format(lineup.get('salary', 'N/A')))
-            print("   Projection: {:.1f}".format(lineup.get('projection', 0)))
+        # Add required attributes for cash strategies
+        player.bb_rate = p.get('bb_rate', 10)
+        player.k_rate = p.get('k_rate', 20)
+        player.win_probability = p.get('win_probability', 0.5)
+        player.is_home = p.get('is_home', True)
 
-            # Show stack info if available
-            if 'stack_info' in lineup:
-                print("   Stack pattern: {}".format(lineup['stack_info']['pattern']))
+        # Set the base_projection which strategies use
+        player.projection = p.get('projection', 0)
+        player.base_projection = p.get('projection', 0)
 
-            # Check salary is valid
-            if lineup.get('salary', 0) > 50000:
-                print("   WARNING: Salary over cap!")
-                return False
+        # Add game info
+        player.game_info = "{team}@OPP".format(team=p['team'])
+        player.opponent = p.get('opponent', 'OPP')
 
-            return True
-        else:
-            print("FAILED: Invalid lineup generated")
-            if lineup:
-                print("   Players in lineup: {}".format(len(lineup.get('players', []))))
-                if lineup.get('salary', 0) > 50000:
-                    print("   Salary: ${} (OVER CAP!)".format(lineup['salary']))
-            return False
+        # Add optimization score (used by some strategies)
+        player.optimization_score = p.get('projection', 0)
 
-    except Exception as e:
-        print("ERROR: {}".format(str(e)))
-        import traceback
-        traceback.print_exc()
-        return False
+        unified_players.append(player)
 
-
-def debug_new_strategy_issue():
-    """Debug why new strategies aren't working"""
-    print("\n" + "=" * 60)
-    print("DEBUGGING NEW STRATEGY ISSUES")
-    print("=" * 60)
-
-    # Generate a test slate
-    slate = generate_slate(9999, 'classic', 'medium')
-    players = slate['players']
-
-    print("\nChecking data structure...")
-    print("Total players: {}".format(len(players)))
-
-    # Check a sample player
-    if players:
-        sample = players[0]
-        print("\nSample player structure:")
-        print("  Keys: {}".format(list(sample.keys())))
-        print("  Name: {}".format(sample.get('name', 'N/A')))
-        print("  Position: {}".format(sample.get('position', 'N/A')))
-        print("  Salary: ${}".format(sample.get('salary', 'N/A')))
-        print("  Projection: {}".format(sample.get('projection', 'N/A')))
-
-    # Count positions
-    positions = {}
-    for p in players:
-        pos = p.get('position', 'Unknown')
-        positions[pos] = positions.get(pos, 0) + 1
-
-    print("\nPosition counts:")
-    for pos, count in sorted(positions.items()):
-        print("  {}: {}".format(pos, count))
-
-    # Check salary distribution
-    salaries = [p.get('salary', 0) for p in players]
-    if salaries:
-        print("\nSalary range: ${} - ${}".format(min(salaries), max(salaries)))
-        print("Average salary: ${:.0f}".format(sum(salaries) / len(salaries)))
-
-
-def main():
-    print("=" * 80)
-    print("TESTING DFS STRATEGIES WITH PROPER CONVERSION")
-    print("=" * 80)
-
-    # First debug the data
-    debug_new_strategy_issue()
-
-    print("\n" + "-" * 60)
-    print("TESTING CURRENT STRATEGIES (with UnifiedPlayer):")
-    print("-" * 60)
-
-    # Test current strategies with UnifiedPlayer objects
-    current_results = {
-        'cash': {
-            'projection_monster': test_strategy(build_projection_monster, 'projection_monster', 'small',
-                                                use_unified=True),
-            'pitcher_dominance': test_strategy(build_pitcher_dominance, 'pitcher_dominance', 'medium', use_unified=True)
-        },
-        'gpp': {
-            'correlation_value': test_strategy(build_correlation_value, 'correlation_value', 'small', use_unified=True),
-            'truly_smart_stack': test_strategy(build_truly_smart_stack, 'truly_smart_stack', 'medium',
-                                               use_unified=True),
-            'matchup_leverage_stack': test_strategy(build_matchup_leverage_stack, 'matchup_leverage_stack', 'large',
-                                                    use_unified=True)
-        }
-    }
-
-    print("\n" + "-" * 60)
-    print("TESTING NEW STRATEGIES (with dict format):")
-    print("-" * 60)
-
-    # Test new strategies with dict format
-    new_results = {
-        'cash': test_strategy(build_data_driven_cash, 'data_driven_cash', 'medium', use_unified=False),
-        'gpp': {
-            'small': test_strategy(build_correlation_gpp, 'correlation_gpp_small', 'small', use_unified=False),
-            'medium': test_strategy(build_correlation_gpp, 'correlation_gpp_medium', 'medium', use_unified=False),
-            'large': test_strategy(build_correlation_gpp, 'correlation_gpp_large', 'large', use_unified=False)
-        }
-    }
-
-    # Summary
-    print("\n" + "=" * 80)
-    print("TEST SUMMARY")
-    print("=" * 80)
-
-    print("\nCurrent Strategies (UnifiedPlayer):")
-    cash_pass = all(current_results['cash'].values())
-    gpp_pass = all(current_results['gpp'].values())
-    print("  Cash: {}".format('ALL PASSED' if cash_pass else 'SOME FAILED'))
-    print("  GPP: {}".format('ALL PASSED' if gpp_pass else 'SOME FAILED'))
-
-    print("\nNew Strategies (dict):")
-    new_cash_pass = new_results['cash']
-    new_gpp_pass = all(new_results['gpp'].values())
-    print("  Cash: {}".format('PASSED' if new_cash_pass else 'FAILED'))
-    print("  GPP: {}".format('ALL PASSED' if new_gpp_pass else 'SOME FAILED'))
-
-
-if __name__ == "__main__":
-    main()
+    return unified_players

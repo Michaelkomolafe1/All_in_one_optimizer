@@ -90,6 +90,136 @@ class UnifiedMILPOptimizer:
         self._optimization_count = 0
         self._lineup_cache = {}
 
+    def add_tournament_constraints(self, prob, player_vars, players):
+        """
+        Add constraints based on tournament-winning patterns
+        """
+        contest_type = getattr(self.config, 'contest_type', 'gpp')
+
+        if contest_type == 'gpp':
+            # GPP CONSTRAINTS - 83.2% of winners use these patterns
+
+            # 1. ENFORCE 4-5 MAN STACKS
+            # Group players by team (excluding pitchers)
+            teams = {}
+            for i, player in enumerate(players):
+                if player.primary_position != 'P':
+                    if player.team not in teams:
+                        teams[player.team] = []
+                    teams[player.team].append(i)
+
+            # Create binary variables for teams with 4+ stacks
+            team_stack_vars = {}
+            for team, indices in teams.items():
+                if len(indices) >= 4:  # Team must have 4+ available players
+                    var_name = f"stack_{team}"
+                    team_stack_vars[team] = pulp.LpVariable(var_name, cat="Binary")
+
+            if team_stack_vars:
+                # AT LEAST ONE TEAM must have 4+ players (83.2% of winners)
+                prob += pulp.lpSum(team_stack_vars.values()) >= 1
+
+                # Link team stack variables to player selections
+                for team, stack_var in team_stack_vars.items():
+                    team_indices = teams[team]
+
+                    # If stack_var = 1, must have 4+ players from team
+                    prob += pulp.lpSum([player_vars[i] for i in team_indices]) >= 4 * stack_var
+
+                    # If 4+ players selected, must set stack_var = 1
+                    # (This prevents selecting 4+ without setting the flag)
+                    prob += pulp.lpSum([player_vars[i] for i in team_indices]) <= 3 + 10 * stack_var
+
+            # 2. LIMIT PITCHER CHALK
+            pitcher_indices = [i for i, p in enumerate(players)
+                               if p.primary_position == 'P']
+
+            # Don't allow super high ownership pitchers (>30%)
+            chalk_pitchers = [i for i in pitcher_indices
+                              if getattr(players[i], 'ownership_projection', 15) > 30]
+
+            if chalk_pitchers:
+                # Max 1 chalk pitcher (most winners use low-owned pitchers)
+                prob += pulp.lpSum([player_vars[i] for i in chalk_pitchers]) <= 1
+
+        else:  # CASH CONSTRAINTS
+            # 1. ENFORCE HIGH K-RATE PITCHERS
+            pitcher_indices = [i for i, p in enumerate(players)
+                               if p.primary_position == 'P']
+
+            # Identify elite K-rate pitchers (25%+)
+            elite_k_pitchers = [i for i in pitcher_indices
+                                if getattr(players[i], 'k_rate', 20) >= 25]
+
+            if elite_k_pitchers:
+                # MUST have at least 1 high K pitcher (they dominate cash)
+                prob += pulp.lpSum([player_vars[i] for i in elite_k_pitchers]) >= 1
+
+            # 2. BATTING ORDER CONSTRAINT
+            # Prefer top of batting order (1-4)
+            top_order = [i for i, p in enumerate(players)
+                         if p.primary_position != 'P' and
+                         hasattr(p, 'batting_order') and
+                         p.batting_order <= 4]
+
+            if len(top_order) >= 6:
+                # At least 6 hitters from top 4 of batting order
+                prob += pulp.lpSum([player_vars[i] for i in top_order]) >= 6
+
+            # 3. AVOID BOTTOM OF ORDER
+            bottom_order = [i for i, p in enumerate(players)
+                            if p.primary_position != 'P' and
+                            hasattr(p, 'batting_order') and
+                            p.batting_order >= 7]
+
+            if bottom_order:
+                # Max 2 hitters from bottom third of order
+                prob += pulp.lpSum([player_vars[i] for i in bottom_order]) <= 2
+
+    def apply_correlation_bonuses(self, players):
+        """
+        Apply correlation bonuses before optimization
+        This encourages the optimizer to select correlated players
+        """
+        contest_type = getattr(self.config, 'contest_type', 'gpp')
+
+        if contest_type == 'gpp':
+            # Group by team
+            teams = {}
+            for player in players:
+                if player.primary_position != 'P':
+                    if player.team not in teams:
+                        teams[player.team] = []
+                    teams[player.team].append(player)
+
+            # Apply bonuses for stackable teams
+            for team, team_players in teams.items():
+                if len(team_players) >= 4:
+                    # Sort by batting order
+                    team_players.sort(key=lambda p: getattr(p, 'batting_order', 9))
+
+                    # Check team quality
+                    team_total = getattr(team_players[0], 'implied_team_score', 4.5)
+
+                    if team_total >= 5.0:
+                        # This is a good stacking team
+                        # Boost all players slightly to encourage stacking
+                        for p in team_players[:5]:  # Top 5 in order
+                            if hasattr(p, 'optimization_score'):
+                                p.optimization_score *= 1.05
+                                p.stack_bonus_applied = True
+
+                        # Extra bonus for consecutive batters
+                        for i in range(len(team_players) - 1):
+                            p1 = team_players[i]
+                            p2 = team_players[i + 1]
+                            bo1 = getattr(p1, 'batting_order', 9)
+                            bo2 = getattr(p2, 'batting_order', 9)
+
+                            if abs(bo1 - bo2) == 1 and bo1 <= 4 and bo2 <= 5:
+                                # Consecutive batters in top of order
+                                p1.optimization_score *= 1.03
+                                p2.optimization_score *= 1.03
 
     def get_showdown_config(self) -> OptimizationConfig:
         """Get configuration for showdown slates"""
@@ -228,7 +358,7 @@ class UnifiedMILPOptimizer:
         logger.info(f"Contest type in apply_strategy_filter: {contest_type}")
 
         # Import strategy functions
-        from main_optimizer.cash_strategies import build_projection_monster, build_pitcher_dominance
+        from cash_strategies import build_projection_monster, build_pitcher_dominance
         from main_optimizer.gpp_strategies import build_correlation_value, build_truly_smart_stack, build_matchup_leverage_stack
 
         # Map strategy names to functions
@@ -373,6 +503,7 @@ class UnifiedMILPOptimizer:
         logger.info(f"OPTIMIZATION: Players available: {len(players)}")
         logger.info(f"OPTIMIZATION: Manual selections: {manual_selections}")
         self._optimization_count += 1
+
 
         # Store contest type for use in other methods
         if contest_type:

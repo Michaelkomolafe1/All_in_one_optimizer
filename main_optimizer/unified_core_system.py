@@ -149,6 +149,7 @@ class UnifiedCoreSystem:
         self.manual_selections = set()  # ADD THIS LINE
         self.optimizer = UnifiedMILPOptimizer()
         self.scoring_engine = EnhancedScoringEngine()
+        self.enrichments_applied = False
 
         # Initialize optional components
         self.statcast = SimpleStatcastFetcher() if STATCAST_AVAILABLE else None
