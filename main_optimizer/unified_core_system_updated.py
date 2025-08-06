@@ -19,26 +19,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Fix Python path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-data_dir = os.path.join(parent_dir, 'data')
-if data_dir not in sys.path:
-    sys.path.insert(0, data_dir)
-
-# Core imports
-from unified_player_model import UnifiedPlayer
-from unified_milp_optimizer import UnifiedMILPOptimizer
-
-# NEW IMPORTS - Use V2 scoring engine
-from enhanced_scoring_engine_v2 import EnhancedScoringEngineV2
-from smart_enrichment_manager import SmartEnrichmentManager
-from gui_strategy_configuration import GUIStrategyManager
+# Core imports - all at the top!
+from .unified_player_model import UnifiedPlayer
+from .unified_milp_optimizer import UnifiedMILPOptimizer
+from .enhanced_scoring_engine_v2 import EnhancedScoringEngineV2
+from .smart_enrichment_manager import SmartEnrichmentManager
+from .gui_strategy_configuration import GUIStrategyManager
+from .correlation_scoring_config import CorrelationScoringConfig
 
 # Data enrichment imports with error handling
 try:
-    from real_data_enrichments import RealStatcastFetcher as SimpleStatcastFetcher
-
+    from .real_data_enrichments import RealStatcastFetcher as SimpleStatcastFetcher
     STATCAST_AVAILABLE = True
     logger.info("✅ Statcast initialized")
 except ImportError:
@@ -47,15 +38,15 @@ except ImportError:
     SimpleStatcastFetcher = None
 
 try:
-    from smart_confirmation import SmartConfirmationSystem
-
+    from .smart_confirmation import SmartConfirmationSystem
     CONFIRMATION_AVAILABLE = True
 except ImportError:
     logger.warning("Smart confirmation not available")
     CONFIRMATION_AVAILABLE = False
+    SmartConfirmationSystem = None
 
 try:
-    from vegas_lines import VegasLines
+    from .vegas_lines import VegasLines
     VEGAS_AVAILABLE = True
     logger.info("✅ Vegas lines initialized")
 except ImportError:
@@ -79,12 +70,11 @@ class UnifiedCoreSystem:
         self.player_pool = []
 
         # NEW: Smart managers
-        self.scoring_engine = EnhancedScoringEngineV2(use_bayesian=False)
+        self.scoring_engine = EnhancedScoringEngineV2()
         self.enrichment_manager = SmartEnrichmentManager()
         self.strategy_manager = GUIStrategyManager()
 
         # Optimizer
-        from correlation_scoring_config import CorrelationScoringConfig
         self.config = CorrelationScoringConfig()
         self.optimizer = UnifiedMILPOptimizer(self.config)
 
@@ -388,7 +378,6 @@ class UnifiedCoreSystem:
             return False
 
         try:
-            import pandas as pd
 
             # Create DraftKings upload format
             export_data = []

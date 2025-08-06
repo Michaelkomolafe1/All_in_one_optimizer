@@ -1,15 +1,22 @@
 """Main Optimizer Package"""
 
-# Import from the ACTUAL files that exist
+# Core imports
 from .unified_core_system_updated import UnifiedCoreSystem
 from .unified_player_model import UnifiedPlayer
 from .unified_milp_optimizer import UnifiedMILPOptimizer
-from .strategy_selector import StrategyAutoSelector
 
-# Make them available
+# Scoring
+from .enhanced_scoring_engine_v2 import EnhancedScoringEngineV2
+
+# Managers
+from .smart_enrichment_manager import SmartEnrichmentManager
+from .gui_strategy_configuration import GUIStrategyManager
+
 __all__ = [
     'UnifiedCoreSystem',
-    'UnifiedPlayer', 
+    'UnifiedPlayer',
     'UnifiedMILPOptimizer',
-    'StrategyAutoSelector'
+    'EnhancedScoringEngineV2',
+    'SmartEnrichmentManager',
+    'GUIStrategyManager'
 ]

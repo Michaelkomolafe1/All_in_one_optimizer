@@ -1,3 +1,8 @@
+from __future__ import annotations  # MUST BE FIRST IMPORT!
+import copy
+from typing import Dict, List, Optional
+from main_optimizer.enhanced_scoring_engine_v2 import UnifiedScoringEngine
+
 #!/usr/bin/env python3
 """
 UNIFIED PLAYER MODEL - FIXED VERSION
@@ -5,10 +10,7 @@ UNIFIED PLAYER MODEL - FIXED VERSION
 Fixed calculation methods to prevent multiplicative stacking
 """
 
-from __future__ import annotations  # MUST BE FIRST IMPORT!
 
-import copy
-from typing import Dict, List, Optional
 
 
 # For park factors if not available elsewhere
@@ -289,12 +291,34 @@ class UnifiedPlayer:
         self.data_quality_score = quality_points / max_points if max_points > 0 else 0
 
     def calculate_enhanced_score(self):
-        """Calculate score using ONLY the new enhanced scoring engine"""
+        """Calculate score using enhanced scoring engine"""
         try:
-            from main_optimizer.enhanced_scoring_engine_v2 import EnhancedScoringEngineV2
 
             # Create scoring engine
-            engine = EnhancedScoringEngineV2()
+            engine = UnifiedScoringEngine()
+
+            # Calculate scores for different contest types
+            self.enhanced_score = engine.score_player(self, 'gpp')
+            self.gpp_score = engine.score_player_gpp(self)
+            self.cash_score = engine.score_player_cash(self)
+            self.showdown_score = engine.score_player_showdown(self)
+
+            # Set data quality
+            self.data_quality_score = 0.8
+
+            return self.enhanced_score
+
+        except Exception as e:
+            # Fallback to base projection
+            self.enhanced_score = getattr(self, 'base_projection', 10.0)
+            self.gpp_score = self.enhanced_score
+            self.cash_score = self.enhanced_score
+            self.showdown_score = self.enhanced_score
+            self.data_quality_score = 0.5
+            return self.enhanced_score
+
+            # Create scoring engine
+            engine = UnifiedScoringEngine()
 
             # Default to GPP scoring (can be changed based on context)
             if hasattr(engine, 'score_player_gpp'):
@@ -353,8 +377,7 @@ class UnifiedPlayer:
 
     def set_contest_type(self, contest_type: str):
         """Set which score to use as enhanced_score"""
-        from main_optimizer.enhanced_scoring_engine_v2 import EnhancedScoringEngine
-        engine = EnhancedScoringEngine()
+        engine = UnifiedScoringEngine()
 
         if contest_type.lower() == 'cash':
             self.enhanced_score = engine.score_player_cash(self)

@@ -19,8 +19,8 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 # Import the UPDATED core system
-from unified_core_system_updated import UnifiedCoreSystem
-from gui_strategy_configuration import GUIStrategyManager
+from main_optimizer.unified_core_system_updated import UnifiedCoreSystem
+from main_optimizer.gui_strategy_configuration import GUIStrategyManager
 
 
 class SimplifiedDFSOptimizerGUI(QMainWindow):
