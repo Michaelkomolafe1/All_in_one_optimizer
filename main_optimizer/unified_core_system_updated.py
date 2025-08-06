@@ -20,16 +20,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Core imports - all at the top!
-from .unified_player_model import UnifiedPlayer
-from .unified_milp_optimizer import UnifiedMILPOptimizer
-from .enhanced_scoring_engine_v2 import EnhancedScoringEngineV2
-from .smart_enrichment_manager import SmartEnrichmentManager
-from .gui_strategy_configuration import GUIStrategyManager
-from .correlation_scoring_config import CorrelationScoringConfig
+from unified_player_model import UnifiedPlayer
+from unified_milp_optimizer import UnifiedMILPOptimizer
+from enhanced_scoring_engine_v2 import EnhancedScoringEngineV2
+from smart_enrichment_manager import SmartEnrichmentManager
+from gui_strategy_configuration import GUIStrategyManager
+from correlation_scoring_config import CorrelationScoringConfig
 
 # Data enrichment imports with error handling
 try:
-    from .real_data_enrichments import RealStatcastFetcher as SimpleStatcastFetcher
+    from real_data_enrichments import RealStatcastFetcher as SimpleStatcastFetcher
     STATCAST_AVAILABLE = True
     logger.info("✅ Statcast initialized")
 except ImportError:
@@ -38,7 +38,7 @@ except ImportError:
     SimpleStatcastFetcher = None
 
 try:
-    from .smart_confirmation import SmartConfirmationSystem
+    from smart_confirmation import SmartConfirmationSystem
     CONFIRMATION_AVAILABLE = True
 except ImportError:
     logger.warning("Smart confirmation not available")
@@ -46,7 +46,7 @@ except ImportError:
     SmartConfirmationSystem = None
 
 try:
-    from .vegas_lines import VegasLines
+    from vegas_lines import VegasLines
     VEGAS_AVAILABLE = True
     logger.info("✅ Vegas lines initialized")
 except ImportError:
@@ -155,54 +155,181 @@ class UnifiedCoreSystem:
         self.log(f"Detected: {num_games} games = {self.current_slate_size} slate")
 
     def fetch_confirmed_players(self) -> int:
-        """Fetch confirmed lineups"""
-        if not self.confirmation_system:
-            self.log("Confirmation system not available")
-            return 0
-
+        """Fetch confirmed lineups with proper tuple handling"""
         try:
-            confirmed = self.confirmation_system.get_confirmed_players()
+            # Import confirmation system
+            from smart_confirmation import UniversalSmartConfirmation
+
+            # Reinitialize with CSV players for proper team tracking
+            self.log("Reinitializing confirmation system with CSV players...")
+            self.confirmation_system = UniversalSmartConfirmation(
+                csv_players=self.players,
+                verbose=False  # Less verbose for GUI
+            )
+
+            # Fetch confirmations - returns (lineup_count, pitcher_count)
+            self.log("Fetching MLB confirmed lineups...")
+            result = self.confirmation_system.get_all_confirmations()
+
+            # Handle tuple return
+            if isinstance(result, tuple):
+                lineup_count, pitcher_count = result
+                self.log(f"MLB API: {lineup_count} position players, {pitcher_count} pitchers")
+            else:
+                self.log("Unexpected return format from confirmations")
+                return 0
+
+            # Match confirmed players to CSV players
             confirmed_count = 0
 
-            for player in self.players:
-                if player.name in confirmed:
-                    player.is_confirmed = True
-                    player.batting_order = confirmed[player.name].get('batting_order', 0)
-                    confirmed_count += 1
+            # Process lineups
+            if hasattr(self.confirmation_system, 'confirmed_lineups'):
+                for team, lineup in self.confirmation_system.confirmed_lineups.items():
+                    for player_info in lineup:
+                        if isinstance(player_info, dict):
+                            mlb_name = player_info.get('name', '')
+                            batting_order = player_info.get('order', 0)
+                        else:
+                            mlb_name = str(player_info)
+                            batting_order = 0
 
-            self.log(f"Marked {confirmed_count} players as confirmed")
+                        # Try to match with CSV players
+                        for p in self.players:
+                            if p.team == team and self._fuzzy_match_names(p.name, mlb_name):
+                                p.is_confirmed = True
+                                p.batting_order = batting_order
+                                confirmed_count += 1
+                                break
+
+            # Process pitchers
+            if hasattr(self.confirmation_system, 'confirmed_pitchers'):
+                for team, pitcher_info in self.confirmation_system.confirmed_pitchers.items():
+                    if isinstance(pitcher_info, dict):
+                        mlb_name = pitcher_info.get('name', '')
+                    else:
+                        mlb_name = str(pitcher_info)
+
+                    # Match pitchers
+                    for p in self.players:
+                        if p.team == team and p.position in ['P', 'SP'] and self._fuzzy_match_names(p.name, mlb_name):
+                            p.is_confirmed = True
+                            p.is_starting_pitcher = True
+                            confirmed_count += 1
+                            break
+
+            self.log(f"Matched {confirmed_count} confirmed players to CSV")
             return confirmed_count
 
         except Exception as e:
-            self.log(f"Error fetching confirmations: {e}")
+            self.log(f"Error in confirmations: {e}")
             return 0
 
-    def build_player_pool(self, include_unconfirmed: bool = False, manual_selections: Set[str] = None):
+    def _fuzzy_match_names(self, csv_name: str, mlb_name: str) -> bool:
+        """Fuzzy name matching"""
+        csv_clean = csv_name.upper().replace('.', '').replace(',', '').strip()
+        mlb_clean = mlb_name.upper().replace('.', '').replace(',', '').strip()
+
+        # Exact match
+        if csv_clean == mlb_clean:
+            return True
+
+        # Last name match
+        csv_last = csv_clean.split()[-1] if ' ' in csv_clean else csv_clean
+        mlb_last = mlb_clean.split()[-1] if ' ' in mlb_clean else mlb_clean
+
+        if csv_last == mlb_last:
+            # Check first initial
+            if csv_clean[0] == mlb_clean[0]:
+                return True
+
+        # Partial match
+        if csv_clean in mlb_clean or mlb_clean in csv_clean:
+            return True
+
+        return False
+    def _names_match(self, csv_name: str, mlb_name: str) -> bool:
+        """Check if two names match (handles variations)"""
+        # Clean names
+        csv_clean = csv_name.upper().strip()
+        mlb_clean = mlb_name.upper().strip()
+
+        # Exact match
+        if csv_clean == mlb_clean:
+            return True
+
+        # Remove common suffixes
+        for suffix in [' JR.', ' JR', ' SR.', ' SR', ' III', ' II']:
+            csv_clean = csv_clean.replace(suffix, '')
+            mlb_clean = mlb_clean.replace(suffix, '')
+
+        # Check again after cleaning
+        if csv_clean == mlb_clean:
+            return True
+
+        # Last name match with first initial
+        csv_parts = csv_clean.split()
+        mlb_parts = mlb_clean.split()
+
+        if len(csv_parts) >= 2 and len(mlb_parts) >= 2:
+            # Same last name
+            if csv_parts[-1] == mlb_parts[-1]:
+                # First names start with same letter
+                if csv_parts[0][0] == mlb_parts[0][0]:
+                    return True
+
+        # One name contains the other
+        if csv_clean in mlb_clean or mlb_clean in csv_clean:
+            return True
+
+        return False
+    def build_player_pool(self, include_unconfirmed: bool = False, manual_selections: set = None):
         """Build the player pool for optimization"""
+        manual_selections = manual_selections or set()
         self.player_pool = []
 
+        # Debug logging
+        self.log(f"Building pool: include_unconfirmed={include_unconfirmed}, manual={len(manual_selections)}")
+
+        confirmed_count = 0
+        projection_count = 0
+
         for player in self.players:
-            # Include logic
-            include = False
+            # Count players with projections
+            if hasattr(player, 'base_projection') and player.base_projection > 0:
+                projection_count += 1
 
-            # Check confirmed
-            if getattr(player, 'is_confirmed', False):
-                include = True
+            # Count confirmed players
+            if hasattr(player, 'is_confirmed') and player.is_confirmed:
+                confirmed_count += 1
 
-            # Check manual selection
-            if manual_selections and player.name in manual_selections:
-                include = True
-                player.is_manual_selected = True
+            # MAIN LOGIC - Include player if:
+            # 1. Has a valid projection AND
+            # 2. Either include_unconfirmed is True OR player is confirmed OR manually selected
 
-            # Include unconfirmed if requested
+            has_projection = hasattr(player, 'base_projection') and player.base_projection > 0
+
+            if not has_projection:
+                continue  # Skip players without projections
+
+            # Now check if we should include this player
             if include_unconfirmed:
-                include = True
-
-            if include:
+                # Include ALL players with projections
+                self.player_pool.append(player)
+            elif player.name in manual_selections:
+                # Always include manual selections
+                player.is_manual_selected = True
+                self.player_pool.append(player)
+            elif hasattr(player, 'is_confirmed') and player.is_confirmed:
+                # Include confirmed players
                 self.player_pool.append(player)
 
+        # Debug output
+        self.log(f"Players with projections: {projection_count}")
+        self.log(f"Confirmed players: {confirmed_count}")
         self.log(f"Player pool: {len(self.player_pool)} players")
+
         return len(self.player_pool)
+
 
     def enrich_player_pool_smart(self, strategy: str, contest_type: str) -> Dict:
         """

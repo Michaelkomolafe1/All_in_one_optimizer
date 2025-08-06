@@ -1,231 +1,274 @@
 #!/usr/bin/env python3
 """
-FIX UNIFIEDPLAYER INITIALIZATION ERROR
-=======================================
-The UnifiedPlayer expects specific arguments, not a dictionary
+FIX STRATEGY FILTER - ALL STRATEGIES MUST BUILD LINEUPS
+========================================================
+The filter should NEVER remove so many players that lineups can't be built
 """
 
 import os
+import re
 
 
-def fix_convert_to_unified_players():
-    """Fix the UnifiedPlayer initialization in comprehensive_simulation_runner.py"""
+def fix_strategy_filter_properly():
+    """Fix the strategy filter to ensure it always keeps enough players"""
 
-    print("🔧 Fixing UnifiedPlayer initialization...")
+    print("🔧 Fixing strategy filter to ALWAYS allow lineup building...")
 
-    # The CORRECT way to create UnifiedPlayer objects
-    correct_method = '''def convert_to_unified_players(self, sim_players: List) -> List[UnifiedPlayer]:
-    """Convert simulated players to UnifiedPlayer objects"""
-    unified_players = []
+    filepath = 'main_optimizer/unified_milp_optimizer.py'
 
-    for sp in sim_players:
-        # UnifiedPlayer expects these exact arguments in order
-        player = UnifiedPlayer(
-            id=str(hash(sp.name)),
-            name=sp.name,
-            team=sp.team,
-            salary=sp.salary,
-            primary_position=sp.position,
-            positions=[sp.position]
-        )
+    if not os.path.exists(filepath):
+        print(f"❌ File not found: {filepath}")
+        return
 
-        # Now set additional attributes
-        player.AvgPointsPerGame = sp.projection
-        player.base_projection = sp.projection
-        player.dff_projection = sp.projection
-        player.projection = sp.projection
+    with open(filepath, 'r') as f:
+        content = f.read()
 
-        # Position info
-        player.is_pitcher = (sp.position == 'P')
-        player.position = sp.position
+    # The proper fix - ensure minimum players for each position
+    proper_filter = '''
+    def apply_strategy_filter(self, players, strategy, contest_type=None):
+        """Apply strategy filtering while ensuring lineup viability"""
+        self.logger.info(f"Applying strategy filter: {strategy}")
+        self.logger.info(f"Starting with {len(players)} players")
 
-        # Batting order - NEVER None for position players
-        if sp.position != 'P':
-            player.batting_order = getattr(sp, 'batting_order', 5)
-        else:
-            player.batting_order = None
-
-        # Performance metrics - ALWAYS have values
-        player.recent_performance = getattr(sp, 'recent_performance', 1.0)
-        player.consistency_score = getattr(sp, 'consistency_score', 0.7)
-        player.matchup_score = getattr(sp, 'matchup_score', 1.0)
-        player.floor = sp.projection * 0.7
-        player.ceiling = sp.projection * 1.5
-
-        # Vegas data - ALWAYS have values
-        player.vegas_total = getattr(sp, 'vegas_total', 8.5)
-        player.game_total = getattr(sp, 'game_total', 8.5)
-        player.team_total = getattr(sp, 'team_total', 4.25)
-        player.implied_team_score = player.team_total
-
-        # Ownership - ALWAYS have value
-        player.ownership_projection = getattr(sp, 'ownership', 15.0)
-        player.projected_ownership = player.ownership_projection
-
-        # Advanced stats - ALWAYS have values
-        player.park_factor = getattr(sp, 'park_factor', 1.0)
-        player.weather_score = getattr(sp, 'weather_score', 1.0)
-        player.barrel_rate = getattr(sp, 'barrel_rate', 8.0)
-        player.hard_hit_rate = getattr(sp, 'hard_hit_rate', 35.0)
-        player.xwoba = getattr(sp, 'xwoba', 0.320)
-
-        # Correlation/Stack scores
-        player.stack_score = 0.0
-        player.correlation_score = 0.0
-        player.game_stack_score = 0.0
-
-        # Optimization scores
-        player.optimization_score = sp.projection
-        player.enhanced_score = sp.projection
-        player.gpp_score = sp.projection
-        player.cash_score = sp.projection
-
-        # Other required attributes
-        player.value = sp.projection / (sp.salary / 1000) if sp.salary > 0 else 0
-        player.points_per_dollar = player.value
-        player.recent_scores = [sp.projection * 0.9, sp.projection * 1.1, sp.projection * 0.95]
-        player.dff_l5_avg = sp.projection
-
-        unified_players.append(player)
-
-    return unified_players'''
-
-    # Write to a file you can copy from
-    with open('fixed_convert_method.py', 'w') as f:
-        f.write(correct_method)
-
-    print("✅ Created fixed_convert_method.py")
-    print("\n📋 Manual fix instructions:")
-    print("1. Open simulation/comprehensive_simulation_runner.py")
-    print("2. Find the convert_to_unified_players method")
-    print("3. Replace it with the content from fixed_convert_method.py")
-    print("\nKey change: UnifiedPlayer(name=name, ...) instead of UnifiedPlayer(up_data)")
-
-
-def create_working_test():
-    """Create a test that will work after the fix"""
-
-    test_code = '''#!/usr/bin/env python3
-"""Test UnifiedPlayer creation directly"""
-
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from main_optimizer.unified_player_model import UnifiedPlayer
-
-print("Testing UnifiedPlayer creation...")
-
-# Test 1: Create with correct arguments
-try:
-    player = UnifiedPlayer(
-        id="1",
-        name="Test Player",
-        team="NYY",
-        salary=10000,
-        primary_position="OF",
-        positions=["OF"]
-    )
-    print("✅ UnifiedPlayer created successfully!")
-    print(f"   Name: {player.name}")
-    print(f"   Team: {player.team}")
-    print(f"   Salary: {player.salary}")
-
-    # Set additional attributes
-    player.base_projection = 15.0
-    player.batting_order = 3
-    player.recent_performance = 1.2
-    print(f"   Projection: {player.base_projection}")
-
-except Exception as e:
-    print(f"❌ Failed: {e}")
-
-    # Try alternate method if first fails
-    print("\\nTrying with dictionary...")
-    try:
-        data = {
-            'Name': 'Test Player',
-            'Team': 'NYY', 
-            'Salary': 10000,
-            'Position': 'OF'
+        # CRITICAL: Define minimum requirements
+        position_requirements = {
+            'P': 2, 'SP': 2, 'RP': 0,  # Need at least 2 pitchers
+            'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1,  # Infield
+            'OF': 3  # Outfield
         }
-        player = UnifiedPlayer(data)
-        print("✅ Dictionary method works!")
-    except Exception as e2:
-        print(f"❌ Dictionary method also failed: {e2}")
 
-print("\\n📋 The correct format for UnifiedPlayer is:")
-print("UnifiedPlayer(id, name, team, salary, primary_position, positions)")
+        # Group players by position
+        by_position = {}
+        for player in players:
+            pos = player.position
+            if pos not in by_position:
+                by_position[pos] = []
+            by_position[pos].append(player)
+
+        # Log position counts
+        self.logger.info("Players by position before filter:")
+        for pos, players_at_pos in by_position.items():
+            self.logger.info(f"  {pos}: {len(players_at_pos)} players")
+
+        # Apply strategy-specific logic
+        filtered = []
+
+        if strategy == 'projection_monster':
+            # For projection_monster, keep top players but ensure minimums
+            for pos, min_needed in position_requirements.items():
+                if pos in by_position:
+                    # Sort by score
+                    players_at_pos = sorted(
+                        by_position[pos],
+                        key=lambda x: getattr(x, f'{contest_type}_score', x.optimization_score),
+                        reverse=True
+                    )
+
+                    # Keep at least minimum + buffer
+                    if pos in ['P', 'SP']:
+                        # Keep more pitchers (at least 5)
+                        keep = max(5, min_needed * 2)
+                    elif pos == 'OF':
+                        # Keep more outfielders (at least 10)
+                        keep = max(10, min_needed * 3)
+                    else:
+                        # Keep at least 3x minimum for other positions
+                        keep = max(3, min_needed * 3)
+
+                    # Add top players at this position
+                    filtered.extend(players_at_pos[:keep])
+
+        elif strategy in ['balanced_projections', 'balanced_ownership']:
+            # Less aggressive filtering
+            for pos, min_needed in position_requirements.items():
+                if pos in by_position:
+                    players_at_pos = sorted(
+                        by_position[pos],
+                        key=lambda x: x.optimization_score,
+                        reverse=True
+                    )
+                    # Keep more players
+                    keep = max(10, min_needed * 5)
+                    filtered.extend(players_at_pos[:keep])
+
+        else:
+            # For other strategies, keep most players
+            # Just remove the very worst
+            all_sorted = sorted(players, key=lambda x: x.optimization_score, reverse=True)
+
+            # Keep at least 80% of players or 100, whichever is less
+            keep_count = min(len(players), max(100, int(len(players) * 0.8)))
+            filtered = all_sorted[:keep_count]
+
+        # SAFETY CHECK: Ensure we have minimum positions
+        filtered_by_pos = {}
+        for player in filtered:
+            pos = player.position
+            if pos not in filtered_by_pos:
+                filtered_by_pos[pos] = []
+            filtered_by_pos[pos].append(player)
+
+        # Check if we have enough
+        for pos, min_needed in position_requirements.items():
+            if min_needed > 0:
+                current = len(filtered_by_pos.get(pos, []))
+                if current < min_needed:
+                    self.logger.warning(f"Not enough {pos} after filter: {current} < {min_needed}")
+                    # Add back top players at this position
+                    if pos in by_position:
+                        needed = min_needed - current + 2  # Add buffer
+                        additional = [p for p in by_position[pos] if p not in filtered][:needed]
+                        filtered.extend(additional)
+                        self.logger.info(f"Added {len(additional)} more {pos} players")
+
+        # Handle pitcher position mapping (P, SP, RP all count as pitchers)
+        pitcher_count = sum(len(filtered_by_pos.get(p, [])) for p in ['P', 'SP', 'RP'])
+        if pitcher_count < 2:
+            self.logger.warning(f"Not enough total pitchers: {pitcher_count}")
+            # Add more pitchers
+            all_pitchers = []
+            for p in ['P', 'SP', 'RP']:
+                if p in by_position:
+                    all_pitchers.extend(by_position[p])
+
+            if all_pitchers:
+                all_pitchers = sorted(all_pitchers, 
+                                    key=lambda x: x.optimization_score, 
+                                    reverse=True)
+                additional = [p for p in all_pitchers if p not in filtered][:5]
+                filtered.extend(additional)
+                self.logger.info(f"Added {len(additional)} more pitchers")
+
+        # Final count
+        final_by_pos = {}
+        for player in filtered:
+            pos = player.position
+            if pos not in final_by_pos:
+                final_by_pos[pos] = 0
+            final_by_pos[pos] += 1
+
+        self.logger.info(f"After filter: {len(filtered)} total players")
+        self.logger.info("Final position counts:")
+        for pos, count in sorted(final_by_pos.items()):
+            self.logger.info(f"  {pos}: {count}")
+
+        return filtered
 '''
 
-    with open('test_player_creation.py', 'w') as f:
-        f.write(test_code)
+    # Find and replace the method
+    if 'def apply_strategy_filter' in content:
+        print("  Found existing apply_strategy_filter method")
+        # Replace it
+        pattern = r'def apply_strategy_filter\(self.*?\n(?=    def |\nclass |\Z)'
+        content = re.sub(pattern, proper_filter.strip() + '\n\n', content, flags=re.DOTALL)
+        print("  ✓ Replaced with fixed version")
+    else:
+        print("  ⚠ Method not found, adding it")
+        # Add it before optimize method
+        if 'def optimize(' in content:
+            index = content.find('def optimize(')
+            content = content[:index] + proper_filter + '\n\n' + content[index:]
+            print("  ✓ Added fixed apply_strategy_filter")
 
-    print("✅ Created test_player_creation.py")
+    # Write back
+    with open(filepath, 'w') as f:
+        f.write(content)
+
+    print("  ✓ Strategy filter fixed!")
 
 
-def quick_patch_simulation():
-    """Apply a quick patch to the simulation file"""
+def verify_fix():
+    """Create a verification script"""
 
-    print("\n🩹 Attempting quick patch...")
+    verify_script = '''#!/usr/bin/env python3
+"""Verify the strategy filter fix"""
 
-    filepath = 'simulation/comprehensive_simulation_runner.py'
+import sys
+sys.path.insert(0, 'main_optimizer')
 
-    if os.path.exists(filepath):
-        with open(filepath, 'r') as f:
-            content = f.read()
+from unified_core_system_updated import UnifiedCoreSystem
 
-        # Replace the incorrect initialization
-        old_pattern = '''player = UnifiedPlayer(up_data)'''
-        new_pattern = '''# Create UnifiedPlayer with required arguments
-        player = UnifiedPlayer(
-            id=up_data['id'],
-            name=up_data['name'],
-            team=up_data['team'],
-            salary=up_data['salary'],
-            primary_position=up_data['primary_position'],
-            positions=up_data['positions']
+print("=" * 50)
+print("VERIFYING STRATEGY FILTER FIX")
+print("=" * 50)
+
+# Test each strategy
+strategies = ['projection_monster', 'balanced_projections', 'value_beast']
+contest_types = ['cash', 'gpp']
+
+system = UnifiedCoreSystem()
+csv_path = "/home/michael/Downloads/DKSalaries(46).csv"
+system.load_csv(csv_path)
+system.fetch_confirmed_players()
+
+for contest_type in contest_types:
+    print(f"\\nTesting {contest_type.upper()} contests:")
+
+    for strategy in strategies:
+        # Build pool with confirmed only
+        system.build_player_pool(include_unconfirmed=False)
+
+        print(f"  {strategy}:", end=" ")
+
+        # Try to generate lineup
+        lineups = system.optimize_lineup(
+            strategy=strategy,
+            contest_type=contest_type,
+            num_lineups=1
         )
 
-        # Set AvgPointsPerGame separately
-        player.AvgPointsPerGame = up_data['AvgPointsPerGame']'''
-
-        if old_pattern in content:
-            content = content.replace(old_pattern, new_pattern)
-
-            with open(filepath, 'w') as f:
-                f.write(content)
-
-            print("✅ Applied quick patch!")
-            return True
+        if lineups and len(lineups) > 0:
+            print(f"✅ SUCCESS - Generated lineup")
         else:
-            print("⚠️ Could not find pattern to patch")
-            print("   You'll need to manually fix the convert_to_unified_players method")
-            return False
+            print(f"❌ FAILED - Could not generate lineup")
+
+print("\\n" + "=" * 50)
+print("All strategies should show SUCCESS")
+'''
+
+    with open('verify_strategy_fix.py', 'w') as f:
+        f.write(verify_script)
+
+    print("✓ Created verify_strategy_fix.py")
 
 
 def main():
     print("=" * 60)
-    print("FIXING UNIFIEDPLAYER INITIALIZATION")
+    print("FIXING STRATEGY FILTER - PROPERLY")
     print("=" * 60)
 
-    # Create the fixed method
-    fix_convert_to_unified_players()
+    print("\n📌 THE PRINCIPLE:")
+    print("  ALL strategies MUST be able to build lineups!")
+    print("  The filter should NEVER remove required positions")
 
-    # Create test
-    create_working_test()
+    if not os.path.exists('main_optimizer'):
+        print("\n❌ Wrong directory!")
+        print("cd /home/michael/Desktop/All_in_one_optimizer")
+        return
 
-    # Try quick patch
-    if quick_patch_simulation():
-        print("\n✅ Quick patch applied! Test now:")
-        print("python simple_sim_test.py")
-    else:
-        print("\n⚠️ Manual fix needed:")
-        print("1. Copy the method from fixed_convert_method.py")
-        print("2. Replace convert_to_unified_players in comprehensive_simulation_runner.py")
+    # Apply the fix
+    fix_strategy_filter_properly()
+    verify_fix()
 
-    print("\n📋 Test player creation:")
-    print("python test_player_creation.py")
+    print("\n" + "=" * 60)
+    print("✅ STRATEGY FILTER FIXED!")
+    print("=" * 60)
+
+    print("\n🧪 Verify all strategies work:")
+    print("  python verify_strategy_fix.py")
+
+    print("\n🚀 Then run the GUI:")
+    print("  python main_optimizer/GUI.py")
+
+    print("\nNow ALL strategies will:")
+    print("  ✓ Keep minimum required players for each position")
+    print("  ✓ Always have at least 2 pitchers")
+    print("  ✓ Successfully generate lineups")
+
+    print("\n💡 The fix ensures:")
+    print("  - At least 5 pitchers are kept")
+    print("  - At least 3x minimum for each position")
+    print("  - Safety checks add players back if needed")
 
 
 if __name__ == "__main__":

@@ -14,6 +14,28 @@ from datetime import datetime
 
 import pulp
 
+# Helper to handle None values
+def safe_compare(a, b, op='<'):
+    """Safely compare values that might be None"""
+    if a is None:
+        a = 0
+    if b is None:
+        b = 0
+    if op == '<':
+        return a < b
+    elif op == '<=':
+        return a <= b
+    elif op == '>':
+        return a > b
+    elif op == '>=':
+        return a >= b
+    elif op == '==':
+        return a == b
+    else:
+        return a != b
+
+
+
 # Configure logging
 try:
     from logging_config import get_logger
@@ -89,6 +111,33 @@ class UnifiedMILPOptimizer:
         self._last_result = None
         self._optimization_count = 0
         self._lineup_cache = {}
+
+    def check_position_availability(self, players):
+        """Check if we have enough players for each position"""
+        position_counts = {}
+        for p in players:
+            pos = p.position
+            if pos not in position_counts:
+                position_counts[pos] = 0
+            position_counts[pos] += 1
+
+        self.logger.info("Position availability:")
+        for pos, count in position_counts.items():
+            self.logger.info(f"  {pos}: {count} players")
+
+        # Check requirements
+        requirements = {
+            'P': 2, 'C': 1, '1B': 1, '2B': 1,
+            '3B': 1, 'SS': 1, 'OF': 3
+        }
+
+        for pos, need in requirements.items():
+            have = position_counts.get(pos, 0)
+            if have < need:
+                self.logger.warning(f"Not enough {pos}: need {need}, have {have}")
+
+        return position_counts
+
 
     def add_tournament_constraints(self, prob, player_vars, players):
         """
@@ -349,57 +398,134 @@ class UnifiedMILPOptimizer:
         except ImportError:
             logger.debug("Vegas lines module not available")
 
-    def apply_strategy_filter(self, players: List[Any], strategy: str, contest_type: str = None) -> List[Any]:
-        """Apply strategy-specific filtering"""
-        logger.info(f"Applying strategy filter: {strategy}")
-        logger.info(f"Contest type in apply_strategy_filter: {contest_type}")
+    def apply_strategy_filter(self, players, strategy, contest_type=None):
+        """Apply strategy filtering while ensuring lineup viability"""
+        self.logger.info(f"Applying strategy filter: {strategy}")
+        self.logger.info(f"Starting with {len(players)} players")
 
-        # Ensure all players have scores set
+        # CRITICAL: Define minimum requirements
+        position_requirements = {
+            'P': 2, 'SP': 2, 'RP': 0,  # Need at least 2 pitchers
+            'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1,  # Infield
+            'OF': 3  # Outfield
+        }
+
+        # Group players by position
+        by_position = {}
         for player in players:
-            # FIXED: Ensure optimization_score is never None
-            if not hasattr(player, 'optimization_score') or player.optimization_score is None:
-                # Try different score attributes
-                if hasattr(player, 'cash_score') and contest_type == 'cash':
-                    player.optimization_score = player.cash_score or 0
-                elif hasattr(player, 'gpp_score') and contest_type == 'gpp':
-                    player.optimization_score = player.gpp_score or 0
-                elif hasattr(player, 'enhanced_score'):
-                    player.optimization_score = player.enhanced_score or 0
-                elif hasattr(player, 'base_projection'):
-                    player.optimization_score = player.base_projection or 0
-                else:
-                    player.optimization_score = 0
+            pos = player.position
+            if pos not in by_position:
+                by_position[pos] = []
+            by_position[pos].append(player)
 
-        # Continue with strategy filtering...
-        eligible = []
+        # Log position counts
+        self.logger.info("Players by position before filter:")
+        for pos, players_at_pos in by_position.items():
+            self.logger.info(f"  {pos}: {len(players_at_pos)} players")
 
-        if strategy == "projection_monster":
-            # FIXED: Safe comparison with default values
-            for player in players:
-                score = getattr(player, 'optimization_score', 0) or 0
-                if score >= 10:  # Minimum 10 points
-                    eligible.append(player)
+        # Apply strategy-specific logic
+        filtered = []
 
-        elif strategy == "pitcher_dominance":
-            for player in players:
-                if player.primary_position == 'P':
-                    k_rate = getattr(player, 'k_rate', 0) or 0
-                    if k_rate >= 8.0:  # High K/9
-                        eligible.append(player)
-                else:
-                    score = getattr(player, 'optimization_score', 0) or 0
-                    if score >= 8:
-                        eligible.append(player)
+        if strategy == 'projection_monster':
+            # For projection_monster, keep top players but ensure minimums
+            for pos, min_needed in position_requirements.items():
+                if pos in by_position:
+                    # Sort by score
+                    players_at_pos = sorted(
+                        by_position[pos],
+                        key=lambda x: getattr(x, f'{contest_type}_score', x.optimization_score),
+                        reverse=True
+                    )
 
-        # Add other strategies with safe comparisons...
+                    # Keep at least minimum + buffer
+                    if pos in ['P', 'SP']:
+                        # Keep more pitchers (at least 5)
+                        keep = max(5, min_needed * 2)
+                    elif pos == 'OF':
+                        # Keep more outfielders (at least 10)
+                        keep = max(10, min_needed * 3)
+                    else:
+                        # Keep at least 3x minimum for other positions
+                        keep = max(3, min_needed * 3)
+
+                    # Add top players at this position
+                    filtered.extend(players_at_pos[:keep])
+
+        elif strategy in ['balanced_projections', 'balanced_ownership']:
+            # Less aggressive filtering
+            for pos, min_needed in position_requirements.items():
+                if pos in by_position:
+                    players_at_pos = sorted(
+                        by_position[pos],
+                        key=lambda x: x.optimization_score,
+                        reverse=True
+                    )
+                    # Keep more players
+                    keep = max(10, min_needed * 5)
+                    filtered.extend(players_at_pos[:keep])
+
         else:
-            # Default: keep all valid players
-            eligible = [p for p in players if self._is_valid_player(p)]
+            # For other strategies, keep most players
+            # Just remove the very worst
+            all_sorted = sorted(players, key=lambda x: x.optimization_score, reverse=True)
 
-        # Log results
-        logger.info(f"Strategy filter kept {len(eligible)}/{len(players)} players")
+            # Keep at least 80% of players or 100, whichever is less
+            keep_count = min(len(players), max(100, int(len(players) * 0.8)))
+            filtered = all_sorted[:keep_count]
 
-        return eligible
+        # SAFETY CHECK: Ensure we have minimum positions
+        filtered_by_pos = {}
+        for player in filtered:
+            pos = player.position
+            if pos not in filtered_by_pos:
+                filtered_by_pos[pos] = []
+            filtered_by_pos[pos].append(player)
+
+        # Check if we have enough
+        for pos, min_needed in position_requirements.items():
+            if min_needed > 0:
+                current = len(filtered_by_pos.get(pos, []))
+                if current < min_needed:
+                    self.logger.warning(f"Not enough {pos} after filter: {current} < {min_needed}")
+                    # Add back top players at this position
+                    if pos in by_position:
+                        needed = min_needed - current + 2  # Add buffer
+                        additional = [p for p in by_position[pos] if p not in filtered][:needed]
+                        filtered.extend(additional)
+                        self.logger.info(f"Added {len(additional)} more {pos} players")
+
+        # Handle pitcher position mapping (P, SP, RP all count as pitchers)
+        pitcher_count = sum(len(filtered_by_pos.get(p, [])) for p in ['P', 'SP', 'RP'])
+        if pitcher_count < 2:
+            self.logger.warning(f"Not enough total pitchers: {pitcher_count}")
+            # Add more pitchers
+            all_pitchers = []
+            for p in ['P', 'SP', 'RP']:
+                if p in by_position:
+                    all_pitchers.extend(by_position[p])
+
+            if all_pitchers:
+                all_pitchers = sorted(all_pitchers, 
+                                    key=lambda x: x.optimization_score, 
+                                    reverse=True)
+                additional = [p for p in all_pitchers if p not in filtered][:5]
+                filtered.extend(additional)
+                self.logger.info(f"Added {len(additional)} more pitchers")
+
+        # Final count
+        final_by_pos = {}
+        for player in filtered:
+            pos = player.position
+            if pos not in final_by_pos:
+                final_by_pos[pos] = 0
+            final_by_pos[pos] += 1
+
+        self.logger.info(f"After filter: {len(filtered)} total players")
+        self.logger.info("Final position counts:")
+        for pos, count in sorted(final_by_pos.items()):
+            self.logger.info(f"  {pos}: {count}")
+
+        return filtered
 
     def _is_valid_player(self, player) -> bool:
         """Check if player meets basic validation criteria"""

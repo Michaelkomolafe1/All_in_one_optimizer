@@ -37,4 +37,4 @@ cache_config.json
 lineup_results.json
 __pycache__/
 *.pyc
-debug.py
+main_optimizer/debug.py

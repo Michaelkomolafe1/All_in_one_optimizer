@@ -4,6 +4,15 @@ UNIFIED SCORING ENGINE
 Consolidated scoring engine with all scoring methods
 """
 
+def safe_safe_float(value, default=0.0):
+    """Safely convert to float, handling None and other issues"""
+    if value is None:
+        return default
+    try:
+        return safe_float(value)
+    except:
+        return default
+
 import numpy as np
 from typing import Optional, Dict, Any
 
@@ -49,7 +58,7 @@ class UnifiedScoringEngine:
             if hasattr(player, attr):
                 value = getattr(player, attr)
                 if value and value > 0:
-                    return float(value)
+                    return safe_float(value)
 
         # Default fallback
         return 10.0

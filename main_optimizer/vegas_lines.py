@@ -67,6 +67,29 @@ class VegasLines:
         self._api_calls_made = 0
         self._last_api_call = None
 
+
+    def get_team_total(self, team: str) -> float:
+        """Get team's implied total runs"""
+        if not self.lines_data:
+            return 0.0
+
+        # Check if team has data
+        if team in self.lines_data:
+            return self.lines_data[team].get('total', 0.0)
+
+        # Try alternate team codes
+        team_variations = {
+            'CHW': 'CWS', 'CWS': 'CHW',
+            'WSH': 'WAS', 'WAS': 'WSH'
+        }
+
+        if team in team_variations:
+            alt_team = team_variations[team]
+            if alt_team in self.lines_data:
+                return self.lines_data[alt_team].get('total', 0.0)
+
+        return 0.0
+
     def verbose_print(self, message: str):
         """Print if verbose mode is on"""
         if self.verbose:
