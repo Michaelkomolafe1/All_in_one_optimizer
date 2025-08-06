@@ -78,7 +78,7 @@ class OptimizationConfig:
     def __post_init__(self):
         if self.position_requirements is None:
             self.position_requirements = {
-                "P": 2,
+                "P": 2,  # Just 2 pitchers (DK doesn't distinguish SP/RP)
                 "C": 1,
                 "1B": 1,
                 "2B": 1,
@@ -111,6 +111,17 @@ class UnifiedMILPOptimizer:
         self._last_result = None
         self._optimization_count = 0
         self._lineup_cache = {}
+
+    def normalize_positions(self, players):
+        """Normalize all pitcher positions to 'P'"""
+        for player in players:
+            if player.position in ['SP', 'RP']:
+                player.position = 'P'
+                player.primary_position = 'P'
+            # Also handle multi-position eligibility
+            if hasattr(player, 'positions'):
+                player.positions = ['P' if pos in ['SP', 'RP'] else pos for pos in player.positions]
+        return players
 
     def check_position_availability(self, players):
         """Check if we have enough players for each position"""
@@ -398,134 +409,62 @@ class UnifiedMILPOptimizer:
         except ImportError:
             logger.debug("Vegas lines module not available")
 
-    def apply_strategy_filter(self, players, strategy, contest_type=None):
-        """Apply strategy filtering while ensuring lineup viability"""
-        self.logger.info(f"Applying strategy filter: {strategy}")
-        self.logger.info(f"Starting with {len(players)} players")
+    def apply_strategy_filter(self, players: List, strategy: str, contest_type: str = 'gpp') -> List:
+        """
+        DON'T FILTER - Just adjust scores based on strategy!
+        Pool should already be filtered by confirmations/manual selections
+        """
 
-        # CRITICAL: Define minimum requirements
-        position_requirements = {
-            'P': 2, 'SP': 2, 'RP': 0,  # Need at least 2 pitchers
-            'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1,  # Infield
-            'OF': 3  # Outfield
-        }
-
-        # Group players by position
-        by_position = {}
+        # Normalize positions (still needed)
         for player in players:
-            pos = player.position
-            if pos not in by_position:
-                by_position[pos] = []
-            by_position[pos].append(player)
+            if player.position in ['SP', 'RP']:
+                player.position = 'P'
+                player.primary_position = 'P'
 
-        # Log position counts
-        self.logger.info("Players by position before filter:")
-        for pos, players_at_pos in by_position.items():
-            self.logger.info(f"  {pos}: {len(players_at_pos)} players")
+        logger.info(f"Applying strategy: {strategy}")
+        logger.info(f"Players in pool: {len(players)}")
 
-        # Apply strategy-specific logic
-        filtered = []
+        # STRATEGY ONLY AFFECTS SCORING, NOT FILTERING!
+        for player in players:
+            # Start with base score
+            base_score = player.optimization_score or player.base_projection or 10.0
 
-        if strategy == 'projection_monster':
-            # For projection_monster, keep top players but ensure minimums
-            for pos, min_needed in position_requirements.items():
-                if pos in by_position:
-                    # Sort by score
-                    players_at_pos = sorted(
-                        by_position[pos],
-                        key=lambda x: getattr(x, f'{contest_type}_score', x.optimization_score),
-                        reverse=True
-                    )
+            # Apply strategy-specific SCORING adjustments
+            if strategy == 'pitcher_dominance':
+                if player.position == 'P':
+                    # Boost pitcher scores for this strategy
+                    player.optimization_score = base_score * 1.3
+                else:
+                    # Slightly reduce hitter scores
+                    player.optimization_score = base_score * 0.9
 
-                    # Keep at least minimum + buffer
-                    if pos in ['P', 'SP']:
-                        # Keep more pitchers (at least 5)
-                        keep = max(5, min_needed * 2)
-                    elif pos == 'OF':
-                        # Keep more outfielders (at least 10)
-                        keep = max(10, min_needed * 3)
-                    else:
-                        # Keep at least 3x minimum for other positions
-                        keep = max(3, min_needed * 3)
+            elif strategy == 'projection_monster':
+                # Boost consistent players
+                consistency = getattr(player, 'consistency_score', 1.0)
+                player.optimization_score = base_score * consistency
 
-                    # Add top players at this position
-                    filtered.extend(players_at_pos[:keep])
+            elif strategy == 'correlation_value':
+                # This would boost players from same team (stacking)
+                # Would need team correlation logic
+                player.optimization_score = base_score
 
-        elif strategy in ['balanced_projections', 'balanced_ownership']:
-            # Less aggressive filtering
-            for pos, min_needed in position_requirements.items():
-                if pos in by_position:
-                    players_at_pos = sorted(
-                        by_position[pos],
-                        key=lambda x: x.optimization_score,
-                        reverse=True
-                    )
-                    # Keep more players
-                    keep = max(10, min_needed * 5)
-                    filtered.extend(players_at_pos[:keep])
+            elif strategy == 'tournament_winner_gpp':
+                # Boost low-owned, high-upside players
+                ownership = getattr(player, 'ownership_projection', 15)
+                if ownership < 10:
+                    player.optimization_score = base_score * 1.2
+                elif ownership > 30:
+                    player.optimization_score = base_score * 0.8
+                else:
+                    player.optimization_score = base_score
+            else:
+                # No strategy adjustment
+                player.optimization_score = base_score
 
-        else:
-            # For other strategies, keep most players
-            # Just remove the very worst
-            all_sorted = sorted(players, key=lambda x: x.optimization_score, reverse=True)
+        # RETURN ALL PLAYERS - NO FILTERING!
+        logger.info(f"Returning ALL {len(players)} players with adjusted scores")
+        return players  # Return the FULL pool!
 
-            # Keep at least 80% of players or 100, whichever is less
-            keep_count = min(len(players), max(100, int(len(players) * 0.8)))
-            filtered = all_sorted[:keep_count]
-
-        # SAFETY CHECK: Ensure we have minimum positions
-        filtered_by_pos = {}
-        for player in filtered:
-            pos = player.position
-            if pos not in filtered_by_pos:
-                filtered_by_pos[pos] = []
-            filtered_by_pos[pos].append(player)
-
-        # Check if we have enough
-        for pos, min_needed in position_requirements.items():
-            if min_needed > 0:
-                current = len(filtered_by_pos.get(pos, []))
-                if current < min_needed:
-                    self.logger.warning(f"Not enough {pos} after filter: {current} < {min_needed}")
-                    # Add back top players at this position
-                    if pos in by_position:
-                        needed = min_needed - current + 2  # Add buffer
-                        additional = [p for p in by_position[pos] if p not in filtered][:needed]
-                        filtered.extend(additional)
-                        self.logger.info(f"Added {len(additional)} more {pos} players")
-
-        # Handle pitcher position mapping (P, SP, RP all count as pitchers)
-        pitcher_count = sum(len(filtered_by_pos.get(p, [])) for p in ['P', 'SP', 'RP'])
-        if pitcher_count < 2:
-            self.logger.warning(f"Not enough total pitchers: {pitcher_count}")
-            # Add more pitchers
-            all_pitchers = []
-            for p in ['P', 'SP', 'RP']:
-                if p in by_position:
-                    all_pitchers.extend(by_position[p])
-
-            if all_pitchers:
-                all_pitchers = sorted(all_pitchers, 
-                                    key=lambda x: x.optimization_score, 
-                                    reverse=True)
-                additional = [p for p in all_pitchers if p not in filtered][:5]
-                filtered.extend(additional)
-                self.logger.info(f"Added {len(additional)} more pitchers")
-
-        # Final count
-        final_by_pos = {}
-        for player in filtered:
-            pos = player.position
-            if pos not in final_by_pos:
-                final_by_pos[pos] = 0
-            final_by_pos[pos] += 1
-
-        self.logger.info(f"After filter: {len(filtered)} total players")
-        self.logger.info("Final position counts:")
-        for pos, count in sorted(final_by_pos.items()):
-            self.logger.info(f"  {pos}: {count}")
-
-        return filtered
 
     def _is_valid_player(self, player) -> bool:
         """Check if player meets basic validation criteria"""
@@ -728,17 +667,35 @@ class UnifiedMILPOptimizer:
             for i in range(len(players))
         ]) >= min_salary
 
-        # 3. Position requirements
+        # 3. Position requirements with SP/RP mapping
         for pos, required in self.config.position_requirements.items():
-            eligible_indices = [
-                i for i in range(len(players))
-                if players[i].primary_position == pos or pos in getattr(players[i], 'positions', [])
-            ]
+            if pos == 'P':
+                # CRITICAL FIX: Handle SP/RP as pitchers
+                eligible_indices = [
+                    i for i in range(len(players))
+                    if players[i].primary_position in ['P', 'SP', 'RP'] or
+                       players[i].position in ['P', 'SP', 'RP']
+                ]
+            else:
+                # Normal positions
+                eligible_indices = [
+                    i for i in range(len(players))
+                    if players[i].primary_position == pos or
+                       players[i].position == pos or
+                       pos in getattr(players[i], 'positions', [])
+                ]
 
             if len(eligible_indices) < required:
                 logger.warning(f"Not enough players for position {pos}")
-                logger.info(
-                    f"OPTIMIZATION: Position constraint failed - {pos} needs {required}, have {len(eligible_indices)}")
+                logger.warning(f"Required: {required}, Available: {len(eligible_indices)}")
+
+                # Debug: Show what positions we have
+                pos_counts = {}
+                for p in players:
+                    p_pos = p.position
+                    pos_counts[p_pos] = pos_counts.get(p_pos, 0) + 1
+                logger.warning(f"Available positions: {pos_counts}")
+
                 return [], 0
 
             prob += pulp.lpSum([

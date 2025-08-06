@@ -69,7 +69,7 @@ class UnifiedCoreSystem:
         self.players = []
         self.player_pool = []
 
-        # NEW: Smart managers
+        # FIRST: Create managers (before data sources)
         self.scoring_engine = EnhancedScoringEngineV2()
         self.enrichment_manager = SmartEnrichmentManager()
         self.strategy_manager = GUIStrategyManager()
@@ -78,23 +78,64 @@ class UnifiedCoreSystem:
         self.config = CorrelationScoringConfig()
         self.optimizer = UnifiedMILPOptimizer(self.config)
 
-        # Data sources
-        self.confirmation_system = SmartConfirmationSystem() if CONFIRMATION_AVAILABLE else None
-        self.stats_fetcher = SimpleStatcastFetcher() if STATCAST_AVAILABLE else None
-        self.vegas_lines = VegasLines() if VEGAS_AVAILABLE else None
-        # Setup enrichment sources
-        if self.vegas_lines:
-            self.enrichment_manager.set_enrichment_source('vegas', self.vegas_lines)
-        if self.stats_fetcher:
-            self.enrichment_manager.set_enrichment_source('statcast', self.stats_fetcher)
-        if self.confirmation_system:
-            self.enrichment_manager.set_enrichment_source('confirmations', self.confirmation_system)
+        # THEN: Initialize data sources
+        # 1. Confirmations
+        self.confirmation_system = None
+        if CONFIRMATION_AVAILABLE:
+            try:
+                self.confirmation_system = SmartConfirmationSystem()
+                self.enrichment_manager.set_enrichment_source('confirmations', self.confirmation_system)
+                logger.info("✅ Confirmations initialized")
+            except Exception as e:
+                logger.warning(f"Confirmation system error: {e}")
+
+        # 2. Statcast
+        self.stats_fetcher = None
+        if STATCAST_AVAILABLE:
+            try:
+                self.stats_fetcher = SimpleStatcastFetcher()
+                self.enrichment_manager.set_enrichment_source('statcast', self.stats_fetcher)
+                logger.info("✅ Statcast initialized")
+            except Exception as e:
+                logger.warning(f"Statcast error: {e}")
+
+        # 3. Vegas
+        self.vegas_lines = None
+        if VEGAS_AVAILABLE:
+            try:
+                self.vegas_lines = VegasLines()
+                self.enrichment_manager.set_enrichment_source('vegas', self.vegas_lines)
+                logger.info("✅ Vegas lines initialized")
+            except Exception as e:
+                logger.warning(f"Vegas error: {e}")
+
+        # 4. Weather (NEW)
+        self.weather = None
+        try:
+            from weather_integration import get_weather_integration
+            self.weather = get_weather_integration()
+            self.enrichment_manager.set_enrichment_source('weather', self.weather)
+            logger.info("✅ Weather integration initialized")
+        except ImportError as e:
+            logger.warning(f"Weather integration not available: {e}")
+
+        # 5. Ownership (NEW)
+        self.ownership_calculator = None
+        try:
+            from ownership_calculator import OwnershipCalculator
+            self.ownership_calculator = OwnershipCalculator()
+            self.enrichment_manager.set_enrichment_source('ownership', self.ownership_calculator)
+            logger.info("✅ Ownership calculator initialized")
+        except ImportError as e:
+            logger.warning(f"Ownership calculator not available: {e}")
 
         # State tracking
         self.csv_loaded = False
         self.current_slate_size = None
         self.current_contest_type = None
         self.current_strategy = None
+        self.detected_games = 0
+        self.slate_size_category = None
 
         # Logging
         self.log_messages = []
@@ -106,13 +147,13 @@ class UnifiedCoreSystem:
         self.log_messages.append(log_entry)
         logger.info(message)
 
-    def load_csv(self, csv_path: str) -> int:
-        """Load players from DraftKings CSV"""
-        self.log(f"Loading CSV: {csv_path}")
+    def load_csv(self, filepath: str) -> int:
+        """Load players from DraftKings CSV with proper slate detection"""
+        logger.info(f"Loading CSV: {filepath}")
 
         try:
-            df = pd.read_csv(csv_path)
-            self.log(f"Loaded {len(df)} rows from CSV")
+            df = pd.read_csv(filepath)
+            logger.info(f"Loaded {len(df)} rows from CSV")
 
             # Convert to UnifiedPlayer objects
             self.players = []
@@ -121,18 +162,64 @@ class UnifiedCoreSystem:
                     player = UnifiedPlayer.from_csv_row(row.to_dict())
                     self.players.append(player)
                 except Exception as e:
-                    self.log(f"Error loading player at row {idx}: {e}")
+                    logger.debug(f"Error loading player at row {idx}: {e}")
 
             self.csv_loaded = True
-            self.log(f"Successfully loaded {len(self.players)} players")
+            logger.info(f"Successfully loaded {len(self.players)} players")
 
-            # Auto-detect slate size
-            self.detect_slate_characteristics()
+            # DETECT SLATE CHARACTERISTICS
+            # Count unique games to determine slate size
+            games = set()
+            for player in self.players:
+                # Create game identifier from team and opponent
+                if hasattr(player, 'team') and hasattr(player, 'opponent'):
+                    game = tuple(sorted([player.team, player.opponent]))
+                    games.add(game)
+
+            # Store number of games (CRITICAL FIX)
+            self.detected_games = len(games)
+
+            # Determine slate size category
+            if self.detected_games <= 4:
+                slate_size_str = 'small'
+            elif self.detected_games <= 9:
+                slate_size_str = 'medium'
+            else:
+                slate_size_str = 'large'
+
+            # STORE BOTH VERSIONS (fixes the type error)
+            self.current_slate_size = self.detected_games  # Store as INTEGER
+            self.slate_size_category = slate_size_str  # Store as STRING
+
+            logger.info(f"Detected: {self.detected_games} games = {slate_size_str} slate")
+
+            # Initialize projections for all players
+            for player in self.players:
+                if not hasattr(player, 'base_projection') or player.base_projection is None:
+                    # Use AvgPointsPerGame or default
+                    if hasattr(player, 'AvgPointsPerGame') and player.AvgPointsPerGame:
+                        player.base_projection = float(player.AvgPointsPerGame)
+                    else:
+                        # Default projections by position
+                        pos_defaults = {
+                            'P': 15.0, 'SP': 15.0, 'RP': 10.0,
+                            'C': 8.0, '1B': 10.0, '2B': 9.0,
+                            '3B': 9.0, 'SS': 9.0, 'OF': 9.0
+                        }
+                        player.base_projection = pos_defaults.get(player.primary_position, 8.0)
+
+                # Initialize other scores
+                player.projection = player.base_projection
+                player.optimization_score = player.base_projection
+                player.gpp_score = player.base_projection
+                player.cash_score = player.base_projection
 
             return len(self.players)
 
         except Exception as e:
-            self.log(f"Error loading CSV: {e}")
+            logger.error(f"Error loading CSV: {e}")
+            import traceback
+            traceback.print_exc()
             return 0
 
     def detect_slate_characteristics(self):
@@ -362,94 +449,207 @@ class UnifiedCoreSystem:
 
         return stats
 
-    def score_players(self, contest_type: str) -> int:
-        """
-        NEW METHOD: Unified scoring using V2 engine
-        """
+    def score_players(self, contest_type: str = 'gpp'):
+        """Score all players in pool"""
         if not self.player_pool:
-            self.log("No players to score")
-            return 0
+            logger.warning("No players in pool to score")
+            return
 
-        self.log(f"Scoring {len(self.player_pool)} players for {contest_type}")
+        logger.info(f"Scoring {len(self.player_pool)} players for {contest_type}")
 
+        # Check if already enriched to avoid double enrichment
+        if not any(hasattr(p, 'implied_team_score') for p in self.player_pool[:5]):
+            slate_size = 'small' if self.current_slate_size <= 4 else 'medium' if self.current_slate_size <= 9 else 'large'
+            strategy = self.current_strategy or 'projection_monster'
+
+            logger.info(f"Enriching players for {strategy} on {slate_size} {contest_type}")
+            self.player_pool = self.enrichment_manager.enrich_players(
+                players=self.player_pool,
+                slate_size=slate_size,
+                strategy=strategy,
+                contest_type=contest_type
+            )
+        else:
+            logger.info("Players already enriched, skipping")
+
+        # Score players
         scored_count = 0
         for player in self.player_pool:
-            # Single scoring call
-            score = self.scoring_engine.score_player(player, contest_type)
+            if contest_type == 'cash':
+                player.cash_score = self.scoring_engine.score_player_cash(player)
+                player.optimization_score = player.cash_score
+            else:  # GPP
+                player.gpp_score = self.scoring_engine.score_player_gpp(player)
+                player.optimization_score = player.gpp_score
 
-            # Store scores
-            player.optimization_score = score
-            setattr(player, f'{contest_type}_score', score)
-
-            if score > 0:
+            # FIX: Handle None values
+            if player.optimization_score is not None and player.optimization_score > 0:
                 scored_count += 1
+            elif player.optimization_score is None:
+                # Set default if None
+                player.optimization_score = player.base_projection or 0
+                logger.debug(f"Player {player.name} had None score, using base: {player.optimization_score}")
 
-        self.log(f"Scored {scored_count} players with non-zero scores")
+        logger.info(f"Scored {scored_count} players with non-zero scores")
 
-        # Get top scorers for logging
-        if scored_count > 0:
-            top_players = sorted(self.player_pool, key=lambda p: p.optimization_score, reverse=True)[:3]
-            for p in top_players:
-                self.log(f"  Top: {p.name} = {p.optimization_score:.1f}")
+        # Log top scorers
+        top_players = sorted(
+            [p for p in self.player_pool if p.optimization_score is not None],
+            key=lambda p: p.optimization_score,
+            reverse=True
+        )[:3]
 
-        return scored_count
+        for p in top_players:
+            logger.info(f"  Top: {p.name} = {p.optimization_score:.1f}")
 
-    def optimize_lineup(self,
-                        strategy: str,
-                        contest_type: str,
-                        num_lineups: int = 1,
-                        manual_selections: str = "") -> List[Dict]:
-        """
-        NEW METHOD: Complete optimization pipeline
-        """
-        lineups = []
+    def optimize_lineup(self, strategy: str = 'auto', contest_type: str = 'gpp',
+                        num_lineups: int = 1, manual_selections: str = '') -> List:
+        """Generate optimized lineups with ENRICHMENT"""
 
-        # Set current state
+        logger.info("=== OPTIMIZATION PIPELINE ===")
+        logger.info(f"Strategy: {strategy}, Contest: {contest_type}")
+
+        # Auto-select strategy if needed
+        if strategy == 'auto':
+            # Ensure we have a numeric slate size
+            num_games = self.detected_games if hasattr(self, 'detected_games') else 6
+            strategy, reason = self.strategy_manager.auto_select_strategy(
+                num_games,
+                contest_type
+            )
+            logger.info(f"Auto-selected: {strategy}")
+
         self.current_strategy = strategy
         self.current_contest_type = contest_type
 
-        # STEP 1: Smart enrichment for this strategy
-        self.log(f"\n=== OPTIMIZATION PIPELINE ===")
-        self.log(f"Strategy: {strategy}, Contest: {contest_type}")
+        # Handle both string and int slate sizes
+        if isinstance(self.current_slate_size, str):
+            # If it's already a string like 'medium', use it
+            slate_size = self.current_slate_size
+        elif isinstance(self.current_slate_size, int):
+            # Convert number to size category
+            slate_size = 'small' if self.current_slate_size <= 4 else 'medium' if self.current_slate_size <= 9 else 'large'
+        else:
+            # Default fallback
+            num_games = self.detected_games if hasattr(self, 'detected_games') else 6
+            slate_size = 'small' if num_games <= 4 else 'medium' if num_games <= 9 else 'large'
 
-        enrichment_stats = self.enrich_player_pool_smart(strategy, contest_type)
-        self.log(f"Enriched: {enrichment_stats}")
+        logger.info(f"Smart enrichment for {strategy} on {slate_size} {contest_type}")
 
-        # STEP 2: Score players
-        scored = self.score_players(contest_type)
-        if scored == 0:
-            self.log("ERROR: No players scored!")
+        # Enrich players before optimization
+        self.player_pool = self.enrichment_manager.enrich_players(
+            players=self.player_pool,
+            slate_size=slate_size,
+            strategy=strategy,
+            contest_type=contest_type
+        )
+
+        # Log enrichment results
+        enrichment_stats = {
+            'vegas': 0,
+            'recent_form': 0,
+            'consistency': 0,
+            'batting_order': 0
+        }
+
+        for p in self.player_pool[:10]:  # Check first 10
+            if getattr(p, 'implied_team_score', 0) > 0:
+                enrichment_stats['vegas'] += 1
+            if getattr(p, 'recent_form', 0) != 0:
+                enrichment_stats['recent_form'] += 1
+            if getattr(p, 'consistency_score', 0) != 0:
+                enrichment_stats['consistency'] += 1
+            if getattr(p, 'batting_order', 0) > 0:
+                enrichment_stats['batting_order'] += 1
+
+        logger.info(f"Enriched: {enrichment_stats}")
+
+        # Score players based on contest type
+        self.score_players(contest_type)
+
+        # Get valid players for optimization
+        valid_players = [p for p in self.player_pool if p.optimization_score and p.optimization_score > 0]
+        logger.info(f"Valid players for optimization: {len(valid_players)}")
+
+        if not valid_players:
+            logger.error("No valid players for optimization")
             return []
 
-        # STEP 3: Filter valid players
-        valid_players = [p for p in self.player_pool if p.optimization_score > 0]
-        self.log(f"Valid players for optimization: {len(valid_players)}")
+        # Set contest type on the optimizer config (if needed)
+        if hasattr(self.optimizer, 'config') and hasattr(self.optimizer.config, 'contest_type'):
+            self.optimizer.config.contest_type = contest_type
 
-        # STEP 4: Generate lineups
+        # Generate lineups
+        generated_lineups = []
+
         for i in range(num_lineups):
-            self.log(f"\nGenerating lineup {i + 1}/{num_lineups}")
+            logger.info(f"\nGenerating lineup {i + 1}/{num_lineups}")
 
-            # Run optimizer
-            lineup, score = self.optimizer.optimize_lineup(
+            # Run MILP optimization
+            # FIX: Handle OptimizationResult object
+            result = self.optimizer.optimize(
                 players=valid_players,
                 strategy=strategy,
-                manual_selections=manual_selections,
-                contest_type=contest_type
+                manual_selections=manual_selections
             )
 
-            if lineup and len(lineup) > 0:
-                # CREATE PROPER LINEUP DICT
-                lineup_dict = self.create_proper_lineup_dict(lineup, score)
-                lineups.append(lineup_dict)
+            # Handle different result types
+            if result:
+                # Check if it's an object with attributes
+                if hasattr(result, 'lineup') and hasattr(result, 'score'):
+                    lineup = result.lineup
+                    score = result.score
+                # Check if it's a tuple (old format)
+                elif isinstance(result, tuple) and len(result) == 2:
+                    lineup, score = result
+                # Check if it's just a list of players
+                elif isinstance(result, list):
+                    lineup = result
+                    score = sum(p.optimization_score for p in lineup)
+                else:
+                    # Try to extract lineup from the result object
+                    lineup = getattr(result, 'lineup', None) or getattr(result, 'players', None)
+                    score = getattr(result, 'score', 0) or getattr(result, 'total_score', 0)
 
-                self.log(f"Lineup {i + 1}: Score={lineup_dict['optimization_score']:.1f}, "
-                         f"Projection={lineup_dict['projection']:.1f}, "
-                         f"Salary=${lineup_dict['salary']}")
+                if lineup:
+                    # Convert to dict format for GUI
+                    lineup_dict = {
+                        'players': [self._player_to_dict(p) for p in lineup],
+                        'score': score,
+                        'projection': sum(p.base_projection for p in lineup),
+                        'salary': sum(p.salary for p in lineup),
+                        'strategy': strategy,
+                        'contest_type': contest_type
+                    }
+                    generated_lineups.append(lineup_dict)
+                    logger.info(
+                        f"Lineup {i + 1}: Score={score:.1f}, Projection={lineup_dict['projection']:.1f}, Salary=${lineup_dict['salary']}")
+                else:
+                    logger.info(f"Failed to generate lineup {i + 1}")
             else:
-                self.log(f"Failed to generate lineup {i + 1}")
+                logger.info(f"No result from optimizer for lineup {i + 1}")
 
-        self.log(f"\n=== Generated {len(lineups)} lineups ===")
-        return lineups
+        logger.info(f"\n=== Generated {len(generated_lineups)} lineups ===")
+        return generated_lineups
+
+    def _player_to_dict(self, player) -> Dict:
+        """Convert player object to dictionary for GUI"""
+        return {
+            'name': player.name,
+            'position': player.position,
+            'team': player.team,
+            'opponent': getattr(player, 'opponent', ''),
+            'salary': player.salary,
+            'projection': player.base_projection,
+            'optimization_score': player.optimization_score,
+            'recent_form': getattr(player, 'recent_form', 0),
+            'consistency_score': getattr(player, 'consistency_score', 0),
+            'implied_team_score': getattr(player, 'implied_team_score', 0),
+            'batting_order': getattr(player, 'batting_order', 0),
+            'ownership_projection': getattr(player, 'ownership_projection', 0),
+            'k_rate': getattr(player, 'k_rate', 0) if player.position in ['P', 'SP', 'RP'] else 0,
+            'barrel_rate': getattr(player, 'barrel_rate', 0)
+        }
 
     def create_proper_lineup_dict(self, lineup_players: List, optimization_score: float) -> Dict:
         """

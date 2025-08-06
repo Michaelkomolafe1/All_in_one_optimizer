@@ -501,12 +501,11 @@ class SmartEnrichmentManager:
                 if self._enrich_statcast(player, profile):
                     enrichment_stats['statcast'] += 1
 
-        # ENRICHMENT PHASE 4: Ownership
-        if profile.needs_ownership and self.enrichment_sources['ownership']:
-            logger.info("Enriching with ownership projections...")
-            for player in players:
-                if self._enrich_ownership(player):
-                    enrichment_stats['ownership'] += 1
+        # ENRICHMENT PHASE 4: Ownership (BATCH)
+        if profile.needs_ownership and self.enrichment_sources.get('ownership'):
+            logger.info("Calculating ownership projections...")
+            self._calculate_ownership_batch(players, contest_type)
+            enrichment_stats['ownership'] = sum(1 for p in players if getattr(p, 'ownership_projection', 0) > 0)
 
         # ENRICHMENT PHASE 5: Weather
         if profile.needs_weather and self.enrichment_sources['weather']:
@@ -537,93 +536,293 @@ class SmartEnrichmentManager:
     def _enrich_vegas(self, player) -> bool:
         """Enrich with Vegas data"""
         try:
-            vegas_data = self.enrichment_sources['vegas'].get_data(player.team)
+            vegas = self.enrichment_sources.get('vegas')
+            if not vegas:
+                return False
+
+            vegas_data = vegas.get_data(player.team)
             if vegas_data:
                 player.implied_team_score = vegas_data.get('implied_total', 4.5)
                 player.game_total = vegas_data.get('game_total', 9.0)
                 player.team_total = player.implied_team_score
                 return True
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Vegas enrichment failed for {player.name}: {e}")
         return False
 
     def _enrich_batting_order(self, player) -> bool:
         """Enrich with batting order"""
         try:
-            confirmations = self.enrichment_sources['confirmations']
+            confirmations = self.enrichment_sources.get('confirmations')
+            if not confirmations:
+                return False
+
             order = confirmations.get_batting_order(player.name, player.team)
-            if order:
+            if order and order > 0:
                 player.batting_order = order
                 return True
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Batting order enrichment failed for {player.name}: {e}")
         return False
 
     def _enrich_statcast(self, player, profile: EnrichmentProfile) -> bool:
         """Enrich with Statcast data based on what's needed"""
         try:
-            statcast = self.enrichment_sources['statcast']
+            statcast = self.enrichment_sources.get('statcast')
+            if not statcast:
+                return False
+
             stats = statcast.get_stats(player.name)
+            if not stats:
+                return False
 
-            if stats:
-                # Only get the stats this strategy needs
-                if profile.needs_barrel_rate:
-                    player.barrel_rate = stats.get('barrel_rate', 0)
+            # Apply relevant stats based on profile needs
+            enriched = False
 
-                if profile.needs_k_rate:
-                    if player.is_pitcher:
-                        player.k_rate = stats.get('k_rate', 20)
-                    else:
-                        player.k_rate = stats.get('k_rate', 20)
+            if profile.needs_barrel_rate and 'barrel_rate' in stats:
+                player.barrel_rate = stats['barrel_rate']
+                enriched = True
 
-                if profile.needs_xwoba:
-                    player.xwoba = stats.get('xwoba', 0.320)
-                    player.woba = stats.get('woba', 0.320)
+            if profile.needs_k_rate and 'k_rate' in stats:
+                player.k_rate = stats['k_rate']
+                enriched = True
+
+            if profile.needs_xwoba:
+                if 'xwoba' in stats:
+                    player.xwoba = stats['xwoba']
+                    player.woba = stats.get('woba', player.xwoba)
                     player.xwoba_diff = player.xwoba - player.woba
+                    enriched = True
 
-                if profile.needs_hard_hit:
-                    player.hard_hit_rate = stats.get('hard_hit_rate', 40)
+            if profile.needs_hard_hit and 'hard_hit_rate' in stats:
+                player.hard_hit_rate = stats['hard_hit_rate']
+                enriched = True
 
-                return True
-        except:
-            pass
+            return enriched
+
+        except Exception as e:
+            logger.debug(f"Statcast enrichment failed for {player.name}: {e}")
         return False
-
-    def _enrich_ownership(self, player) -> bool:
-        """Enrich with ownership projections"""
-        try:
-            ownership = self.enrichment_sources['ownership'].get_projection(player.name)
-            if ownership:
-                player.projected_ownership = ownership
-                player.ownership_projection = ownership
-                return True
-        except:
-            pass
-
-        # Default ownership
-        if player.salary > 9000:
-            player.projected_ownership = 20
-        elif player.salary > 7000:
-            player.projected_ownership = 15
-        elif player.salary > 5000:
-            player.projected_ownership = 10
-        else:
-            player.projected_ownership = 5
-
-        return True
 
     def _enrich_weather(self, player) -> bool:
         """Enrich with weather data"""
         try:
-            weather = self.enrichment_sources['weather'].get_weather(player.team)
-            if weather:
-                player.weather_impact = weather.get('impact', 1.0)
-                player.wind_speed = weather.get('wind_speed', 5)
-                player.temperature = weather.get('temperature', 72)
+            weather = self.enrichment_sources.get('weather')
+            if not weather:
+                return False
+
+            # Get weather for the game (home team's stadium)
+            weather_data = weather.get_weather_for_game(player.team)
+            if weather_data:
+                # Calculate impact based on player type
+                is_pitcher = player.position in ['P', 'SP', 'RP']
+                impact = weather.calculate_weather_impact(weather_data, is_pitcher)
+
+                player.weather_score = impact
+                player.weather_impact = impact
+                player.weather_data = weather_data  # Store full data if needed
                 return True
-        except:
-            pass
+
+        except Exception as e:
+            logger.debug(f"Weather enrichment failed for {player.name}: {e}")
         return False
+
+    def _enrich_ownership(self, player, contest_type: str = 'gpp') -> bool:
+        """Enrich with ownership projections (single player)"""
+        try:
+            # Try to get from calculator if available
+            ownership_calc = self.enrichment_sources.get('ownership')
+            if ownership_calc and hasattr(ownership_calc, 'get_ownership'):
+                ownership = ownership_calc.get_ownership(player.player_id)
+                if ownership > 0:
+                    player.projected_ownership = ownership
+                    player.ownership_projection = ownership
+                    return True
+
+            # Fallback: Estimate based on salary and position
+            ownership = self._estimate_ownership(player, contest_type)
+            player.projected_ownership = ownership
+            player.ownership_projection = ownership
+            return True
+
+        except Exception as e:
+            logger.debug(f"Ownership enrichment failed for {player.name}: {e}")
+            # Set default
+            player.projected_ownership = 10.0
+            player.ownership_projection = 10.0
+        return False
+
+    def _estimate_ownership(self, player, contest_type: str) -> float:
+        """Estimate ownership based on salary and position"""
+        # Base ownership by salary tier
+        if player.salary >= 10000:
+            base_own = 25.0  # Expensive studs
+        elif player.salary >= 8000:
+            base_own = 20.0  # High tier
+        elif player.salary >= 6000:
+            base_own = 15.0  # Mid tier
+        elif player.salary >= 4000:
+            base_own = 12.0  # Value tier
+        else:
+            base_own = 8.0  # Punts
+
+        # Position adjustments
+        if player.position in ['P', 'SP']:
+            base_own *= 1.2  # Pitchers get more ownership
+        elif player.position == 'C':
+            base_own *= 0.7  # Catchers get less
+
+        # Contest type adjustment
+        if contest_type == 'cash':
+            base_own *= 1.5  # Higher concentration in cash
+
+        # Value adjustment
+        value = player.base_projection / (player.salary / 1000) if player.salary > 0 else 0
+        if value > 5.0:
+            base_own *= 1.5  # Great values get owned
+        elif value < 2.5:
+            base_own *= 0.5  # Poor values avoided
+
+        return min(60, max(1, base_own))  # Cap between 1-60%
+
+    def _calculate_ownership_batch(self, players: List, contest_type: str):
+        """Calculate ownership for all players at once"""
+        try:
+            ownership_calc = self.enrichment_sources.get('ownership')
+            if ownership_calc and hasattr(ownership_calc, 'calculate_ownership'):
+                # Batch calculate
+                ownership_dict = ownership_calc.calculate_ownership(players, contest_type)
+
+                # Apply to players
+                applied_count = 0
+                for player in players:
+                    if player.player_id in ownership_dict:
+                        player.projected_ownership = ownership_dict[player.player_id]
+                        player.ownership_projection = ownership_dict[player.player_id]
+                        applied_count += 1
+
+                logger.info(f"Applied ownership to {applied_count}/{len(players)} players")
+            else:
+                # Fallback to individual estimates
+                for player in players:
+                    self._enrich_ownership(player, contest_type)
+
+        except Exception as e:
+            logger.error(f"Batch ownership calculation failed: {e}")
+            # Fallback to individual
+            for player in players:
+                self._enrich_ownership(player, contest_type)
+
+    def _calculate_recent_form(self, players: List, profile: EnrichmentProfile, contest_type: str):
+        """Calculate recent form scores"""
+        for player in players:
+            try:
+                # Check for actual recent stats
+                if hasattr(player, 'recent_stats') and player.recent_stats:
+                    player.recent_form = player.recent_stats.get('form_score', 1.0)
+                else:
+                    # Calculate based on strategy needs
+                    player.recent_form = self._estimate_form(player, contest_type)
+
+            except Exception as e:
+                logger.debug(f"Form calculation failed for {player.name}: {e}")
+                player.recent_form = 1.0
+
+    def _estimate_form(self, player, contest_type: str) -> float:
+        """Estimate form based on player attributes"""
+        if contest_type == 'cash':
+            # Cash: Prefer expensive/consistent players
+            if player.is_pitcher:
+                if player.salary >= 9000:
+                    return 1.15  # Ace pitchers
+                elif player.salary >= 7000:
+                    return 1.08
+                else:
+                    return 0.95
+            else:
+                # Hitters by salary
+                if player.salary >= 5500:
+                    return 1.10
+                elif player.salary >= 4000:
+                    return 1.05
+                else:
+                    return 0.95
+        else:  # GPP
+            # GPP: Look for upside plays
+            if player.salary >= 4000 and player.salary <= 6000:
+                return 1.12  # Mid-range upside plays
+            elif player.salary < 3500:
+                return 1.08  # Punt upside
+            else:
+                return 1.00
+
+    def _calculate_consistency(self, players: List, contest_type: str):
+        """Calculate consistency scores for players"""
+        for player in players:
+            try:
+                # Check for actual consistency data
+                if hasattr(player, 'consistency_stats') and player.consistency_stats:
+                    player.consistency_score = player.consistency_stats.get('score', 1.0)
+                else:
+                    # Estimate consistency
+                    player.consistency_score = self._estimate_consistency(player)
+
+            except Exception as e:
+                logger.debug(f"Consistency calculation failed for {player.name}: {e}")
+                player.consistency_score = 1.0
+
+    def _estimate_consistency(self, player) -> float:
+        """Estimate consistency based on player attributes"""
+        if player.is_pitcher:
+            # Pitchers: Salary = consistency
+            if player.salary >= 10000:
+                return 1.25  # Aces are consistent
+            elif player.salary >= 8000:
+                return 1.15
+            elif player.salary >= 6500:
+                return 1.05
+            else:
+                return 0.85  # Cheap pitchers are risky
+        else:
+            # Hitters: Batting order + salary
+            order = getattr(player, 'batting_order', 9)
+
+            # Base on batting order
+            if 1 <= order <= 3:
+                consistency = 1.20  # Top of lineup
+            elif 4 <= order <= 5:
+                consistency = 1.10  # Heart of order
+            elif 6 <= order <= 7:
+                consistency = 1.00  # Lower order
+            else:
+                consistency = 0.90  # Bottom/unknown
+
+            # Adjust for salary
+            if player.salary >= 5000:
+                consistency *= 1.05
+            elif player.salary < 3500:
+                consistency *= 0.95
+
+            return consistency
+
+    def set_enrichment_source(self, source_type: str, source_object):
+        """Set an enrichment source"""
+        valid_sources = ['vegas', 'statcast', 'weather', 'ownership', 'confirmations']
+
+        if source_type in valid_sources:
+            self.enrichment_sources[source_type] = source_object
+            logger.info(f"✅ Set enrichment source: {source_type}")
+        else:
+            logger.warning(f"Unknown enrichment source type: {source_type}. Valid types: {valid_sources}")
+
+    def clear_cache(self):
+        """Clear enrichment cache when slate changes"""
+        self.enrichment_cache = {
+            'slate_id': None,
+            'enriched_players': set(),
+            'enrichment_types': set()
+        }
+        logger.info("Enrichment cache cleared")
 
     def _calculate_recent_form(self, players: List, profile: EnrichmentProfile, contest_type: str):
         """Calculate recent form based on strategy needs"""

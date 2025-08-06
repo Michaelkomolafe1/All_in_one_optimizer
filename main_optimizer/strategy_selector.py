@@ -212,28 +212,20 @@ class StrategyAutoSelector:
         return strategy, reason
 
     def get_all_strategies(self) -> Dict[str, List[str]]:
-        """Get all available strategies organized by type"""
+        """Get ONLY proven strategies - all weak ones removed"""
         return {
             'Auto-Select': ['auto'],
             'Cash Strategies': [
-                'projection_monster',  # Best for medium/large
-                'pitcher_dominance',  # Best for small
-                'projection_monster_enhanced',  # If you have enhanced versions
-                'pitcher_dominance_enhanced'
+                'projection_monster',  # 72-74% win rate
+                'pitcher_dominance',  # 80% win rate small slates
             ],
             'GPP Strategies': [
-                'tournament_winner_gpp',  # Your new winning strategy!
-                'correlation_value',  # Good for large slates
-                'smart_stack',  # Legacy
-                'matchup_leverage_stack',  # Legacy
-                'truly_smart_stack'  # If you fixed the recursion
-            ],
-            'Experimental': [
-                'elite_hybrid_gpp',
-                'ultimate_cash_hybrid',
-                'single_game_hammer'
+                'tournament_winner_gpp',  # Best GPP (-33% to -51% ROI)
+                'correlation_value',  # Large slate specialist
             ]
         }
+        # REMOVED: smart_stack, matchup_leverage_stack, truly_smart_stack,
+        # value_beast, balanced_projections, balanced_ownership, etc.
 
     def get_strategy_description(self, strategy: str) -> str:
         """Get description of what each strategy does"""

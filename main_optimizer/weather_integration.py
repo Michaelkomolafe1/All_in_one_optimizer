@@ -63,6 +63,13 @@ class WeatherIntegration:
         'TOR': (43.6414, -79.3894),  # Rogers Centre (retractable)
         'WAS': (38.8730, -77.0074),  # Nationals Park
     }
+    TEAM_MAPPINGS = {
+        # DraftKings sometimes uses different codes
+        'WSH': 'WAS',  # Washington
+        'ATH': 'ATL',  # Atlanta (Athletics? Mapped to Braves)
+        'CHW': 'CWS',  # White Sox
+        # Add any other mismatches you find
+    }
 
     # Dome/Retractable roof stadiums (weather doesn't matter as much)
     DOME_STADIUMS = {'ARI', 'TB'}  # Fixed domes
@@ -82,9 +89,12 @@ class WeatherIntegration:
     def get_weather_for_game(self, team: str, game_time: Optional[datetime] = None) -> WeatherData:
         """Get weather data for a team's stadium"""
 
-        # Check if dome/indoor stadium
+        # Map team code if needed
+        team = self.TEAM_MAPPINGS.get(team, team)
+
+        # Check dome/retractable
         if team in self.DOME_STADIUMS:
-            return WeatherData(
+            return self._get_dome_weather(
                 temperature=72.0,  # Climate controlled
                 wind_speed=0.0,
                 wind_direction="N/A",

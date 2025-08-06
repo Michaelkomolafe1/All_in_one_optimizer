@@ -18,7 +18,16 @@ class UnifiedPlayer:
         # Core attributes
         self.name = name
         self.position = position
-        self.primary_position = position.split('/')[0] if '/' in position else position
+        # Normalize pitcher positions for optimizer
+        if position in ['SP', 'RP']:
+            self.primary_position = 'P'  # Normalize for MILP
+            self.original_position = position  # Keep original
+        else:
+            self.primary_position = position.split('/')[0] if '/' in position else position
+            self.original_position = position
+
+        # Also set position attribute
+        self.position = position  # Keep original for display
         self.team = team
         self.opponent = opponent
         self.salary = max(salary, 1)  # Avoid zero salary
@@ -183,3 +192,39 @@ class UnifiedPlayer:
 
     def __repr__(self) -> str:
         return f"UnifiedPlayer('{self.name}', '{self.position}', ${self.salary})"
+
+    @property
+    def safe_optimization_score(self):
+        """Never return None - always return a valid score"""
+        if self.optimization_score is not None:
+            return self.optimization_score
+        if hasattr(self, 'gpp_score') and self.gpp_score is not None:
+            return self.gpp_score
+        if hasattr(self, 'cash_score') and self.cash_score is not None:
+            return self.cash_score
+        if self.base_projection is not None:
+            return self.base_projection
+        if hasattr(self, 'projection') and self.projection is not None:
+            return self.projection
+        return 10.0  # Last resort
+
+    @property
+    def safe_base_projection(self):
+        """Safe getter for base projection"""
+        if self.base_projection is not None:
+            return self.base_projection
+        if hasattr(self, 'projection') and self.projection is not None:
+            return self.projection
+        # Position-based defaults
+        pos_defaults = {
+            'P': 15.0, 'C': 8.0, '1B': 10.0,
+            '2B': 9.0, '3B': 9.0, 'SS': 9.0, 'OF': 9.0
+        }
+        return pos_defaults.get(self.position, 8.0)
+
+    @property
+    def safe_salary(self):
+        """Safe getter for salary"""
+        if self.salary is not None and self.salary > 0:
+            return self.salary
+        return 3000  # Minimum DK salary
