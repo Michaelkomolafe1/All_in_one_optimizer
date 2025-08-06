@@ -124,13 +124,16 @@ OPTIMAL_STRATEGY_MAP = {
 }
 
 
+# NEW VERSION - Better ranges based on real DFS slates
 def get_slate_size(num_games: int) -> str:
-    """Determine slate size from number of games"""
-    if num_games <= 4:
+    """Determine slate size from number of games - IMPROVED"""
+
+    # More realistic ranges that match actual DFS offerings
+    if num_games <= 5:  # Small: 2-5 games (early/afternoon slates)
         return 'small'
-    elif num_games <= 9:
+    elif num_games <= 10:  # Medium: 6-10 games (main slates)
         return 'medium'
-    else:
+    else:  # Large: 11+ games (all day slates)
         return 'large'
 
 
