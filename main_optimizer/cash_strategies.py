@@ -117,24 +117,34 @@ def build_projection_monster(players, params=None):
 def build_pitcher_dominance(players, params=None):
     """
     #1 Cash Strategy for Medium/Large Slates - Now with tunable parameters!
-
     Elite pitchers + high floor hitters
     """
-    params = params or {
-        'elite_k_bb_threshold': 3.0,    # 2.0-5.0: When is pitcher "elite"
-        'good_k_bb_threshold': 2.5,     # 2.0-4.0: When is pitcher "good"
-        'elite_multiplier': 1.5,        # 1.2-2.0: Boost for elite pitchers
-        'good_multiplier': 1.3,         # 1.1-1.5: Boost for good pitchers
-        'bad_multiplier': 0.9,          # 0.5-1.0: Penalty for bad pitchers
-        'floor_weight': 0.6,            # 0.3-0.8: Floor vs ceiling balance for hitters
-        'consistency_bonus': 0.2,       # 0.0-0.5: Extra weight for consistent players
-        'min_k_rate': 15,               # 10-25: Minimum K rate to consider
-        'whip_impact': 0.3,             # 0.0-1.0: How much WHIP matters
+
+    # Default parameters
+    default_params = {
+        'elite_k_bb_threshold': 3.0,
+        'good_k_bb_threshold': 2.5,
+        'elite_multiplier': 1.5,
+        'good_multiplier': 1.3,
+        'bad_multiplier': 0.9,
+        'floor_weight': 0.6,
+        'consistency_bonus': 0.2,
+        'min_k_rate': 15,
+        'whip_impact': 0.3,  # THIS WAS MISSING
     }
+
+    # ROBUST FIX: Merge passed params with defaults
+    if params is None:
+        params = default_params
+    else:
+        # Fill in any missing keys with defaults
+        for key, default_value in default_params.items():
+            if key not in params:
+                params[key] = default_value
 
     for player in players:
         if player.primary_position == 'P':
-            # Get pitcher stats
+            # Get pitcher stats with safe defaults
             k_rate = getattr(player, 'k_rate', 20)
             bb_rate = getattr(player, 'bb_rate', 8)
             whip = getattr(player, 'whip', 1.30)
@@ -147,9 +157,9 @@ def build_pitcher_dominance(players, params=None):
             # Calculate K/BB ratio
             k_bb_ratio = k_rate / max(bb_rate, 1)  # Avoid division by zero
 
-            # WHIP adjustment
+            # WHIP adjustment - now guaranteed to have whip_impact
             whip_factor = 1.0 - (whip - 1.0) * params['whip_impact']
-            whip_factor = max(0.5, min(1.5, whip_factor))  # Bound between 0.5-1.5
+            whip_factor = max(0.5, min(1.5, whip_factor))
 
             # Apply tiered multipliers based on K/BB
             if k_bb_ratio >= params['elite_k_bb_threshold']:
@@ -168,7 +178,7 @@ def build_pitcher_dominance(players, params=None):
 
             # Weighted combination
             base_score = (floor * params['floor_weight'] +
-                         player.base_projection * (1 - params['floor_weight']))
+                          player.base_projection * (1 - params['floor_weight']))
 
             # Consistency bonus
             consistency = getattr(player, 'consistency_score', 0.5)
@@ -177,7 +187,6 @@ def build_pitcher_dominance(players, params=None):
             player.optimization_score = base_score * consistency_mult
 
     return players
-
 
 def build_enhanced_cash_strategy(players, params=None):
     """

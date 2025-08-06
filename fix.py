@@ -1,238 +1,231 @@
 #!/usr/bin/env python3
 """
-FIX ALL IMPORTS - FINAL SOLUTION
-=================================
-This fixes EVERYTHING including __init__.py
-Save as: fix_all_imports_final.py
-Run from: All_in_one_optimizer/
+FIX UNIFIEDPLAYER INITIALIZATION ERROR
+=======================================
+The UnifiedPlayer expects specific arguments, not a dictionary
 """
 
 import os
 
 
-def fix_init_py():
-    """Fix the __init__.py file imports"""
+def fix_convert_to_unified_players():
+    """Fix the UnifiedPlayer initialization in comprehensive_simulation_runner.py"""
 
-    content = '''"""Main Optimizer Package"""
+    print("🔧 Fixing UnifiedPlayer initialization...")
 
-# Import from the ACTUAL files that exist
-from .unified_core_system_updated import UnifiedCoreSystem
-from .unified_player_model import UnifiedPlayer
-from .unified_milp_optimizer import UnifiedMILPOptimizer
-from .strategy_selector import StrategyAutoSelector
+    # The CORRECT way to create UnifiedPlayer objects
+    correct_method = '''def convert_to_unified_players(self, sim_players: List) -> List[UnifiedPlayer]:
+    """Convert simulated players to UnifiedPlayer objects"""
+    unified_players = []
 
-# Make them available
-__all__ = [
-    'UnifiedCoreSystem',
-    'UnifiedPlayer', 
-    'UnifiedMILPOptimizer',
-    'StrategyAutoSelector'
-]
-'''
+    for sp in sim_players:
+        # UnifiedPlayer expects these exact arguments in order
+        player = UnifiedPlayer(
+            id=str(hash(sp.name)),
+            name=sp.name,
+            team=sp.team,
+            salary=sp.salary,
+            primary_position=sp.position,
+            positions=[sp.position]
+        )
 
-    with open('main_optimizer/__init__.py', 'w') as f:
-        f.write(content)
+        # Now set additional attributes
+        player.AvgPointsPerGame = sp.projection
+        player.base_projection = sp.projection
+        player.dff_projection = sp.projection
+        player.projection = sp.projection
 
-    print("✓ Fixed main_optimizer/__init__.py")
+        # Position info
+        player.is_pitcher = (sp.position == 'P')
+        player.position = sp.position
 
+        # Batting order - NEVER None for position players
+        if sp.position != 'P':
+            player.batting_order = getattr(sp, 'batting_order', 5)
+        else:
+            player.batting_order = None
 
-def create_all_redirects():
-    """Create ALL missing redirect files"""
+        # Performance metrics - ALWAYS have values
+        player.recent_performance = getattr(sp, 'recent_performance', 1.0)
+        player.consistency_score = getattr(sp, 'consistency_score', 0.7)
+        player.matchup_score = getattr(sp, 'matchup_score', 1.0)
+        player.floor = sp.projection * 0.7
+        player.ceiling = sp.projection * 1.5
 
-    # 1. unified_core_system.py redirect
-    redirect1 = '''"""Redirect to updated version"""
-from .unified_core_system_updated import *
-from .unified_core_system_updated import UnifiedCoreSystem
+        # Vegas data - ALWAYS have values
+        player.vegas_total = getattr(sp, 'vegas_total', 8.5)
+        player.game_total = getattr(sp, 'game_total', 8.5)
+        player.team_total = getattr(sp, 'team_total', 4.25)
+        player.implied_team_score = player.team_total
 
-__all__ = ['UnifiedCoreSystem']
-'''
+        # Ownership - ALWAYS have value
+        player.ownership_projection = getattr(sp, 'ownership', 15.0)
+        player.projected_ownership = player.ownership_projection
 
-    with open('main_optimizer/unified_core_system.py', 'w') as f:
-        f.write(redirect1)
-    print("✓ Created unified_core_system.py redirect")
+        # Advanced stats - ALWAYS have values
+        player.park_factor = getattr(sp, 'park_factor', 1.0)
+        player.weather_score = getattr(sp, 'weather_score', 1.0)
+        player.barrel_rate = getattr(sp, 'barrel_rate', 8.0)
+        player.hard_hit_rate = getattr(sp, 'hard_hit_rate', 35.0)
+        player.xwoba = getattr(sp, 'xwoba', 0.320)
 
-    # 2. enhanced_scoring_engine.py redirect
-    redirect2 = '''"""Redirect to v2 version"""
-try:
-    from .enhanced_scoring_engine_v2 import *
-    from .enhanced_scoring_engine_v2 import EnhancedScoringEngineV2
-    EnhancedScoringEngine = EnhancedScoringEngineV2
-except ImportError:
-    # Fallback if v2 has issues
-    class EnhancedScoringEngine:
-        def __init__(self, *args, **kwargs):
-            pass
-        def score_player_gpp(self, player, *args, **kwargs):
-            return getattr(player, 'base_projection', 10.0)
-        def score_player_cash(self, player, *args, **kwargs):
-            return getattr(player, 'base_projection', 10.0)
-        def score_player(self, player, *args, **kwargs):
-            return getattr(player, 'base_projection', 10.0)
+        # Correlation/Stack scores
+        player.stack_score = 0.0
+        player.correlation_score = 0.0
+        player.game_stack_score = 0.0
 
-    EnhancedScoringEngineV2 = EnhancedScoringEngine
+        # Optimization scores
+        player.optimization_score = sp.projection
+        player.enhanced_score = sp.projection
+        player.gpp_score = sp.projection
+        player.cash_score = sp.projection
 
-__all__ = ['EnhancedScoringEngine', 'EnhancedScoringEngineV2']
-'''
+        # Other required attributes
+        player.value = sp.projection / (sp.salary / 1000) if sp.salary > 0 else 0
+        player.points_per_dollar = player.value
+        player.recent_scores = [sp.projection * 0.9, sp.projection * 1.1, sp.projection * 0.95]
+        player.dff_l5_avg = sp.projection
 
-    with open('main_optimizer/enhanced_scoring_engine.py', 'w') as f:
-        f.write(redirect2)
-    print("✓ Created enhanced_scoring_engine.py redirect")
+        unified_players.append(player)
 
+    return unified_players'''
 
-def fix_all_strategy_imports():
-    """Fix imports in all strategy files"""
+    # Write to a file you can copy from
+    with open('fixed_convert_method.py', 'w') as f:
+        f.write(correct_method)
 
-    files_to_fix = {
-        'main_optimizer/cash_strategies.py': [
-            ('from unified_core_system import', 'from .unified_core_system_updated import'),
-            ('from main_optimizer.unified_core_system import',
-             'from main_optimizer.unified_core_system_updated import'),
-            ('from .unified_core_system import', 'from .unified_core_system_updated import'),
-        ],
-        'main_optimizer/gpp_strategies.py': [
-            ('from unified_core_system import', 'from .unified_core_system_updated import'),
-            ('from main_optimizer.unified_core_system import',
-             'from main_optimizer.unified_core_system_updated import'),
-            ('from .unified_core_system import', 'from .unified_core_system_updated import'),
-        ],
-        'main_optimizer/tournament_winner_gpp_strategy.py': [
-            ('from unified_core_system import', 'from .unified_core_system_updated import'),
-            ('from main_optimizer.unified_core_system import',
-             'from main_optimizer.unified_core_system_updated import'),
-        ],
-        'main_optimizer/unified_player_model.py': [
-            ('from enhanced_scoring_engine import', 'from .enhanced_scoring_engine_v2 import'),
-            ('from main_optimizer.enhanced_scoring_engine import',
-             'from main_optimizer.enhanced_scoring_engine_v2 import'),
-        ],
-    }
-
-    for filepath, replacements in files_to_fix.items():
-        if not os.path.exists(filepath):
-            print(f"  Skipping {filepath} (not found)")
-            continue
-
-        with open(filepath, 'r') as f:
-            content = f.read()
-
-        original = content
-        for old, new in replacements:
-            content = content.replace(old, new)
-
-        if content != original:
-            with open(filepath, 'w') as f:
-                f.write(content)
-            print(f"✓ Fixed imports in {filepath}")
+    print("✅ Created fixed_convert_method.py")
+    print("\n📋 Manual fix instructions:")
+    print("1. Open simulation/comprehensive_simulation_runner.py")
+    print("2. Find the convert_to_unified_players method")
+    print("3. Replace it with the content from fixed_convert_method.py")
+    print("\nKey change: UnifiedPlayer(name=name, ...) instead of UnifiedPlayer(up_data)")
 
 
 def create_working_test():
-    """Create a test that will actually work"""
+    """Create a test that will work after the fix"""
 
-    test_content = '''#!/usr/bin/env python3
-"""Working Import Test"""
+    test_code = '''#!/usr/bin/env python3
+"""Test UnifiedPlayer creation directly"""
 
-def test_imports():
-    """Test all imports work"""
-    print("Testing imports...")
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    success = []
-    failed = []
+from main_optimizer.unified_player_model import UnifiedPlayer
 
-    # Test 1: Core system
+print("Testing UnifiedPlayer creation...")
+
+# Test 1: Create with correct arguments
+try:
+    player = UnifiedPlayer(
+        id="1",
+        name="Test Player",
+        team="NYY",
+        salary=10000,
+        primary_position="OF",
+        positions=["OF"]
+    )
+    print("✅ UnifiedPlayer created successfully!")
+    print(f"   Name: {player.name}")
+    print(f"   Team: {player.team}")
+    print(f"   Salary: {player.salary}")
+
+    # Set additional attributes
+    player.base_projection = 15.0
+    player.batting_order = 3
+    player.recent_performance = 1.2
+    print(f"   Projection: {player.base_projection}")
+
+except Exception as e:
+    print(f"❌ Failed: {e}")
+
+    # Try alternate method if first fails
+    print("\\nTrying with dictionary...")
     try:
-        from main_optimizer.unified_core_system_updated import UnifiedCoreSystem
-        success.append("UnifiedCoreSystem")
-        print("✓ UnifiedCoreSystem")
-    except Exception as e:
-        failed.append(f"UnifiedCoreSystem: {e}")
-        print(f"❌ UnifiedCoreSystem: {e}")
+        data = {
+            'Name': 'Test Player',
+            'Team': 'NYY', 
+            'Salary': 10000,
+            'Position': 'OF'
+        }
+        player = UnifiedPlayer(data)
+        print("✅ Dictionary method works!")
+    except Exception as e2:
+        print(f"❌ Dictionary method also failed: {e2}")
 
-    # Test 2: Player model
-    try:
-        from main_optimizer.unified_player_model import UnifiedPlayer
-        success.append("UnifiedPlayer")
-        print("✓ UnifiedPlayer")
-    except Exception as e:
-        failed.append(f"UnifiedPlayer: {e}")
-        print(f"❌ UnifiedPlayer: {e}")
-
-    # Test 3: Strategies
-    try:
-        from main_optimizer.cash_strategies import build_projection_monster
-        success.append("Cash strategies")
-        print("✓ Cash strategies")
-    except Exception as e:
-        failed.append(f"Cash strategies: {e}")
-        print(f"❌ Cash strategies: {e}")
-
-    # Test 4: Package import
-    try:
-        import main_optimizer
-        success.append("Package import")
-        print("✓ Package import")
-    except Exception as e:
-        failed.append(f"Package: {e}")
-        print(f"❌ Package: {e}")
-
-    print(f"\\n✅ Passed: {len(success)}")
-    print(f"❌ Failed: {len(failed)}")
-
-    return len(failed) == 0
-
-if __name__ == "__main__":
-    # Run as script, not test
-    result = test_imports()
-    if result:
-        print("\\n🎉 ALL IMPORTS WORKING!")
-    else:
-        print("\\n⚠️ Some imports still failing")
+print("\\n📋 The correct format for UnifiedPlayer is:")
+print("UnifiedPlayer(id, name, team, salary, primary_position, positions)")
 '''
 
-    with open('test_imports_working.py', 'w') as f:
-        f.write(test_content)
-    print("✓ Created test_imports_working.py")
+    with open('test_player_creation.py', 'w') as f:
+        f.write(test_code)
+
+    print("✅ Created test_player_creation.py")
+
+
+def quick_patch_simulation():
+    """Apply a quick patch to the simulation file"""
+
+    print("\n🩹 Attempting quick patch...")
+
+    filepath = 'simulation/comprehensive_simulation_runner.py'
+
+    if os.path.exists(filepath):
+        with open(filepath, 'r') as f:
+            content = f.read()
+
+        # Replace the incorrect initialization
+        old_pattern = '''player = UnifiedPlayer(up_data)'''
+        new_pattern = '''# Create UnifiedPlayer with required arguments
+        player = UnifiedPlayer(
+            id=up_data['id'],
+            name=up_data['name'],
+            team=up_data['team'],
+            salary=up_data['salary'],
+            primary_position=up_data['primary_position'],
+            positions=up_data['positions']
+        )
+
+        # Set AvgPointsPerGame separately
+        player.AvgPointsPerGame = up_data['AvgPointsPerGame']'''
+
+        if old_pattern in content:
+            content = content.replace(old_pattern, new_pattern)
+
+            with open(filepath, 'w') as f:
+                f.write(content)
+
+            print("✅ Applied quick patch!")
+            return True
+        else:
+            print("⚠️ Could not find pattern to patch")
+            print("   You'll need to manually fix the convert_to_unified_players method")
+            return False
 
 
 def main():
     print("=" * 60)
-    print("FIXING ALL IMPORTS - FINAL SOLUTION")
+    print("FIXING UNIFIEDPLAYER INITIALIZATION")
     print("=" * 60)
 
-    if not os.path.exists('main_optimizer'):
-        print("❌ Run from All_in_one_optimizer directory!")
-        return
+    # Create the fixed method
+    fix_convert_to_unified_players()
 
-    print("\n🔧 Applying all fixes...")
-
-    # 1. Fix __init__.py
-    print("\n1. Fixing __init__.py...")
-    fix_init_py()
-
-    # 2. Create redirects
-    print("\n2. Creating redirect files...")
-    create_all_redirects()
-
-    # 3. Fix strategy imports
-    print("\n3. Fixing strategy imports...")
-    fix_all_strategy_imports()
-
-    # 4. Create test
-    print("\n4. Creating working test...")
+    # Create test
     create_working_test()
 
-    print("\n" + "=" * 60)
-    print("✅ ALL FIXES APPLIED!")
-    print("=" * 60)
+    # Try quick patch
+    if quick_patch_simulation():
+        print("\n✅ Quick patch applied! Test now:")
+        print("python simple_sim_test.py")
+    else:
+        print("\n⚠️ Manual fix needed:")
+        print("1. Copy the method from fixed_convert_method.py")
+        print("2. Replace convert_to_unified_players in comprehensive_simulation_runner.py")
 
-    print("\n📋 Now run these from TERMINAL (not PyCharm test runner):")
-    print("\n# Test imports:")
-    print("python test_imports_working.py")
-    print("\n# Test GUI:")
-    print("python main_optimizer/GUI.py")
-    print("\n# Test simulation:")
-    print("python simulation/comprehensive_simulation_runner.py")
-
-    print("\n⚠️ IMPORTANT: Run from terminal, NOT as PyCharm tests!")
+    print("\n📋 Test player creation:")
+    print("python test_player_creation.py")
 
 
 if __name__ == "__main__":

@@ -286,171 +286,159 @@ def apply_realistic_variance(player: SimulatedPlayer,
     return round(base_score * multiplier, 2)
 
 
-def build_opponent_lineup(players: List[SimulatedPlayer],
-                          skill_level: str,
-                          contest_type: str) -> Optional[List[SimulatedPlayer]]:
+def build_opponent_lineup(players: List, skill_level: str = 'average') -> Dict:
     """Build realistic opponent lineup based on skill level"""
 
-    lineup = []
-    used_salary = 0
-    max_salary = 50000
+    # CRITICAL: Make opponents ACTUALLY competitive
+    import random
 
-    # Position requirements
-    positions_needed = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
-    positions_filled = defaultdict(int)
+    # First, ensure all players have required attributes
+    valid_players = []
+    for p in players:
+        if hasattr(p, 'projection') and p.projection > 0:
+            valid_players.append(p)
 
-    # Sort players based on skill level
-    if skill_level in ['elite', 'sharp']:
-        # Smart players use advanced metrics
-        def smart_score(p):
-            if p.position == 'P':
-                return p.projection * 1.2 + p.k_rate * 0.5 - p.ownership * 0.1
-            else:
-                return p.projection + p.matchup_score * 5 + p.team_total * 2 - p.ownership * 0.2
+    if len(valid_players) < 10:
+        return {'players': players[:10]}
 
-        sorted_players = sorted(players, key=smart_score, reverse=True)
+    # Build lineup based on skill
+    if skill_level == 'elite':
+        # Elite players use near-optimal strategy
+        sorted_players = sorted(valid_players, key=lambda p: p.projection, reverse=True)
 
-        # Sharp players stack
-        if contest_type == 'gpp' and random.random() < 0.7:
-            # Find best stacking opportunity
-            team_players = defaultdict(list)
-            for p in players:
-                if p.position != 'P':
-                    team_players[p.team].append(p)
+        # Get best pitcher
+        pitchers = [p for p in sorted_players if p.position == 'P']
+        best_pitcher = pitchers[0] if pitchers else sorted_players[0]
 
-            # Pick team with high total
-            best_teams = sorted(team_players.keys(),
-                                key=lambda t: sum(p.team_total for p in team_players[t][:1]),
-                                reverse=True)
+        # Get best hitters
+        hitters = [p for p in sorted_players if p.position != 'P'][:9]
 
-            if best_teams:
-                stack_team = best_teams[0]
-                stack_players = sorted(team_players[stack_team],
-                                       key=lambda p: p.batting_order)[:4]
+        lineup = [best_pitcher] + hitters[:9]
 
-                for p in stack_players:
-                    if used_salary + p.salary <= max_salary - 2500 * (10 - len(lineup)):
-                        lineup.append(p)
-                        used_salary += p.salary
-                        positions_filled[p.position] += 1
+        # Apply small random variance to make it realistic
+        for p in lineup:
+            p.actual_score = p.projection * random.uniform(0.85, 1.15)
 
-    elif skill_level == 'good':
-        # Good players use projections with some ownership consideration
-        def good_score(p):
-            return p.projection - (p.ownership * 0.1 if contest_type == 'gpp' else 0)
+    elif skill_level == 'sharp':
+        # Sharp players are good but not perfect
+        sorted_players = sorted(valid_players, key=lambda p: p.projection * random.uniform(0.9, 1.1), reverse=True)
 
-        sorted_players = sorted(players, key=good_score, reverse=True)
+        # Take top 15 and build from them
+        top_players = sorted_players[:15]
+        lineup = top_players[:10]
+
+        for p in lineup:
+            p.actual_score = p.projection * random.uniform(0.8, 1.2)
 
     elif skill_level == 'average':
-        # Average players mostly use projections
-        sorted_players = sorted(players, key=lambda p: p.projection, reverse=True)
+        # Average players make some mistakes
+        score_func = lambda p: p.projection * random.uniform(0.7, 1.0)
+        sorted_players = sorted(valid_players, key=score_func, reverse=True)
+
+        # Take from top 25
+        pool = sorted_players[:25]
+        random.shuffle(pool)
+        lineup = pool[:10]
+
+        for p in lineup:
+            p.actual_score = p.projection * random.uniform(0.7, 1.3)
 
     else:  # weak
-        # Weak players make suboptimal choices
-        sorted_players = sorted(players, key=lambda p: p.projection + random.uniform(-3, 3), reverse=True)
+        # Weak players make lots of mistakes
+        random.shuffle(valid_players)
+        lineup = valid_players[:10]
 
-    # Fill remaining positions
-    for position, count_needed in positions_needed.items():
-        current_count = positions_filled[position]
+        for p in lineup:
+            p.actual_score = p.projection * random.uniform(0.6, 1.4)
 
-        for p in sorted_players:
-            if (p.position == position and
-                    p not in lineup and
-                    positions_filled[position] < count_needed and
-                    used_salary + p.salary <= max_salary - 2500 * (10 - len(lineup))):
-
-                lineup.append(p)
-                used_salary += p.salary
-                positions_filled[position] += 1
-
-                if len(lineup) == 10:
-                    return lineup
-
-    return lineup if len(lineup) == 10 else None
-
-
-def simulate_contest(your_lineup: List[SimulatedPlayer],
-                     field: List[Dict],
-                     contest_type: str) -> Dict:
-    """Simulate a contest with realistic scoring"""
-
-    # Identify stacks in your lineup
-    team_counts = defaultdict(list)
-    for p in your_lineup:
-        if p.position != 'P':
-            team_counts[p.team].append(p)
-
-    # Find largest stack
-    largest_stack = []
-    for team, players in team_counts.items():
-        if len(players) > len(largest_stack):
-            largest_stack = players
-
-    # Calculate your score with correlation
-    your_score = 0
-    for p in your_lineup:
-        correlation_group = largest_stack if p in largest_stack else None
-        your_score += apply_realistic_variance(p, correlation_group)
-
-    your_score = round(your_score, 2)
-
-    # Calculate field scores
-    field_scores = []
-    for opponent in field:
-        opp_score = 0
-
-        # Find opponent's stacks
-        opp_team_counts = defaultdict(list)
-        for p in opponent['players']:
-            if p.position != 'P':
-                opp_team_counts[p.team].append(p)
-
-        opp_largest_stack = []
-        for team, players in opp_team_counts.items():
-            if len(players) > len(opp_largest_stack):
-                opp_largest_stack = players
-
-        # Calculate opponent score
-        for p in opponent['players']:
-            correlation_group = opp_largest_stack if p in opp_largest_stack else None
-            opp_score += apply_realistic_variance(p, correlation_group)
-
-        field_scores.append(round(opp_score, 2))
-
-    # Determine results
-    field_scores.sort(reverse=True)
-    your_rank = sum(1 for s in field_scores if s > your_score) + 1
-    percentile = (len(field_scores) - your_rank + 1) / len(field_scores) * 100
-
-    # Calculate winnings
-    if contest_type == 'cash':
-        # Top 50% double their money
-        won = your_rank <= len(field_scores) // 2
-        roi = 100 if won else -100
-    else:  # GPP
-        # Realistic GPP payouts
-        if your_rank == 1:
-            roi = 900  # 10x
-        elif your_rank <= 3:
-            roi = 400  # 5x
-        elif your_rank <= len(field_scores) * 0.01:  # Top 1%
-            roi = 200  # 3x
-        elif your_rank <= len(field_scores) * 0.10:  # Top 10%
-            roi = 50  # 1.5x
-        elif your_rank <= len(field_scores) * 0.20:  # Top 20%
-            roi = -50  # 0.5x
-        else:
-            roi = -100  # Lost
+    # Calculate total projection for this lineup
+    total_projection = sum(getattr(p, 'projection', 10) for p in lineup)
 
     return {
-        'your_score': your_score,
+        'players': lineup,
+        'skill_level': skill_level,
+        'projected_score': total_projection,
+        'actual_score': sum(getattr(p, 'actual_score', p.projection) for p in lineup)
+    }
+
+
+def simulate_contest(your_lineup: Dict, field: List[Dict], contest_type: str) -> Dict:
+    """Simulate a realistic DFS contest"""
+
+    import random
+    import numpy as np
+
+    # Calculate YOUR actual score with variance
+    your_projected = sum(getattr(p, 'projection', 10) for p in your_lineup['players'])
+    your_actual = 0
+
+    for player in your_lineup['players']:
+        # Apply realistic variance
+        player_score = getattr(player, 'projection', 10)
+        actual = player_score * np.random.normal(1.0, 0.15)  # 15% standard deviation
+        actual = max(0, actual)  # Can't score negative
+        your_actual += actual
+
+    # Calculate FIELD scores
+    field_scores = []
+    for opponent in field:
+        # Use the actual_score if it exists, otherwise calculate
+        if 'actual_score' in opponent:
+            opp_score = opponent['actual_score']
+        else:
+            opp_projected = sum(getattr(p, 'projection', 10) for p in opponent['players'])
+            # Apply variance based on skill
+            skill = opponent.get('skill_level', 'average')
+            if skill == 'elite':
+                std_dev = 0.12  # Less variance for elite
+            elif skill == 'sharp':
+                std_dev = 0.15
+            else:
+                std_dev = 0.20  # More variance for weaker players
+
+            opp_score = opp_projected * np.random.normal(1.0, std_dev)
+            opp_score = max(0, opp_score)
+
+        field_scores.append(opp_score)
+
+    # Determine your rank
+    field_scores.sort(reverse=True)
+    your_rank = sum(1 for score in field_scores if score > your_actual) + 1
+    percentile = (len(field_scores) - your_rank + 1) / len(field_scores) * 100
+
+    # Calculate realistic payouts
+    if contest_type == 'cash':
+        # Cash game - top 45% win (more realistic than 50%)
+        cutoff = int(len(field_scores) * 0.45)
+        won = your_rank <= cutoff
+        roi = 80 if won else -100  # 0.8x payout for cash
+
+    else:  # GPP
+        # Tournament payouts
+        total_field = len(field_scores)
+        if your_rank == 1:
+            roi = 500 + random.randint(0, 400)  # 5-9x
+        elif your_rank <= 3:
+            roi = 200 + random.randint(0, 200)  # 2-4x
+        elif your_rank <= total_field * 0.01:  # Top 1%
+            roi = 100 + random.randint(0, 100)  # 1-2x
+        elif your_rank <= total_field * 0.1:  # Top 10%
+            roi = random.randint(-50, 50)  # Break even-ish
+        elif your_rank <= total_field * 0.2:  # Top 20%
+            roi = -75  # Small loss
+        else:
+            roi = -100  # Total loss
+
+    return {
+        'your_score': your_actual,
+        'your_projected': your_projected,
         'your_rank': your_rank,
         'field_size': len(field_scores),
-        'percentile': round(percentile, 2),
-        'roi': roi,
+        'percentile': percentile,
         'won': roi > 0,
-        'top_score': field_scores[0] if field_scores else your_score,
-        'cash_line': field_scores[len(field_scores) // 2] if field_scores else 0
+        'roi': roi,
+        'top_score': field_scores[0] if field_scores else your_actual,
+        'cash_line': field_scores[cutoff] if contest_type == 'cash' and cutoff < len(field_scores) else 0
     }
 
 

@@ -192,6 +192,10 @@ try:
     print("✓ Imported additional GPP strategies")
 except ImportError:
     print("⚠️ Some GPP strategies not available")
+    # Import fallback strategies
+    from main_optimizer.gpp_strategies_fallback import *
+    print("✅ Loaded fallback GPP strategies")
+
 
 # Create simple fallback strategies if needed
 if 'projection_monster' not in strategy_functions:
@@ -239,82 +243,158 @@ class ComprehensiveSimulationRunner:
         unified_players = []
 
         for sp in sim_players:
-            # Create UnifiedPlayer with required attributes
-            up_data = {
-                'id': str(hash(sp.name)),
-                'name': sp.name,
-                'team': sp.team,
-                'salary': sp.salary,
-                'primary_position': sp.position,
-                'positions': [sp.position],
-                'base_projection': sp.projection
-            }
+            # Create UnifiedPlayer with required arguments
+            player = UnifiedPlayer(
+                id=str(hash(sp.name)),
+                name=sp.name,
+                team=sp.team,
+                salary=sp.salary,
+                primary_position=sp.position,
+                positions=[sp.position]
+            )
 
-            up = UnifiedPlayer(**up_data)
+            # Set additional attributes
+            player.AvgPointsPerGame = sp.projection
+            player.base_projection = sp.projection
+            player.dff_projection = sp.projection
+            player.projection = sp.projection
 
-            # Add additional attributes
-            up.is_pitcher = (sp.position == 'P')
-            up.ownership_projection = getattr(sp, 'ownership', 15)
-            up.park_adjusted_projection = sp.projection * getattr(sp, 'park_factor', 1.0)
+            # Position info
+            player.is_pitcher = (sp.position == 'P')
+            player.position = sp.position
 
-            # Copy all attributes from simulated player
-            for attr in dir(sp):
-                if not attr.startswith('_') and not callable(getattr(sp, attr)):
-                    if not hasattr(up, attr):
-                        setattr(up, attr, getattr(sp, attr))
+            # Batting order
+            if sp.position != 'P':
+                player.batting_order = getattr(sp, 'batting_order', 5)
+            else:
+                player.batting_order = None
 
-            up.optimization_score = 0
-            unified_players.append(up)
+            # Performance metrics
+            player.recent_performance = getattr(sp, 'recent_performance', 1.0)
+            player.consistency_score = getattr(sp, 'consistency_score', 0.7)
+            player.matchup_score = getattr(sp, 'matchup_score', 1.0)
+            player.floor = sp.projection * 0.7
+            player.ceiling = sp.projection * 1.5
+
+            # Vegas data
+            player.vegas_total = getattr(sp, 'vegas_total', 8.5)
+            player.game_total = getattr(sp, 'game_total', 8.5)
+            player.team_total = getattr(sp, 'team_total', 4.25)
+            player.implied_team_score = player.team_total
+
+            # Ownership
+            player.ownership_projection = getattr(sp, 'ownership', 15.0)
+            player.projected_ownership = player.ownership_projection
+
+            # Advanced stats
+            player.park_factor = getattr(sp, 'park_factor', 1.0)
+            player.weather_score = getattr(sp, 'weather_score', 1.0)
+            player.barrel_rate = getattr(sp, 'barrel_rate', 8.0)
+            player.hard_hit_rate = getattr(sp, 'hard_hit_rate', 35.0)
+            player.xwoba = getattr(sp, 'xwoba', 0.320)
+
+            # Correlation/Stack scores
+            player.stack_score = 0.0
+            player.correlation_score = 0.0
+            player.game_stack_score = 0.0
+
+            # Optimization scores
+            player.optimization_score = sp.projection
+            player.enhanced_score = sp.projection
+            player.gpp_score = sp.projection
+            player.cash_score = sp.projection
+
+            # Other attributes
+            player.value = sp.projection / (sp.salary / 1000) if sp.salary > 0 else 0
+            player.points_per_dollar = player.value
+            player.recent_scores = [sp.projection * 0.9, sp.projection * 1.1, sp.projection * 0.95]
+            player.dff_l5_avg = sp.projection
+
+            unified_players.append(player)
 
         return unified_players
 
-    def build_your_lineup(self, slate: Dict, contest_type: str, strategy_name: str) -> Optional[List]:
-        """Build YOUR lineup using YOUR strategies"""
+    def build_your_lineup(self, slate: Dict, contest_type: str, strategy: str) -> Dict:
+        """Build lineup using YOUR ACTUAL MILP OPTIMIZER with salary constraints"""
 
-        # Convert players
-        unified_players = self.convert_to_unified_players(slate['players'])
+        try:
+            # Convert to UnifiedPlayer objects
+            unified_players = self.convert_to_unified_players(slate['players'])
 
-        # Get strategy function
-        strategy_func = strategy_functions.get(strategy_name)
+            # CRITICAL: Use your ACTUAL optimizer system!
+            from main_optimizer.unified_core_system_updated import UnifiedCoreSystem
+            from main_optimizer.unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
 
-        if not strategy_func:
-            print(f"⚠️ Strategy {strategy_name} not found, using projection sort")
-            lineup_players = sorted(unified_players, key=lambda p: p.base_projection, reverse=True)[:10]
-        else:
-            try:
-                # Get parameters if available
-                params = STRATEGY_PARAMS.get(strategy_name, {})
+            # Create system instance
+            system = UnifiedCoreSystem()
 
-                # Call strategy
-                result = strategy_func(unified_players,
-                                       params) if 'params' in strategy_func.__code__.co_varnames else strategy_func(
-                    unified_players)
+            # Set up players
+            system.players = unified_players
+            system.player_pool = unified_players
+            system.csv_loaded = True
 
-                # Handle different return types
-                if isinstance(result, list):
-                    lineup_players = result[:10]
-                elif hasattr(result, 'players'):
-                    lineup_players = result.players[:10]
-                else:
-                    print(f"⚠️ Unexpected return type from {strategy_name}")
-                    lineup_players = sorted(unified_players, key=lambda p: p.base_projection, reverse=True)[:10]
+            # Create optimizer with proper config
+            config = OptimizationConfig(
+                salary_cap=50000,  # DraftKings salary cap
+                min_salary_usage=0.90,  # Use at least 90% of cap
+                position_requirements={
+                    "P": 2,
+                    "C": 1,
+                    "1B": 1,
+                    "2B": 1,
+                    "3B": 1,
+                    "SS": 1,
+                    "OF": 3
+                }
+            )
 
-            except Exception as e:
-                print(f"⚠️ Error in {strategy_name}: {e}")
-                lineup_players = sorted(unified_players, key=lambda p: p.base_projection, reverse=True)[:10]
+            optimizer = UnifiedMILPOptimizer(config)
 
-        # Convert back to simulated players
-        sim_lineup = []
-        for up in lineup_players:
-            for sp in slate['players']:
-                if sp.name == up.name:
-                    sim_lineup.append(sp)
-                    break
+            # Set contest type for proper scoring
+            optimizer.config.contest_type = contest_type
 
-        return sim_lineup if len(sim_lineup) == 10 else None
+            # Calculate scores using your scoring engine
+            for player in unified_players:
+                # Your system should have already scored these
+                if not hasattr(player, 'optimization_score'):
+                    player.optimization_score = getattr(player, 'projection', 10)
+
+            # Run MILP optimization with salary constraints
+            lineup_players, total_score = optimizer.optimize_lineup(
+                players=unified_players,
+                strategy=strategy,
+                contest_type=contest_type
+            )
+
+            # Validate lineup
+            if not lineup_players:
+                print(f"❌ Optimizer returned no players for {strategy}")
+                # Fallback to simple strategy
+                return self.build_simple_lineup(unified_players, strategy)
+
+            # Check salary
+            total_salary = sum(p.salary for p in lineup_players)
+            if total_salary > 50000:
+                print(f"❌ ERROR: Lineup over cap: ${total_salary}")
+                return None
+
+            # Return proper format
+            return {
+                'players': lineup_players,
+                'strategy': strategy,
+                'contest_type': contest_type,
+                'total_salary': total_salary,
+                'total_projection': sum(getattr(p, 'projection', 10) for p in lineup_players),
+                'optimization_score': total_score
+            }
+
+        except Exception as e:
+            print(f"❌ Error using MILP optimizer: {e}")
+            # Fallback to salary-constrained simple strategy
+            return self.build_simple_lineup(unified_players, strategy)
 
     def run_single_slate_simulation(self, args: Tuple) -> Dict:
-        """Run simulation for a single slate"""
+        """Run simulation for a single slate with REALISTIC competition"""
 
         slate_id, num_games, contest_type, field_size = args
 
@@ -323,37 +403,158 @@ class ComprehensiveSimulationRunner:
             if 'generate_realistic_slate' in globals():
                 slate = generate_realistic_slate(num_games, slate_id)
             else:
-                # Fallback slate generation
-                print("Using fallback slate generation")
                 slate = self._generate_simple_slate(num_games, slate_id)
 
             slate_size = get_slate_size(num_games)
 
-            # Get optimal strategy
+            # Get optimal strategy for YOU
             strategy_name = OPTIMAL_STRATEGY_MAP[contest_type][slate_size]
 
-            # Build lineup
+            # Build YOUR lineup
             your_lineup = self.build_your_lineup(slate, contest_type, strategy_name)
 
             if not your_lineup:
                 return {'error': 'Failed to build lineup', 'slate_id': slate_id}
 
-            # Generate field
+            if 'players' not in your_lineup or not your_lineup['players']:
+                return {'error': 'Lineup has no players', 'slate_id': slate_id}
+
+            # CRITICAL FIX: Make opponents MUCH stronger
+            # Generate field with SALARY CONSTRAINTS and REALISTIC VARIANCE
             field = []
-            distribution = REALISTIC_PARAMS[f'{contest_type}_field']
 
-            for skill_level, percentage in distribution.items():
-                num_lineups = max(1, int(field_size * percentage))
-                for _ in range(num_lineups):
-                    if 'build_opponent_lineup' in globals():
-                        opp_lineup = build_opponent_lineup(slate['players'], skill_level, contest_type)
+            # Determine field distribution based on contest type
+            if contest_type == 'cash':
+                skill_distribution = [
+                    ('elite', 0.15),  # 15% elite players
+                    ('sharp', 0.30),  # 30% sharp players
+                    ('average', 0.35),  # 35% average players
+                    ('weak', 0.20)  # 20% weak players
+                ]
+            else:  # GPP
+                skill_distribution = [
+                    ('elite', 0.05),  # 5% elite
+                    ('sharp', 0.15),  # 15% sharp
+                    ('average', 0.30),  # 30% average
+                    ('weak', 0.50)  # 50% weak
+                ]
+
+            # Build opponents for each skill level
+            current_count = 0
+            for skill_level, percentage in skill_distribution:
+                num_opponents = int(field_size * percentage)
+
+                # Ensure we fill exactly field_size
+                if skill_level == skill_distribution[-1][0]:  # Last category
+                    num_opponents = field_size - current_count
+
+                for i in range(num_opponents):
+                    opp_lineup = None
+
+                    # Elite players - use optimizer with good projections
+                    if skill_level == 'elite':
+                        # 50% chance they use YOUR strategy, 50% use their own
+                        if random.random() < 0.5 and contest_type == 'cash':
+                            # Use your strategy but with slightly different projections
+                            opp_lineup = self.build_opponent_with_optimizer(
+                                slate['players'], contest_type, strategy_name,
+                                projection_noise=0.05, min_salary=48000
+                            )
+                        else:
+                            # Use different strategies
+                            elite_strategy = random.choice([
+                                'projection_monster', 'correlation_value', 'tournament_winner_gpp'
+                            ])
+                            opp_lineup = self.build_opponent_with_optimizer(
+                                slate['players'], contest_type, elite_strategy,
+                                projection_noise=0.08, min_salary=47500
+                            )
+
+                    # Sharp players - use optimizer with some variance
+                    elif skill_level == 'sharp':
+                        sharp_strategy = random.choice([
+                            'balanced_60_40', 'projection_monster', 'game_stack_3_2'
+                        ])
+                        opp_lineup = self.build_opponent_with_optimizer(
+                            slate['players'], contest_type, sharp_strategy,
+                            projection_noise=0.12, min_salary=47000
+                        )
+
+                    # Average players - more mistakes
+                    elif skill_level == 'average':
+                        # Use simpler salary-constrained builder
+                        opp_lineup = self.build_salary_constrained_lineup(
+                            slate['players'], skill_level='average',
+                            target_salary=46000, max_salary=50000
+                        )
+
+                    # Weak players - poor decisions but still salary compliant
+                    else:  # weak
+                        opp_lineup = self.build_salary_constrained_lineup(
+                            slate['players'], skill_level='weak',
+                            target_salary=44000, max_salary=50000
+                        )
+
+                    # Add to field if valid
+                    if opp_lineup and self.validate_lineup(opp_lineup):
+                        field.append(opp_lineup)
                     else:
-                        opp_lineup = self._build_simple_opponent(slate['players'], skill_level)
+                        # Fallback to simple valid lineup
+                        fallback = self.build_salary_constrained_lineup(
+                            slate['players'], skill_level=skill_level,
+                            target_salary=45000, max_salary=50000
+                        )
+                        if fallback:
+                            field.append(fallback)
 
-                    if opp_lineup:
-                        field.append({'players': opp_lineup, 'skill_level': skill_level})
+                current_count += num_opponents
 
-            # Simulate contest
+            # Shuffle field so it's not ordered by skill
+            random.shuffle(field)
+
+            # Debug output every 10th slate
+            if slate_id % 10 == 0:
+                your_proj = sum(getattr(p, 'projection', 10) for p in your_lineup['players'])
+                your_salary = sum(getattr(p, 'salary', 0) for p in your_lineup['players'])
+
+                # Sample field analysis
+                field_salaries = []
+                field_projs = []
+                for opp in field[:10]:  # Check first 10
+                    if isinstance(opp, dict) and 'players' in opp:
+                        opp_salary = sum(getattr(p, 'salary', 0) for p in opp['players'])
+                        opp_proj = sum(getattr(p, 'projection', 10) for p in opp['players'])
+                        field_salaries.append(opp_salary)
+                        field_projs.append(opp_proj)
+
+                print(f"DEBUG Slate {slate_id} ({contest_type}):")
+                print(f"  Your lineup: ${your_salary:,} salary, {your_proj:.1f} projection")
+                if field_salaries:
+                    print(
+                        f"  Avg opponent: ${sum(field_salaries) // len(field_salaries):,} salary, {sum(field_projs) / len(field_projs):.1f} projection")
+                    print(f"  Max opponent salary: ${max(field_salaries):,}")
+                    if max(field_salaries) > 50000:
+                        print(f"  ⚠️ WARNING: Opponent over salary cap!")
+
+            # DEBUG: Check lineup strengths every 10th slate
+            if slate_id % 10 == 0:
+                your_proj = sum(getattr(p, 'projection', 10) for p in your_lineup['players'])
+
+                # Calculate average opponent projection
+                opp_projs = []
+                for opp in field[:10]:  # Check first 10 opponents
+                    if isinstance(opp, dict) and 'players' in opp:
+                        opp_proj = sum(getattr(p, 'projection', 10) for p in opp['players'])
+                        opp_projs.append(opp_proj)
+
+                avg_opp = sum(opp_projs) / len(opp_projs) if opp_projs else 0
+
+                print(f"DEBUG Slate {slate_id} ({contest_type}):")
+                print(f"  Your projection: {your_proj:.1f}")
+                print(f"  Avg opponent: {avg_opp:.1f}")
+                print(f"  Your advantage: {(your_proj / avg_opp - 1) * 100:.1f}%" if avg_opp > 0 else "N/A")
+
+            # Simulate contest with variance
             if 'simulate_contest' in globals():
                 result = simulate_contest(your_lineup, field, contest_type)
             else:
@@ -372,7 +573,196 @@ class ComprehensiveSimulationRunner:
             return result
 
         except Exception as e:
+            import traceback
+            print(f"Error in slate {slate_id}: {e}")
+            traceback.print_exc()
             return {'error': str(e), 'slate_id': slate_id}
+
+    def build_opponent_with_optimizer(self, players: List, contest_type: str,
+                                      strategy: str, projection_noise: float = 0.1,
+                                      min_salary: int = 45000) -> Dict:
+        """Build opponent using optimizer with projection variance"""
+
+        try:
+            from main_optimizer.unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
+
+            # Create config with salary constraints
+            config = OptimizationConfig(
+                salary_cap=50000,
+                min_salary_usage=min_salary / 50000,
+                position_requirements={
+                    "P": 2, "C": 1, "1B": 1, "2B": 1,
+                    "3B": 1, "SS": 1, "OF": 3
+                }
+            )
+
+            optimizer = UnifiedMILPOptimizer(config)
+            optimizer.config.contest_type = contest_type
+
+            # Apply projection noise to simulate different projection systems
+            modified_players = []
+            for player in players:
+                p_copy = type('Player', (), {})()
+                for attr in ['name', 'team', 'salary', 'position', 'primary_position', 'positions']:
+                    if hasattr(player, attr):
+                        setattr(p_copy, attr, getattr(player, attr))
+
+                # Add noise to projection
+                base_proj = getattr(player, 'projection', 10)
+                p_copy.projection = base_proj * np.random.normal(1.0, projection_noise)
+                p_copy.optimization_score = p_copy.projection
+                p_copy.base_projection = p_copy.projection
+
+                modified_players.append(p_copy)
+
+            # Run optimization
+            lineup_players, _ = optimizer.optimize_lineup(
+                players=modified_players,
+                strategy=strategy,
+                contest_type=contest_type
+            )
+
+            if lineup_players:
+                # Map back to original players
+                final_lineup = []
+                for selected in lineup_players:
+                    original = next((p for p in players if p.name == selected.name), selected)
+                    final_lineup.append(original)
+
+                total_salary = sum(p.salary for p in final_lineup)
+
+                return {
+                    'players': final_lineup,
+                    'skill_level': 'optimizer',
+                    'strategy': strategy,
+                    'total_salary': total_salary
+                }
+        except:
+            pass
+
+        return None
+
+    def build_salary_constrained_lineup(self, players: List, skill_level: str,
+                                        target_salary: int = 47000,
+                                        max_salary: int = 50000) -> Dict:
+        """Build lineup with salary constraints but no optimizer"""
+
+        # Sort by value based on skill level
+        if skill_level == 'average':
+            # Decent value calculation
+            for p in players:
+                p.temp_value = p.projection / max(p.salary / 1000, 1)
+            sorted_players = sorted(players, key=lambda p: p.temp_value * random.uniform(0.9, 1.1), reverse=True)
+        else:  # weak
+            # Poor player evaluation
+            sorted_players = list(players)
+            random.shuffle(sorted_players)
+
+        # Build lineup respecting positions and salary
+        lineup = []
+        total_salary = 0
+        positions_filled = {'P': 0, 'C': 0, '1B': 0, '2B': 0, '3B': 0, 'SS': 0, 'OF': 0}
+        positions_needed = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+
+        for player in sorted_players:
+            if len(lineup) >= 10:
+                break
+
+            pos = player.position if hasattr(player, 'position') else player.primary_position
+
+            if pos in positions_needed and positions_filled[pos] < positions_needed[pos]:
+                if total_salary + player.salary <= max_salary:
+                    lineup.append(player)
+                    total_salary += player.salary
+                    positions_filled[pos] += 1
+
+        # Fill remaining spots if needed
+        if len(lineup) < 10:
+            for player in sorted_players:
+                if player not in lineup and total_salary + player.salary <= max_salary:
+                    lineup.append(player)
+                    total_salary += player.salary
+                    if len(lineup) >= 10:
+                        break
+
+        if len(lineup) == 10 and total_salary <= max_salary:
+            return {
+                'players': lineup,
+                'skill_level': skill_level,
+                'total_salary': total_salary
+            }
+
+        return None
+
+    def validate_lineup(self, lineup: Dict) -> bool:
+        """Validate lineup has correct positions and salary"""
+
+        if not lineup or 'players' not in lineup:
+            return False
+
+        players = lineup['players']
+
+        # Check player count
+        if len(players) != 10:
+            return False
+
+        # Check salary
+        total_salary = sum(getattr(p, 'salary', 0) for p in players)
+        if total_salary > 50000:
+            return False
+
+        # Check positions
+        positions = {}
+        for p in players:
+            pos = p.position if hasattr(p, 'position') else p.primary_position
+            positions[pos] = positions.get(pos, 0) + 1
+
+        required = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+        for pos, count in required.items():
+            if positions.get(pos, 0) != count:
+                return False
+
+        return True
+
+    def build_simple_lineup(self, players: List, strategy: str) -> Dict:
+        """Fallback lineup builder WITH SALARY CONSTRAINTS"""
+
+        # Sort by value (projection per dollar)
+        for p in players:
+            p.value = getattr(p, 'projection', 10) / max(p.salary / 1000, 1)
+
+        players.sort(key=lambda p: p.value, reverse=True)
+
+        # Build lineup respecting positions and salary
+        lineup = []
+        total_salary = 0
+        positions_filled = {'P': 0, 'C': 0, '1B': 0, '2B': 0, '3B': 0, 'SS': 0, 'OF': 0}
+        positions_needed = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+
+        for player in players:
+            pos = player.primary_position
+
+            # Check if we need this position
+            if pos in positions_needed and positions_filled[pos] < positions_needed[pos]:
+                # Check salary constraint
+                if total_salary + player.salary <= 50000:
+                    lineup.append(player)
+                    total_salary += player.salary
+                    positions_filled[pos] += 1
+
+                    # Check if lineup complete
+                    if len(lineup) == 10:
+                        break
+
+        # Validate lineup
+        if len(lineup) < 10:
+            print(f"⚠️ Only built {len(lineup)} players within salary")
+
+        return {
+            'players': lineup,
+            'total_salary': total_salary,
+            'strategy': strategy
+        }
 
     def _generate_simple_slate(self, num_games: int, slate_id: int) -> Dict:
         """Fallback slate generation"""
@@ -399,33 +789,201 @@ class ComprehensiveSimulationRunner:
 
         return sorted_players[:10]
 
+    def build_realistic_opponent(self, players: List, contest_type: str, skill_level: str) -> Dict:
+        """Build opponent lineup with realistic variance - NOT everyone uses your exact system"""
+
+        import random
+        import numpy as np
+
+        try:
+            from main_optimizer.unified_milp_optimizer import UnifiedMILPOptimizer, OptimizationConfig
+
+            # Create optimizer
+            config = OptimizationConfig(
+                salary_cap=50000,
+                position_requirements={
+                    "P": 2, "C": 1, "1B": 1, "2B": 1,
+                    "3B": 1, "SS": 1, "OF": 3
+                }
+            )
+
+            # CRITICAL: Vary the configuration based on skill level
+            if skill_level == 'elite':
+                # Elite players have good but DIFFERENT projections than you
+                config.min_salary_usage = 0.95
+                projection_variance = 0.05  # Small variance
+                strategy_pool = ['projection_monster', 'correlation_value', 'tournament_winner_gpp']
+
+            elif skill_level == 'sharp':
+                # Sharp players use decent strategies with more variance
+                config.min_salary_usage = 0.92
+                projection_variance = 0.10
+                strategy_pool = ['balanced_60_40', 'game_stack_3_2', 'projection_monster']
+
+            elif skill_level == 'average':
+                # Average players make more mistakes
+                config.min_salary_usage = 0.88
+                projection_variance = 0.15
+                strategy_pool = ['balanced_50_50', 'balanced_60_40']
+
+            else:  # weak
+                # Weak players make poor decisions
+                config.min_salary_usage = 0.85
+                projection_variance = 0.25
+                strategy_pool = ['balanced_50_50']  # Basic strategy only
+
+            optimizer = UnifiedMILPOptimizer(config)
+            optimizer.config.contest_type = contest_type
+
+            # IMPORTANT: Give opponents DIFFERENT projections than you!
+            # This simulates different data sources/models
+            modified_players = []
+            for player in players:
+                # Create a copy to avoid modifying original
+                p_copy = type('Player', (), {})()
+                for attr in dir(player):
+                    if not attr.startswith('_'):
+                        try:
+                            setattr(p_copy, attr, getattr(player, attr))
+                        except:
+                            pass
+
+                # Apply projection variance based on skill level
+                base_proj = getattr(player, 'projection', 10)
+
+                if skill_level == 'elite':
+                    # Elite players have good projections but different from yours
+                    # Use different "model" - emphasize different factors
+                    if player.position == 'P':
+                        # Some elite players value pitchers differently
+                        p_copy.projection = base_proj * np.random.normal(1.0, projection_variance)
+                    else:
+                        # Some emphasize recent form more, others matchups
+                        emphasis = random.choice(['recent', 'matchup', 'vegas'])
+                        if emphasis == 'recent':
+                            p_copy.projection = base_proj * (0.7 + 0.3 * random.uniform(0.8, 1.2))
+                        elif emphasis == 'matchup':
+                            p_copy.projection = base_proj * (0.8 + 0.2 * random.uniform(0.7, 1.3))
+                        else:  # vegas
+                            p_copy.projection = base_proj * (0.9 + 0.1 * random.uniform(0.8, 1.2))
+
+                else:
+                    # Non-elite have noisier projections
+                    p_copy.projection = base_proj * np.random.normal(1.0, projection_variance)
+
+                p_copy.optimization_score = p_copy.projection
+                modified_players.append(p_copy)
+
+            # Choose strategy (different players prefer different strategies)
+            if contest_type == 'cash':
+                if skill_level == 'elite':
+                    # Elite cash players might use different approaches
+                    strategy = random.choice(['projection_monster', 'pitcher_dominance', 'floor_ceiling'])
+                else:
+                    strategy = random.choice(strategy_pool) if strategy_pool else 'balanced_50_50'
+            else:  # GPP
+                strategy = random.choice(strategy_pool) if strategy_pool else 'balanced_60_40'
+
+            # Run optimization with modified projections
+            lineup_players, total_score = optimizer.optimize_lineup(
+                players=modified_players,
+                strategy=strategy,
+                contest_type=contest_type
+            )
+
+            if not lineup_players or len(lineup_players) < 10:
+                # Fallback to simple method
+                return self._build_simple_opponent(players, skill_level)
+
+            # Validate salary
+            total_salary = sum(p.salary for p in lineup_players)
+            if total_salary > 50000:
+                print(f"❌ Opponent over cap: ${total_salary}")
+                return self._build_simple_opponent(players, skill_level)
+
+            # Use original players (not modified copies) for the actual lineup
+            final_lineup = []
+            for selected in lineup_players:
+                # Find the original player
+                original = next((p for p in players if p.name == selected.name), selected)
+                final_lineup.append(original)
+
+            return {
+                'players': final_lineup,
+                'skill_level': skill_level,
+                'strategy_used': strategy,
+                'total_salary': total_salary,
+                'total_projection': sum(getattr(p, 'projection', 10) for p in final_lineup)
+            }
+
+        except Exception as e:
+            print(f"⚠️ Error building {skill_level} opponent: {e}")
+            # Fallback to simple salary-constrained method
+            return self._build_simple_opponent(players, skill_level)
+
     def _simulate_simple_contest(self, your_lineup: List, field: List, contest_type: str) -> Dict:
-        """Fallback contest simulation"""
-        your_score = sum(p.projection * random.uniform(0.8, 1.2) for p in your_lineup)
-        field_scores = [sum(p.projection * random.uniform(0.8, 1.2) for p in opp['players']) for opp in field]
+        """Realistic contest simulation with proper variance"""
+        import numpy as np
 
-        rank = sum(1 for s in field_scores if s > your_score) + 1
-        percentile = (len(field_scores) - rank + 1) / len(field_scores) * 100
+        # Calculate YOUR score with realistic variance
+        your_projection = sum(getattr(p, 'projection', 10) for p in your_lineup['players'])
 
+        # Apply realistic variance (15% standard deviation)
+        your_actual = your_projection * np.random.normal(1.0, 0.15)
+        your_actual = max(0, your_actual)
+
+        # Calculate FIELD scores with variance
+        field_scores = []
+        for opponent in field:
+            opp_players = opponent['players'] if isinstance(opponent, dict) else opponent
+            opp_projection = sum(getattr(p, 'projection', 10) for p in opp_players)
+
+            # Apply variance based on skill level
+            skill = opponent.get('skill_level', 'average') if isinstance(opponent, dict) else 'average'
+
+            if skill == 'elite':
+                # Elite players have less variance (more consistent)
+                opp_actual = opp_projection * np.random.normal(1.0, 0.12)
+            elif skill == 'sharp':
+                opp_actual = opp_projection * np.random.normal(1.0, 0.15)
+            elif skill == 'average':
+                opp_actual = opp_projection * np.random.normal(1.0, 0.18)
+            else:  # weak
+                opp_actual = opp_projection * np.random.normal(1.0, 0.22)
+
+            opp_actual = max(0, opp_actual)
+            field_scores.append(opp_actual)
+
+        # Calculate rank and percentile
+        field_scores.sort(reverse=True)
+        your_rank = sum(1 for score in field_scores if score > your_actual) + 1
+        percentile = (len(field_scores) - your_rank + 1) / len(field_scores) * 100
+
+        # Realistic payouts
         if contest_type == 'cash':
-            won = rank <= len(field_scores) // 2
-            roi = 100 if won else -100
+            # Top 45% win in cash games (realistic)
+            cutoff = int(len(field_scores) * 0.45)
+            won = your_rank <= cutoff
+            roi = 80 if won else -100  # 0.8x payout
         else:
-            if rank == 1:
-                roi = 900
-            elif rank <= 3:
-                roi = 400
-            elif percentile >= 90:
-                roi = 100
+            # GPP payouts
+            if your_rank == 1:
+                roi = 500 + np.random.randint(0, 400)
+            elif your_rank <= 3:
+                roi = 200 + np.random.randint(0, 200)
+            elif percentile >= 90:  # Top 10%
+                roi = np.random.randint(-50, 50)
+            elif percentile >= 80:  # Top 20%
+                roi = -75
             else:
                 roi = -100
 
         return {
-            'your_score': your_score,
-            'your_rank': rank,
+            'your_score': your_actual,
+            'your_rank': your_rank,
             'percentile': percentile,
-            'roi': roi,
-            'won': roi > 0
+            'won': roi > 0,
+            'roi': roi
         }
 
     def run_comprehensive_test(self,
