@@ -156,22 +156,29 @@ class VegasLines:
 
         return fresh_data
 
+    # In vegas_lines.py, find the _fetch_from_api method and update:
+
+    # In main_optimizer/vegas_lines.py, update the _fetch_from_api method:
+
     def _fetch_from_api(self) -> Dict[str, Dict]:
         """Fetch fresh data from The Odds API"""
         try:
             self._api_calls_made += 1
             self._last_api_call = datetime.now()
 
-            response = requests.get(
-                f"{self.base_url}/v1/odds",
-                headers={"x-api-key": self.api_key},
-                params={
-                    "sport": "baseball_mlb",
-                    "markets": "totals",
-                    "dateFormat": "iso"
-                },
-                timeout=10
-            )
+            # The correct URL for The Odds API v4
+            url = "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds"
+
+            # API key MUST be in params for The Odds API
+            params = {
+                "apiKey": "14b669db87ed65f1d0f3e70a90386707",
+                "regions": "us",
+                "markets": "totals",
+                "dateFormat": "iso",
+                "oddsFormat": "american"
+            }
+
+            response = requests.get(url, params=params, timeout=10)
 
             if response.status_code == 200:
                 data = response.json()
@@ -181,6 +188,11 @@ class VegasLines:
                 self.verbose_print(f"❌ API error: {response.status_code}")
                 logger.error(f"Vegas API error: {response.status_code} - {response.text}")
                 return {}
+
+        except Exception as e:
+            self.verbose_print(f"❌ Error fetching Vegas: {e}")
+            logger.error(f"Exception fetching Vegas lines: {e}")
+            return {}
 
         except Exception as e:
             self.verbose_print(f"❌ Error fetching Vegas: {e}")

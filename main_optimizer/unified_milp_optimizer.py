@@ -349,62 +349,55 @@ class UnifiedMILPOptimizer:
         except ImportError:
             logger.debug("Vegas lines module not available")
 
-    def apply_strategy_filter(self, players: List, strategy: str) -> List:
-        """Apply the actual strategy functions to modify player scores"""
+    def apply_strategy_filter(self, players: List[Any], strategy: str, contest_type: str = None) -> List[Any]:
+        """Apply strategy-specific filtering"""
         logger.info(f"Applying strategy filter: {strategy}")
-
-        # Get contest type
-        contest_type = getattr(self.config, 'contest_type', 'gpp').lower()
         logger.info(f"Contest type in apply_strategy_filter: {contest_type}")
 
-        # Import strategy functions
-        from cash_strategies import build_projection_monster, build_pitcher_dominance
-        from main_optimizer.gpp_strategies import build_correlation_value, build_truly_smart_stack, build_matchup_leverage_stack
-
-        # Map strategy names to functions
-        strategy_functions = {
-            'projection_monster': build_projection_monster,
-            'pitcher_dominance': build_pitcher_dominance,
-            'correlation_value': build_correlation_value,
-            'truly_smart_stack': build_truly_smart_stack,
-            'matchup_leverage_stack': build_matchup_leverage_stack,
-            'smart_stack': build_truly_smart_stack,  # Alias
-        }
-
-        # Filter to valid players
-        eligible = [p for p in players if self._is_valid_player(p)]
-
-        # Apply the strategy function if it exists
-        # In apply_strategy_filter, add this:
-        if strategy in strategy_functions:
-            logger.info(f"Applying strategy: {strategy}")
-
-            # FORCEFUL DEBUG - Write to file
-            with open('/tmp/strategy_debug.log', 'a') as f:
-                f.write(f"{datetime.now()}: Applying {strategy} to {len(eligible)} players\n")
-
-            eligible = strategy_functions[strategy](eligible)
-            logger.info(f"Strategy {strategy} applied to {len(eligible)} players")
-        else:
-            logger.warning(f"Unknown strategy '{strategy}', using default scoring")
-
-        # CRITICAL FIX: Ensure optimization_score is set based on contest type
-        for player in eligible:
-            if not hasattr(player, 'optimization_score') or player.optimization_score == 0:
-                # Use the appropriate score based on contest type
-                if contest_type == 'cash' and hasattr(player, 'cash_score'):
-                    player.optimization_score = player.cash_score
-                    logger.debug(f"Using cash_score for {player.name}: {player.cash_score}")
-                elif contest_type == 'gpp' and hasattr(player, 'gpp_score'):
-                    player.optimization_score = player.gpp_score
-                    logger.debug(f"Using gpp_score for {player.name}: {player.gpp_score}")
+        # Ensure all players have scores set
+        for player in players:
+            # FIXED: Ensure optimization_score is never None
+            if not hasattr(player, 'optimization_score') or player.optimization_score is None:
+                # Try different score attributes
+                if hasattr(player, 'cash_score') and contest_type == 'cash':
+                    player.optimization_score = player.cash_score or 0
+                elif hasattr(player, 'gpp_score') and contest_type == 'gpp':
+                    player.optimization_score = player.gpp_score or 0
+                elif hasattr(player, 'enhanced_score'):
+                    player.optimization_score = player.enhanced_score or 0
+                elif hasattr(player, 'base_projection'):
+                    player.optimization_score = player.base_projection or 0
                 else:
-                    player.optimization_score = getattr(player, 'base_projection', 0)
-                    logger.debug(f"Using base_projection for {player.name}: {player.base_projection}")
+                    player.optimization_score = 0
 
-        # Debug: Log score status
-        scores_set = sum(1 for p in eligible if getattr(p, 'optimization_score', 0) > 0)
-        logger.info(f"Players with optimization_score > 0: {scores_set}/{len(eligible)}")
+        # Continue with strategy filtering...
+        eligible = []
+
+        if strategy == "projection_monster":
+            # FIXED: Safe comparison with default values
+            for player in players:
+                score = getattr(player, 'optimization_score', 0) or 0
+                if score >= 10:  # Minimum 10 points
+                    eligible.append(player)
+
+        elif strategy == "pitcher_dominance":
+            for player in players:
+                if player.primary_position == 'P':
+                    k_rate = getattr(player, 'k_rate', 0) or 0
+                    if k_rate >= 8.0:  # High K/9
+                        eligible.append(player)
+                else:
+                    score = getattr(player, 'optimization_score', 0) or 0
+                    if score >= 8:
+                        eligible.append(player)
+
+        # Add other strategies with safe comparisons...
+        else:
+            # Default: keep all valid players
+            eligible = [p for p in players if self._is_valid_player(p)]
+
+        # Log results
+        logger.info(f"Strategy filter kept {len(eligible)}/{len(players)} players")
 
         return eligible
 
@@ -432,11 +425,23 @@ class UnifiedMILPOptimizer:
 
         logger.info(f"PERFORMANCE: Pre-filtering {len(players)} players")
 
-        # Sort by value (points per dollar)
-        players_with_value = [
-            (p, getattr(p, 'optimization_score', 0) / max(p.salary, 1))
-            for p in players
-        ]
+        # FIXED: Handle None values properly
+        players_with_value = []
+        for p in players:
+            # Get score, default to 0 if None
+            score = getattr(p, 'optimization_score', 0)
+            score = getattr(p, 'optimization_score', 0)
+            if score is None:
+                score = 0
+
+            # Get salary, ensure it's positive
+            salary = max(getattr(p, 'salary', 1), 1)
+
+            # Calculate value (points per dollar)
+            value = score / salary
+            players_with_value.append((p, value))
+
+        # Sort by value
         players_with_value.sort(key=lambda x: x[1], reverse=True)
 
         # Keep top players by value, ensuring position coverage

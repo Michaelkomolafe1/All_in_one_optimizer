@@ -1,9 +1,29 @@
+# At the top of gpp_strategies.py, add this import:
+
 """
-Enhanced GPP Tournament Strategies with Tunable Parameters
-=========================================================
+GPP STRATEGIES MODULE
+====================
+All GPP optimization strategies including the new tournament winner
 """
+
+
+import logging
+from typing import List, Dict, Any
 from collections import defaultdict
 import numpy as np
+import random  # If you use random anywhere
+
+logger = logging.getLogger(__name__)
+try:
+    from tournament_winner_gpp_strategy import build_tournament_winner_gpp
+    TOURNAMENT_WINNER_AVAILABLE = True
+except ImportError:
+    logger.warning("tournament_winner_gpp_strategy not found - using fallback")
+    TOURNAMENT_WINNER_AVAILABLE = False
+    # Fallback to correlation_value if not available
+    def build_tournament_winner_gpp(players, *args, **kwargs):
+        logger.info("Using correlation_value as fallback for tournament_winner_gpp")
+        return build_correlation_value(players)
 
 
 def build_correlation_value(players, params=None):
@@ -525,4 +545,19 @@ def build_experimental_gpp_strategy(players, params=None):
 
     return players
 
-#from tournament_winner_gpp_strategy import build_tournament_winner_gpp#
+# At the bottom of the file, update __all__ to include the new strategy:
+__all__ = [
+    'build_correlation_value',
+    'build_truly_smart_stack',
+    'build_matchup_leverage_stack',
+    'build_tournament_winner_gpp',  # ADD THIS LINE
+    # ... any other strategies you export
+]
+
+# Also add to any strategy registry or mapping:
+GPP_STRATEGIES = {
+    'correlation_value': build_correlation_value,
+    'truly_smart_stack': build_truly_smart_stack,
+    'matchup_leverage_stack': build_matchup_leverage_stack,
+    'tournament_winner_gpp': build_tournament_winner_gpp,  # ADD THIS LINE
+}
