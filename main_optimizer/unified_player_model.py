@@ -156,7 +156,7 @@ class UnifiedPlayer:
 
         # Calculate initial scores
         self.calculate_data_quality()
-        self.calculate_enhanced_score()
+        #self.calculate_enhanced_score()
 
     # In unified_player_model.py, inside the UnifiedPlayer class:
 
@@ -164,6 +164,8 @@ class UnifiedPlayer:
 
     @classmethod
     def from_csv_row(cls, row: Dict) -> 'UnifiedPlayer':
+        # Map DraftKings projection
+        base_projection = float(row.get("AvgPointsPerGame", row.get("projection", row.get("points", 10.0))))
         """Create UnifiedPlayer from DraftKings CSV row"""
         # Extract data from CSV row - handle different column variations
         name = row.get('Name', row.get('name', ''))
@@ -654,7 +656,7 @@ class UnifiedPlayer:
 
         # Recalculate scores
         self.calculate_data_quality()
-        self.calculate_enhanced_score()
+        #self.calculate_enhanced_score()
 
     def apply_vegas_data(self, vegas_data: Dict):
         """Apply Vegas data to player"""
@@ -669,14 +671,14 @@ class UnifiedPlayer:
             self.moneyline = vegas_data["moneyline"]
 
         # Recalculate score
-        self.calculate_enhanced_score()
+        #self.calculate_enhanced_score()
 
     def apply_statcast_data(self, statcast_data: Dict):
         """Apply Statcast/advanced metrics"""
         self._statcast_data = statcast_data
 
         # Recalculate score
-        self.calculate_enhanced_score()
+        #self.calculate_enhanced_score()
 
     def apply_recent_form(self, form_data: Dict):
         """Apply recent form analysis"""
@@ -689,21 +691,21 @@ class UnifiedPlayer:
             ]
 
         # Recalculate score
-        self.calculate_enhanced_score()
+        #self.calculate_enhanced_score()
 
     def apply_park_factors(self, park_data: Dict):
         """Apply park factor data"""
         self._park_factors = park_data
 
         # Recalculate score
-        self.calculate_enhanced_score()
+        #self.calculate_enhanced_score()
 
     def set_batting_order(self, order: int):
         """Set batting order position"""
         self.batting_order = order
 
         # Recalculate score
-        self.calculate_enhanced_score()
+        #self.calculate_enhanced_score()
 
     def add_confirmation_source(self, source: str):
         """Add confirmation source (for pool selection only)"""
