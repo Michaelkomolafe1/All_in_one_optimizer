@@ -288,33 +288,70 @@ class UnifiedPlayer:
 
     def calculate_enhanced_score(self):
         """Calculate score using ONLY the new enhanced scoring engine"""
-        from enhanced_scoring_engine import EnhancedScoringEngine
+        try:
+            from main_optimizer.enhanced_scoring_engine_v2 import EnhancedScoringEngineV2
 
-        # Create scoring engine
-        engine = EnhancedScoringEngine()
+            # Create scoring engine
+            engine = EnhancedScoringEngineV2()
 
-        # Default to GPP scoring (can be changed based on context)
-        self.enhanced_score = engine.score_player_gpp(self)
+            # Default to GPP scoring (can be changed based on context)
+            if hasattr(engine, 'score_player_gpp'):
+                self.enhanced_score = engine.score_player_gpp(self)
+            else:
+                # Fallback if method doesn't exist
+                self.enhanced_score = engine.score_player(self, 'gpp') if hasattr(engine,
+                                                                                  'score_player') else self.base_projection
 
-        # Also calculate and store other contest scores
-        self.gpp_score = self.enhanced_score
-        self.cash_score = engine.score_player_cash(self)
-        self.showdown_score = engine.score_player_showdown(self)
+            # Also calculate and store other contest scores
+            self.gpp_score = self.enhanced_score
 
-        # Set data quality based on available data
-        data_points = 0
-        if hasattr(self, 'implied_team_score') and self.implied_team_score: data_points += 1
-        if hasattr(self, 'batting_order') and self.batting_order: data_points += 1
-        if hasattr(self, 'projected_ownership'): data_points += 1
-        if hasattr(self, 'recent_form_score'): data_points += 1
+            if hasattr(engine, 'score_player_cash'):
+                self.cash_score = engine.score_player_cash(self)
+            else:
+                self.cash_score = engine.score_player(self, 'cash') if hasattr(engine,
+                                                                               'score_player') else self.base_projection
 
-        self.data_quality_score = min(1.0, 0.2 + (data_points * 0.2))
+            if hasattr(engine, 'score_player_showdown'):
+                self.showdown_score = engine.score_player_showdown(self)
+            else:
+                self.showdown_score = self.base_projection
 
-        return self.enhanced_score
+            # Set data quality based on available data
+            data_points = 0
+            if hasattr(self, 'implied_team_score') and self.implied_team_score:
+                data_points += 1
+            if hasattr(self, 'batting_order') and self.batting_order:
+                data_points += 1
+            if hasattr(self, 'projected_ownership'):
+                data_points += 1
+            if hasattr(self, 'recent_form_score'):
+                data_points += 1
+
+            self.data_quality_score = min(1.0, 0.2 + (data_points * 0.2))
+
+            return self.enhanced_score
+
+        except ImportError:
+            # Enhanced scoring not available - use base projection
+            self.enhanced_score = self.base_projection
+            self.gpp_score = self.base_projection
+            self.cash_score = self.base_projection
+            self.showdown_score = self.base_projection
+            self.data_quality_score = 0.5
+            return self.base_projection
+        except Exception as e:
+            # Any other error - fallback to base projection
+            print(f"Warning: Enhanced scoring failed: {e}")
+            self.enhanced_score = self.base_projection
+            self.gpp_score = self.base_projection
+            self.cash_score = self.base_projection
+            self.showdown_score = self.base_projection
+            self.data_quality_score = 0.5
+            return self.base_projection
 
     def set_contest_type(self, contest_type: str):
         """Set which score to use as enhanced_score"""
-        from enhanced_scoring_engine import EnhancedScoringEngine
+        from main_optimizer.enhanced_scoring_engine_v2 import EnhancedScoringEngine
         engine = EnhancedScoringEngine()
 
         if contest_type.lower() == 'cash':

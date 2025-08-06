@@ -311,6 +311,19 @@ class EnhancedScoringEngineV2:
         logger.info(f"Zero scores: {self.scoring_stats['zero_scores']} "
                     f"({100 * self.scoring_stats['zero_scores'] / total:.1f}%)")
 
+    def score_player_gpp(self, player, slate_players=None):
+        """Score player for GPP contests"""
+        if hasattr(self, 'calculate_gpp_score'):
+            return self.calculate_gpp_score(player, slate_players)
+        return self.score_player(player, 'gpp', slate_players)
+
+    def score_player_cash(self, player, slate_players=None):
+        """Score player for cash contests"""
+        if hasattr(self, 'calculate_cash_score'):
+            return self.calculate_cash_score(player, slate_players)
+        return self.score_player(player, 'cash', slate_players)
+
+
 
 # Compatibility layer for existing code
 def EnhancedScoringEngine():
