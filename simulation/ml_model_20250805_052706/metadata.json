@@ -1,0 +1,28 @@
+{
+  "features": [
+    "salary",
+    "projection",
+    "optimization_score",
+    "value_score",
+    "slate_size_encoded",
+    "is_cash",
+    "strategy_fit",
+    "difficulty_encoded"
+  ],
+  "accuracy": 0.7348571428571429,
+  "auc": 0.8029493161855626,
+  "training_date": "2025-08-05T05:27:06.612434",
+  "training_samples": 14000,
+  "slate_sizes": {
+    "small": 7000,
+    "large": 7000,
+    "medium": 3500
+  },
+  "strategy_effectiveness": {
+    "projection_monster_small_cash": 1.1785714285714286,
+    "pitcher_dominance_medium_cash": 1.0885714285714285,
+    "pitcher_dominance_large_cash": 1.1171428571428572,
+    "correlation_value_small_gpp": 0.9714285714285714,
+    "matchup_leverage_stack_large_gpp": 0.9685714285714286
+  }
+}
