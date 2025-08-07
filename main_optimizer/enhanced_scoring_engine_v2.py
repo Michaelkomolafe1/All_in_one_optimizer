@@ -118,20 +118,20 @@ class EnhancedScoringEngineV2:
 
     def score_player_gpp(self, player):
         """
-        GPP scoring with upside emphasis and enrichments
-        USES: Vegas, Weather, Ownership, Barrel Rate
+        GPP scoring with upside emphasis and CORRELATION BONUS
+        USES: Vegas, Weather, Ownership, Barrel Rate, TEAM STACKING
         """
         # Start with DraftKings projection
         base_score = getattr(player, 'base_projection', 10.0)
         if base_score == 0:
             base_score = getattr(player, 'projection', 10.0)
-        
+
         multipliers = []
-        
+
         # 1. VEGAS BOOST (bigger for GPP - we want shootouts!)
         vegas_total = getattr(player, 'implied_team_score', 4.5)
         vegas_mult = 1.0
-        
+
         if vegas_total >= 10.0:  # Coors Field special!
             vegas_mult = 1.35
             multipliers.append(f"COORS({vegas_total:.1f})=1.35x!")
@@ -144,23 +144,77 @@ class EnhancedScoringEngineV2:
         elif vegas_total >= 4.0:
             vegas_mult = 1.00
         elif vegas_total < 3.5:
-            vegas_mult = 0.75  # Bigger penalty in GPP
+            vegas_mult = 0.75
             multipliers.append(f"LowTotal=0.75x")
-        
+
         base_score *= vegas_mult
-        
+
+        # ============================================
+        # NEW: CORRELATION BONUS SECTION
+        # ============================================
+        if hasattr(player, 'team'):
+            # Count how many teammates are available
+            if hasattr(self, 'all_players'):
+                teammates = [p for p in self.all_players
+                             if hasattr(p, 'team') and p.team == player.team
+                             and p.position not in ['P', 'SP', 'RP']]
+            else:
+                # Fallback - estimate based on typical roster
+                teammates = []
+
+            team_count = len(teammates)
+
+            # CORRELATION PARAMETERS (TUNABLE!)
+            if team_count >= 5 and vegas_total >= 5.0:
+                # This team is highly stackable
+                correlation_bonus = 1.15  # 15% bonus for stackable team
+
+                # Extra bonus for batting order proximity
+                batting_order = getattr(player, 'batting_order', 0)
+                if 2 <= batting_order <= 5:
+                    correlation_bonus *= 1.08  # Heart of order gets extra
+                    multipliers.append(f"StackCore=1.08x")
+                elif batting_order == 1:
+                    correlation_bonus *= 1.05  # Leadoff good too
+                    multipliers.append(f"StackLead=1.05x")
+
+                base_score *= correlation_bonus
+                multipliers.append(f"Correlation({team_count})={correlation_bonus:.2f}x")
+
+            elif team_count >= 4 and vegas_total >= 4.5:
+                # Moderate stacking potential
+                correlation_bonus = 1.08
+                base_score *= correlation_bonus
+                multipliers.append(f"MiniStack={correlation_bonus:.2f}x")
+
+        # ============================================
+        # REST OF YOUR EXISTING CODE
+        # ============================================
+
         # 2. WEATHER IMPACT (amplified for GPP)
         weather_impact = getattr(player, 'weather_impact', 1.0)
         if weather_impact > 1.1:
-            # Amplify good weather in GPP
             weather_mult = weather_impact * 1.1
             base_score *= weather_mult
             multipliers.append(f"Weather={weather_mult:.2f}x")
         elif weather_impact < 0.9:
             base_score *= weather_impact
             multipliers.append(f"BadWeather={weather_impact:.2f}x")
-        else:
-            base_score *= weather_impact
+
+        # 3. OWNERSHIP FADE (GPP specific)
+        ownership = getattr(player, 'ownership_projection', 10)
+        if ownership > 40:
+            base_score *= 0.75
+            multipliers.append(f"Chalk({ownership:.0f}%)=0.75x")
+        elif ownership > 25:
+            base_score *= 0.90
+            multipliers.append(f"Popular({ownership:.0f}%)=0.90x")
+        elif ownership < 5:
+            base_score *= 1.20
+            multipliers.append(f"Contrarian({ownership:.0f}%)=1.20x")
+        elif ownership < 10:
+            base_score *= 1.10
+            multipliers.append(f"LowOwned({ownership:.0f}%)=1.10x")
         
         # 3. OWNERSHIP FADE (GPP specific)
         ownership = getattr(player, 'ownership_projection', 10)

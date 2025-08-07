@@ -410,60 +410,112 @@ class UnifiedMILPOptimizer:
             logger.debug("Vegas lines module not available")
 
     def apply_strategy_filter(self, players: List, strategy: str, contest_type: str = 'gpp') -> List:
-        """
-        DON'T FILTER - Just adjust scores based on strategy!
-        Pool should already be filtered by confirmations/manual selections
-        """
+        """Apply strategy filter with small slate protection"""
 
-        # Normalize positions (still needed)
+        # SMALL SLATE DETECTION
+        unique_teams = set(p.team for p in players if hasattr(p, 'team'))
+        num_games = len(unique_teams) / 2 if unique_teams else 0
+
+        # Position normalization - ALWAYS DO THIS
         for player in players:
             if player.position in ['SP', 'RP']:
                 player.position = 'P'
                 player.primary_position = 'P'
 
-        logger.info(f"Applying strategy: {strategy}")
-        logger.info(f"Players in pool: {len(players)}")
+        self.logger.info(f"Applying strategy filter: {strategy}")
+        self.logger.info(f"Starting with {len(players)} players")
+        self.logger.info(f"Detected {num_games} games")
 
-        # STRATEGY ONLY AFFECTS SCORING, NOT FILTERING!
-        for player in players:
-            # Start with base score
-            base_score = player.optimization_score or player.base_projection or 10.0
+        # SMALL SLATE OR SMALL POOL: NO FILTERING!
+        if num_games <= 3 or len(players) < 50:
+            self.logger.info(f"Small slate/pool detected - keeping ALL {len(players)} players")
 
-            # Apply strategy-specific SCORING adjustments
-            if strategy == 'pitcher_dominance':
-                if player.position == 'P':
-                    # Boost pitcher scores for this strategy
-                    player.optimization_score = base_score * 1.3
-                else:
-                    # Slightly reduce hitter scores
-                    player.optimization_score = base_score * 0.9
+            # Just adjust scores based on strategy, don't filter
+            for player in players:
+                base = getattr(player, 'optimization_score', player.base_projection)
 
-            elif strategy == 'projection_monster':
-                # Boost consistent players
-                consistency = getattr(player, 'consistency_score', 1.0)
-                player.optimization_score = base_score * consistency
+                if contest_type.lower() == 'gpp' and strategy in ['tournament_winner_gpp', 'correlation_value']:
+                    # Boost players for stacking but keep everyone
+                    team_count = sum(1 for p in players if p.team == player.team and p.position != 'P')
+                    if team_count >= 4:
+                        player.optimization_score = base * 1.1  # Small boost for stackable teams
 
-            elif strategy == 'correlation_value':
-                # This would boost players from same team (stacking)
-                # Would need team correlation logic
-                player.optimization_score = base_score
+            return players  # Return ALL players for small slates
 
-            elif strategy == 'tournament_winner_gpp':
-                # Boost low-owned, high-upside players
-                ownership = getattr(player, 'ownership_projection', 15)
-                if ownership < 10:
-                    player.optimization_score = base_score * 1.2
-                elif ownership > 30:
-                    player.optimization_score = base_score * 0.8
-                else:
-                    player.optimization_score = base_score
+        # NORMAL FILTERING FOR LARGE SLATES ONLY
+        # ===========================================
+
+        filtered = players  # Start with all
+
+        # Your existing strategy logic here
+        if strategy == 'projection_monster':
+            # For large slates, take top scorers
+            filtered = sorted(players,
+                              key=lambda x: getattr(x, 'optimization_score', 0),
+                              reverse=True)[:150]
+
+        elif strategy == 'pitcher_dominance':
+            pitchers = [p for p in players if p.primary_position == 'P']
+            hitters = [p for p in players if p.primary_position != 'P']
+
+            pitchers.sort(key=lambda x: getattr(x, 'optimization_score', 0), reverse=True)
+            hitters.sort(key=lambda x: getattr(x, 'optimization_score', 0), reverse=True)
+
+            filtered = pitchers[:20] + hitters[:100]
+
+        elif strategy in ['tournament_winner_gpp', 'correlation_value']:
+            # GPP strategies - keep more for stacking
+            filtered = sorted(players,
+                              key=lambda x: getattr(x, 'optimization_score', 0),
+                              reverse=True)[:200]
+        else:
+            # Unknown strategy - use top 150
+            self.logger.warning(f"Unknown strategy {strategy}, using default filter")
+            filtered = sorted(players,
+                              key=lambda x: getattr(x, 'optimization_score', 0),
+                              reverse=True)[:150]
+
+        # SAFETY NET: Ensure minimum positions (for large slates)
+        # ========================================================
+
+        # Dynamic requirements based on slate size
+        if num_games <= 5:
+            MIN_REQUIRED = {'P': 3, 'C': 2, '1B': 2, '2B': 2, '3B': 2, 'SS': 2, 'OF': 5}
+        else:
+            MIN_REQUIRED = {'P': 4, 'C': 2, '1B': 2, '2B': 2, '3B': 2, 'SS': 2, 'OF': 6}
+
+        final_filtered = list(filtered)
+
+        # Check each position
+        for pos, min_needed in MIN_REQUIRED.items():
+            if pos == 'P':
+                current = len([p for p in final_filtered if p.position in ['P', 'SP', 'RP']])
             else:
-                # No strategy adjustment
-                player.optimization_score = base_score
+                current = len([p for p in final_filtered if p.position == pos])
 
-        # RETURN ALL PLAYERS - NO FILTERING!
-        logger.info(f"Returning ALL {len(players)} players with adjusted scores")
-        return players  # Return the FULL pool!
+            self.logger.info(f"  Position {pos}: Have {current}, need {min_needed}")
+
+            if current < min_needed:
+                if pos == 'P':
+                    candidates = [p for p in players
+                                  if p.position in ['P', 'SP', 'RP']
+                                  and p not in final_filtered]
+                else:
+                    candidates = [p for p in players
+                                  if p.position == pos
+                                  and p not in final_filtered]
+
+                candidates.sort(key=lambda x: getattr(x, 'optimization_score', 0), reverse=True)
+
+                need_to_add = min_needed - current
+                to_add = candidates[:need_to_add]
+                final_filtered.extend(to_add)
+
+                self.logger.info(f"    Added {len(to_add)} more {pos} players")
+
+        self.logger.info(f"Final filtered pool: {len(final_filtered)} players")
+
+        return final_filtered
 
 
     def _is_valid_player(self, player) -> bool:
@@ -835,6 +887,30 @@ class UnifiedMILPOptimizer:
             }
         }
         return stats
+
+    def get_position_requirements(self, players):
+        """Adjust requirements based on what's available"""
+
+        # Count available positions
+        position_counts = {}
+        for p in players:
+            pos = 'P' if p.position in ['P', 'SP', 'RP'] else p.position
+            position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        # If small slate, use minimums
+        if len(players) < 50:
+            return {
+                'P': min(2, position_counts.get('P', 0)),  # Need 2 but work with what we have
+                'C': min(1, position_counts.get('C', 0)),
+                '1B': min(1, position_counts.get('1B', 0)),
+                '2B': min(1, position_counts.get('2B', 0)),
+                '3B': min(1, position_counts.get('3B', 0)),
+                'SS': min(1, position_counts.get('SS', 0)),
+                'OF': min(3, position_counts.get('OF', 0))
+            }
+
+        # Normal requirements for large slates
+        return {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
 
     def parse_manual_selections(self, manual_text: str, all_players: List) -> List[str]:
         """Parse manual player selections from text"""

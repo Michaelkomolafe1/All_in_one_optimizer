@@ -369,16 +369,36 @@ class UnifiedCoreSystem:
             return True
 
         return False
+
     def build_player_pool(self, include_unconfirmed: bool = False, manual_selections: set = None):
-        """Build the player pool for optimization"""
+        """Build the player pool for optimization with small slate handling"""
         manual_selections = manual_selections or set()
         self.player_pool = []
+
+        # Check slate size
+        unique_teams = set(p.team for p in self.players if hasattr(p, 'team'))
+        num_games = len(unique_teams) / 2 if unique_teams else 0
+
+        # SMALL SLATE OVERRIDE
+        if num_games <= 2 and not include_unconfirmed:
+            self.log(
+                f"WARNING: Only {num_games} games detected. Consider including unconfirmed players or adding manual selections.")
 
         # Debug logging
         self.log(f"Building pool: include_unconfirmed={include_unconfirmed}, manual={len(manual_selections)}")
 
         confirmed_count = 0
         projection_count = 0
+
+        # Convert manual selections to list of names if it's a string
+        if isinstance(manual_selections, str):
+            manual_names = [name.strip() for name in manual_selections.split(',') if name.strip()]
+        elif isinstance(manual_selections, set):
+            manual_names = list(manual_selections)
+        elif isinstance(manual_selections, list):
+            manual_names = manual_selections
+        else:
+            manual_names = []
 
         for player in self.players:
             # Count players with projections
@@ -398,22 +418,55 @@ class UnifiedCoreSystem:
             if not has_projection:
                 continue  # Skip players without projections
 
+            # Check if player name matches manual selection
+            is_manually_selected = False
+            if manual_names:
+                # Check various name formats
+                player_name_lower = player.name.lower()
+                for manual_name in manual_names:
+                    if manual_name.lower() in player_name_lower or player_name_lower in manual_name.lower():
+                        is_manually_selected = True
+                        break
+
             # Now check if we should include this player
             if include_unconfirmed:
                 # Include ALL players with projections
                 self.player_pool.append(player)
-            elif player.name in manual_selections:
+            elif is_manually_selected:
                 # Always include manual selections
                 player.is_manual_selected = True
                 self.player_pool.append(player)
+                self.log(f"  Added manual selection: {player.name}")
             elif hasattr(player, 'is_confirmed') and player.is_confirmed:
                 # Include confirmed players
                 self.player_pool.append(player)
+
+        # POSITION CHECK for small slates
+        if len(self.player_pool) < 50:
+            position_counts = {}
+            for p in self.player_pool:
+                pos = 'P' if p.position in ['P', 'SP', 'RP'] else p.position
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+
+            # Check if we have minimum positions
+            missing_positions = []
+            min_needed = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+
+            for pos, needed in min_needed.items():
+                if position_counts.get(pos, 0) < needed:
+                    missing_positions.append(f"{pos}({needed - position_counts.get(pos, 0)} needed)")
+
+            if missing_positions:
+                self.log(f"⚠️ WARNING: Missing positions: {', '.join(missing_positions)}")
+                self.log("  Consider adding manual selections for these positions")
 
         # Debug output
         self.log(f"Players with projections: {projection_count}")
         self.log(f"Confirmed players: {confirmed_count}")
         self.log(f"Player pool: {len(self.player_pool)} players")
+
+        # Store slate size for later use
+        self.current_slate_size = num_games
 
         return len(self.player_pool)
 
