@@ -135,29 +135,30 @@ class StrategyTester:
     def _convert_to_your_format(self, sim_players: List[SimulatedPlayer]) -> List:
         """Convert simulation players to your format"""
         converted = []
-
+        
         for sp in sim_players:
-            # Create player in your format
+            # Create player with CORRECT parameters
             player = UnifiedPlayer(
-                id=sp.name,
                 name=sp.name,
-                primary_position=sp.position,
-                position=sp.position,
+                position=sp.position,  # NOT primary_position
                 team=sp.team,
                 salary=sp.salary,
-                projection=sp.projection,
-                base_projection=sp.projection,
-                ownership=sp.ownership * 100,  # Convert to percentage
-                batting_order=sp.batting_order if hasattr(sp, 'batting_order') else 0
+                opponent='OPP',  # Generic opponent
+                player_id=sp.name,  # Use name as ID
+                base_projection=sp.projection
             )
-
-            # Add extra attributes
+            
+            # Add extra attributes after creation
+            player.ownership = sp.ownership * 100  # Convert to percentage
+            player.batting_order = getattr(sp, 'batting_order', 0)
             player.ceiling = sp.ceiling
             player.floor = sp.floor
-            player.team_total = sp.team_total if hasattr(sp, 'team_total') else 4.5
-
+            player.team_total = getattr(sp, 'team_total', 4.5)
+            player.projection = sp.projection  # Add projection as attribute
+            player.primary_position = sp.position  # Add as attribute
+            
             converted.append(player)
-
+        
         return converted
 
     def _convert_lineup_to_sim_format(self, lineup: Dict, slate: List) -> Dict:
