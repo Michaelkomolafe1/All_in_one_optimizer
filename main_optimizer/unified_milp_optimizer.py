@@ -55,7 +55,7 @@ class OptimizationConfig:
     position_requirements: Dict[str, int] = None
 
     # Team stacking constraints
-    max_players_per_team: int = 4
+    max_players_per_team: int = 4  # Will override for cash in optimization
     min_players_per_team: int = 0
     preferred_stack_size: int = 3
 
@@ -121,6 +121,8 @@ class UnifiedMILPOptimizer:
             # Also handle multi-position eligibility
             if hasattr(player, 'positions'):
                 player.positions = ['P' if pos in ['SP', 'RP'] else pos for pos in player.positions]
+        # Apply correlation bonuses for stacking
+        self.apply_correlation_bonuses(players)
         return players
 
     def check_position_availability(self, players):
@@ -237,12 +239,12 @@ class UnifiedMILPOptimizer:
                 prob += pulp.lpSum([player_vars[i] for i in bottom_order]) <= 2
 
     def apply_correlation_bonuses(self, players):
+        self.logger.info(f"APPLYING CORRELATION BONUSES - Contest: {getattr(self.config, 'contest_type', 'unknown')}, Players: {len(players)}")
         """
-        Apply correlation bonuses before optimization
-        This encourages the optimizer to select correlated players
+        Apply AGGRESSIVE correlation bonuses for GPP stacking
         """
         contest_type = getattr(self.config, 'contest_type', 'gpp')
-
+        
         if contest_type == 'gpp':
             # Group by team
             teams = {}
@@ -251,35 +253,60 @@ class UnifiedMILPOptimizer:
                     if player.team not in teams:
                         teams[player.team] = []
                     teams[player.team].append(player)
-
-            # Apply bonuses for stackable teams
+            
+            # Apply MASSIVE bonuses for stackable teams
             for team, team_players in teams.items():
                 if len(team_players) >= 4:
                     # Sort by batting order
                     team_players.sort(key=lambda p: getattr(p, 'batting_order', 9))
-
+                    
                     # Check team quality
                     team_total = getattr(team_players[0], 'implied_team_score', 4.5)
-
+                    
                     if team_total >= 5.0:
-                        # This is a good stacking team
-                        # Boost all players slightly to encourage stacking
-                        for p in team_players[:5]:  # Top 5 in order
+                        # DOUBLE the score for stackable players!
+                        for i, p in enumerate(team_players[:5]):
                             if hasattr(p, 'optimization_score'):
-                                p.optimization_score *= 1.05
+                                if i == 0:
+                                    p.optimization_score *= 2.0  # 100% bonus for leadoff
+                                elif i == 1:
+                                    p.optimization_score *= 1.9  # 90% bonus
+                                elif i == 2:
+                                    p.optimization_score *= 1.8  # 80% bonus
+                                elif i == 3:
+                                    p.optimization_score *= 1.7  # 70% bonus
+                                else:
+                                    p.optimization_score *= 1.6  # 60% bonus
                                 p.stack_bonus_applied = True
-
-                        # Extra bonus for consecutive batters
-                        for i in range(len(team_players) - 1):
-                            p1 = team_players[i]
-                            p2 = team_players[i + 1]
-                            bo1 = getattr(p1, 'batting_order', 9)
-                            bo2 = getattr(p2, 'batting_order', 9)
-
-                            if abs(bo1 - bo2) == 1 and bo1 <= 4 and bo2 <= 5:
-                                # Consecutive batters in top of order
-                                p1.optimization_score *= 1.03
-                                p2.optimization_score *= 1.03
+                                
+                                # Log the bonus
+                                self.logger.info(f"GPP Stack Bonus: {p.name} score {p.optimization_score/2:.1f} -> {p.optimization_score:.1f}")
+                    
+                    elif team_total >= 4.0:
+                        # Still big bonuses for decent teams
+                        for p in team_players[:4]:
+                            if hasattr(p, 'optimization_score'):
+                                p.optimization_score *= 1.5  # 50% bonus
+                                p.stack_bonus_applied = True
+        
+        elif contest_type == 'cash':
+            # NO BONUSES for cash games - just use raw projections
+            self.logger.info("Cash game - skipping ALL correlation bonuses")
+            return  # Exit immediately
+            teams = {}
+            for player in players:
+                if player.primary_position != 'P':
+                    if player.team not in teams:
+                        teams[player.team] = []
+                    teams[player.team].append(player)
+            
+            for team, team_players in teams.items():
+                if len(team_players) >= 2:
+                    team_total = getattr(team_players[0], 'implied_team_score', 4.5)
+                    if team_total >= 5.0:
+                        for p in team_players[:3]:  # Max 3 for cash
+                            if hasattr(p, 'optimization_score'):
+                                p.optimization_score *= 1.02  # Only 2% for cash
 
     def get_showdown_config(self) -> OptimizationConfig:
         """Get configuration for showdown slates"""
@@ -440,7 +467,9 @@ class UnifiedMILPOptimizer:
                     if team_count >= 4:
                         player.optimization_score = base * 1.1  # Small boost for stackable teams
 
-            return players  # Return ALL players for small slates
+            # Apply correlation bonuses for stacking
+        self.apply_correlation_bonuses(players)
+        return players  # Return ALL players for small slates
 
         # NORMAL FILTERING FOR LARGE SLATES ONLY
         # ===========================================
@@ -539,41 +568,40 @@ class UnifiedMILPOptimizer:
         """Pre-filter players to reduce problem size for performance"""
         if len(players) <= 200:
             return players
-
+        
         logger.info(f"PERFORMANCE: Pre-filtering {len(players)} players")
-
+        
         # FIXED: Handle None values properly
         players_with_value = []
         for p in players:
             # Get score, default to 0 if None
             score = getattr(p, 'optimization_score', 0)
-            score = getattr(p, 'optimization_score', 0)
             if score is None:
                 score = 0
-
+            
             # Get salary, ensure it's positive
             salary = max(getattr(p, 'salary', 1), 1)
-
+            
             # Calculate value (points per dollar)
             value = score / salary
             players_with_value.append((p, value))
-
+        
         # Sort by value
         players_with_value.sort(key=lambda x: x[1], reverse=True)
-
+        
         # Keep top players by value, ensuring position coverage
         filtered = []
         position_counts = {}
-
+        
         for player, value in players_with_value:
             pos = player.primary_position
             count = position_counts.get(pos, 0)
-
+            
             # Keep at least 10 per position, or top 200 overall
             if count < 10 or len(filtered) < 200:
                 filtered.append(player)
                 position_counts[pos] = count + 1
-
+        
         logger.info(f"PERFORMANCE: Reduced to {len(filtered)} players")
         return filtered
 
@@ -601,6 +629,10 @@ class UnifiedMILPOptimizer:
                 player.optimization_score = 0
                 logger.warning(f"No valid score for {player.name}")
 
+        # Apply correlation bonuses for stacking
+        self.apply_correlation_bonuses(players)
+        # Apply correlation bonuses for stacking
+        self.apply_correlation_bonuses(players)
         return players
 
     def pre_calculate_correlation_bonuses(self, players: List) -> List:
@@ -610,11 +642,20 @@ class UnifiedMILPOptimizer:
         for player in players:
             player.optimization_score = getattr(player, 'enhanced_score', 0)
 
+        # Apply correlation bonuses for stacking
+        self.apply_correlation_bonuses(players)
         return players
 
     def optimize_lineup(self,
                         players: List,
                         strategy: str = "balanced",
+        # OVERRIDE: Force max 3 per team for cash
+        if strategy in ["cash", "projection_monster", "pitcher_dominance"]:
+            self.config.max_players_per_team = 3
+            self.logger.info("Cash game: Limited to 3 per team")
+        else:
+            self.config.max_players_per_team = 4
+            self.logger.info("GPP: Allowing 4+ per team")
                         manual_selections: str = "",
                         contest_type: str = None) -> Tuple[List, float]:
         """
@@ -766,9 +807,11 @@ class UnifiedMILPOptimizer:
                 if getattr(players[i], 'team', None) == team
             ]
             if team_indices:
+                # Dynamic max per team based on contest type
+                max_team = 3 if getattr(self.config, 'contest_type', 'gpp') == 'cash' else 4
                 prob += pulp.lpSum([
                     player_vars[i] for i in team_indices
-                ]) <= self.config.max_players_per_team
+                ]) <= max_team
 
         # 6. Force manual selections
         for i, player in enumerate(players):
