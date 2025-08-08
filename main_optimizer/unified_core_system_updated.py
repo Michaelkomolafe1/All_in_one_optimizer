@@ -20,12 +20,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Core imports - all at the top!
-from unified_player_model import UnifiedPlayer
-from unified_milp_optimizer import UnifiedMILPOptimizer
-from enhanced_scoring_engine_v2 import EnhancedScoringEngineV2
-from smart_enrichment_manager import SmartEnrichmentManager
-from gui_strategy_configuration import GUIStrategyManager
-from correlation_scoring_config import CorrelationScoringConfig
+from .unified_player_model import UnifiedPlayer
+from .unified_milp_optimizer import UnifiedMILPOptimizer
+from .enhanced_scoring_engine_v2 import EnhancedScoringEngineV2
+from .smart_enrichment_manager import SmartEnrichmentManager
+from .gui_strategy_configuration import GUIStrategyManager
+from .correlation_scoring_config import CorrelationScoringConfig
 
 # Data enrichment imports with error handling
 try:
