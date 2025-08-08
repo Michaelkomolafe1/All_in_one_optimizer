@@ -687,6 +687,9 @@ class UnifiedCoreSystem:
 
     def _player_to_dict(self, player) -> Dict:
         """Convert player object to dictionary for GUI"""
+        
+        # Set contest type based on strategy
+                
         return {
             'name': player.name,
             'position': player.position,
