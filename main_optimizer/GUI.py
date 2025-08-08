@@ -20,8 +20,14 @@ from PyQt5.QtGui import *
 sys.path.insert(0, 'main_optimizer')
 
 # Import core system components
-from unified_core_system_updated import UnifiedCoreSystem
-from gui_strategy_configuration import GUIStrategyManager
+try:
+    from .unified_core_system_updated import UnifiedCoreSystem
+except ImportError:
+    from main_optimizer.unified_core_system_updated import UnifiedCoreSystem
+try:
+    from .gui_strategy_configuration import GUIStrategyManager
+except ImportError:
+    from main_optimizer.gui_strategy_configuration import GUIStrategyManager
 
 
 class CompleteDFSOptimizerGUI(QMainWindow):
