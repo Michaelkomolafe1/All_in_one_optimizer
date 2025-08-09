@@ -151,198 +151,215 @@ class UnifiedMILPOptimizer:
 
         return position_counts
 
+    def verify_position_availability(self, players, position_groups):
+        """Verify we have enough players for each position"""
+        requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
+
+        self.logger.info("\n📊 POSITION AVAILABILITY CHECK:")
+        self.logger.info("-" * 40)
+
+        all_good = True
+        for pos, required in requirements.items():
+            available = len(position_groups.get(pos, []))
+            status = "✅" if available >= required else "❌"
+            self.logger.info(f"{pos}: Need {required}, Have {available} {status}")
+
+            if available < required:
+                all_good = False
+                self.logger.warning(f"  ⚠️ Not enough {pos} players!")
+
+        if not all_good:
+            self.logger.error("CRITICAL: Cannot create valid lineup with current player pool!")
+            return False
+        return True
 
     def add_tournament_constraints(self, prob, player_vars, players):
         """
         Add constraints based on tournament-winning patterns
+        Data: 83.2% of GPP winners use 4-5 player stacks
         """
         contest_type = getattr(self.config, 'contest_type', 'gpp')
 
         if contest_type == 'gpp':
             # GPP CONSTRAINTS - 83.2% of winners use these patterns
 
-            # 1. ENFORCE 4-5 MAN STACKS
             # Group players by team (excluding pitchers)
             teams = {}
             for i, player in enumerate(players):
-                if player.primary_position != 'P':
+                if player.primary_position not in ['P', 'SP', 'RP']:
                     if player.team not in teams:
                         teams[player.team] = []
                     teams[player.team].append(i)
 
-            # Create binary variables for teams with 4+ stacks
-            team_stack_vars = {}
+            # 1. ENFORCE MAXIMUM PLAYERS PER TEAM (allow stacking)
             for team, indices in teams.items():
-                if len(indices) >= 4:  # Team must have 4+ available players
-                    var_name = f"stack_{team}"
-                    team_stack_vars[team] = pulp.LpVariable(var_name, cat="Binary")
+                if len(indices) >= 4:  # Only constrain teams that CAN stack
+                    # Allow up to 5 players from same team (56.7% of winners use 5-man stacks)
+                    prob += pulp.lpSum([player_vars[i] for i in indices]) <= 5, f"max_5_from_{team}"
+                elif len(indices) > 0:
+                    # For teams with fewer players, limit to what's available
+                    prob += pulp.lpSum([player_vars[i] for i in indices]) <= len(indices), f"max_available_{team}"
 
-            if team_stack_vars:
-                # AT LEAST ONE TEAM must have 4+ players (83.2% of winners)
-                prob += pulp.lpSum(team_stack_vars.values()) >= 1
-
-                # Link team stack variables to player selections
-                for team, stack_var in team_stack_vars.items():
-                    team_indices = teams[team]
-
-                    # If stack_var = 1, must have 4+ players from team
-                    prob += pulp.lpSum([player_vars[i] for i in team_indices]) >= 4 * stack_var
-
-                    # If 4+ players selected, must set stack_var = 1
-                    # (This prevents selecting 4+ without setting the flag)
-                    prob += pulp.lpSum([player_vars[i] for i in team_indices]) <= 3 + 10 * stack_var
-
-            # 2. LIMIT PITCHER CHALK
+            # 2. LIMIT PITCHER CHALK (optional but helps GPP)
             pitcher_indices = [i for i, p in enumerate(players)
-                               if p.primary_position == 'P']
+                               if p.primary_position in ['P', 'SP', 'RP']]
 
-            # Don't allow super high ownership pitchers (>30%)
-            chalk_pitchers = [i for i in pitcher_indices
-                              if getattr(players[i], 'ownership_projection', 15) > 30]
+            # Identify high-ownership pitchers (if ownership data exists)
+            chalk_pitchers = []
+            for i in pitcher_indices:
+                if hasattr(players[i], 'projected_ownership'):
+                    if players[i].projected_ownership > 30:
+                        chalk_pitchers.append(i)
 
             if chalk_pitchers:
-                # Max 1 chalk pitcher (most winners use low-owned pitchers)
-                prob += pulp.lpSum([player_vars[i] for i in chalk_pitchers]) <= 1
+                # Max 1 chalk pitcher (encourages differentiation)
+                prob += pulp.lpSum([player_vars[i] for i in chalk_pitchers]) <= 1, "limit_chalk_pitchers"
+
+            # 3. ENSURE LINEUP DIVERSITY (prevent 8 different teams)
+            # Most winners use 3-5 different teams total
+            # We don't need to enforce this explicitly because stacking bonuses handle it
 
         else:  # CASH CONSTRAINTS
-            # 1. ENFORCE HIGH K-RATE PITCHERS
+            # Different constraints for cash games
+
+            # 1. LIMIT PLAYERS PER TEAM (more conservative for cash)
+            teams = {}
+            for i, player in enumerate(players):
+                if player.primary_position not in ['P', 'SP', 'RP']:
+                    if player.team not in teams:
+                        teams[player.team] = []
+                    teams[player.team].append(i)
+
+            for team, indices in teams.items():
+                if indices:
+                    # Max 3 from same team in cash (avoid over-correlation)
+                    prob += pulp.lpSum([player_vars[i] for i in indices]) <= 3, f"cash_max_3_{team}"
+
+            # 2. ENFORCE HIGH K-RATE PITCHERS (if data available)
             pitcher_indices = [i for i, p in enumerate(players)
-                               if p.primary_position == 'P']
+                               if p.primary_position in ['P', 'SP', 'RP']]
 
-            # Identify elite K-rate pitchers (25%+)
-            elite_k_pitchers = [i for i in pitcher_indices
-                                if getattr(players[i], 'k_rate', 20) >= 25]
+            elite_k_pitchers = []
+            for i in pitcher_indices:
+                if hasattr(players[i], 'k_rate'):
+                    if players[i].k_rate >= 25:
+                        elite_k_pitchers.append(i)
 
-            if elite_k_pitchers:
-                # MUST have at least 1 high K pitcher (they dominate cash)
-                prob += pulp.lpSum([player_vars[i] for i in elite_k_pitchers]) >= 1
+            if len(elite_k_pitchers) >= 2:
+                # Try to get at least 1 high-K pitcher
+                prob += pulp.lpSum([player_vars[i] for i in elite_k_pitchers]) >= 1, "min_1_elite_k_pitcher"
 
-            # 2. BATTING ORDER CONSTRAINT
-            # Prefer top of batting order (1-4)
-            top_order = [i for i, p in enumerate(players)
-                         if p.primary_position != 'P' and
-                         hasattr(p, 'batting_order') and
-                         p.batting_order <= 4]
+            # 3. BATTING ORDER PREFERENCE (if data available)
+            top_order_hitters = []
+            bottom_order_hitters = []
 
-            if len(top_order) >= 6:
-                # At least 6 hitters from top 4 of batting order
-                prob += pulp.lpSum([player_vars[i] for i in top_order]) >= 6
+            for i, p in enumerate(players):
+                if p.primary_position not in ['P', 'SP', 'RP']:
+                    if hasattr(p, 'batting_order') and p.batting_order:
+                        if p.batting_order <= 5:
+                            top_order_hitters.append(i)
+                        elif p.batting_order >= 7:
+                            bottom_order_hitters.append(i)
 
-            # 3. AVOID BOTTOM OF ORDER
-            bottom_order = [i for i, p in enumerate(players)
-                            if p.primary_position != 'P' and
-                            hasattr(p, 'batting_order') and
-                            p.batting_order >= 7]
+            if len(top_order_hitters) >= 6:
+                # Prefer at least 6 hitters from top of order
+                prob += pulp.lpSum([player_vars[i] for i in top_order_hitters]) >= 6, "prefer_top_order"
 
-            if bottom_order:
-                # Max 2 hitters from bottom third of order
-                prob += pulp.lpSum([player_vars[i] for i in bottom_order]) <= 2
+            if bottom_order_hitters:
+                # Limit bottom of order hitters
+                prob += pulp.lpSum([player_vars[i] for i in bottom_order_hitters]) <= 2, "limit_bottom_order"
 
-    def apply_correlation_bonuses(self, players: List) -> None:
-        """Apply correlation bonuses with CONSECUTIVE batting order preference"""
-        
+    def apply_correlation_bonuses(self, players):
+        """
+        Apply correlation bonuses for GPP stacking
+        Based on data: 83.2% of GPP winners use 4-5 player stacks
+        """
+        # Only apply for GPP
         contest_type = getattr(self.config, 'contest_type', 'gpp')
-        
-        if contest_type.lower() != 'gpp':
-            self.logger.info("Skipping correlation bonuses for non-GPP contest")
+        if contest_type != 'gpp':
             return
-        
-        self.logger.info("Applying GPP correlation bonuses...")
-        
-        # Group by team
-        teams = {}
-        for player in players:
-            if not hasattr(player, 'primary_position'):
-                continue
-            if player.primary_position == 'P':
-                continue
-            
-            team = getattr(player, 'team', None)
-            if team:
-                if team not in teams:
-                    teams[team] = []
-                teams[team].append(player)
-        
-        boosted_count = 0
-        
-        for team, team_players in teams.items():
-            if len(team_players) < 4:
-                continue
-            
-            # Sort by batting order
-            team_players.sort(key=lambda p: getattr(p, 'batting_order', 9))
-            
-            # Create batting order map
-            bo_map = {}
-            for p in team_players:
-                bo = getattr(p, 'batting_order', 9)
-                if bo < 9:
-                    bo_map[bo] = p
-            
-            # Find and boost consecutive groups HEAVILY
-            consecutive_groups = []
-            current_group = []
-            
-            for i in range(1, 10):
-                if i in bo_map:
-                    if not current_group or i == current_group[-1] + 1:
-                        current_group.append(i)
-                    else:
-                        if len(current_group) >= 2:
-                            consecutive_groups.append(current_group[:])
-                        current_group = [i]
-                elif current_group:
-                    if len(current_group) >= 2:
-                        consecutive_groups.append(current_group[:])
-                    current_group = []
-            
-            if len(current_group) >= 2:
-                consecutive_groups.append(current_group)
-            
-            # Apply MASSIVE bonuses to consecutive groups
-            for group in consecutive_groups:
-                if len(group) >= 4:
-                    # 4+ consecutive - HUGE boost
-                    for bo in group:
-                        if bo in bo_map:
-                            p = bo_map[bo]
-                            if hasattr(p, 'optimization_score'):
-                                p.optimization_score *= 2.0  # Double!
-                                p.consecutive_stack = True
-                                boosted_count += 1
-                                self.logger.debug(f"CONSECUTIVE 4+: {p.name} (BO:{bo}) x2.0")
-                
-                elif len(group) == 3:
-                    # 3 consecutive - strong boost
-                    for bo in group:
-                        if bo in bo_map:
-                            p = bo_map[bo]
-                            if hasattr(p, 'optimization_score'):
-                                p.optimization_score *= 1.6
-                                p.consecutive_stack = True
-                                boosted_count += 1
-                                self.logger.debug(f"CONSECUTIVE 3: {p.name} (BO:{bo}) x1.6")
-                
-                elif len(group) == 2:
-                    # 2 consecutive - moderate boost
-                    for bo in group:
-                        if bo in bo_map:
-                            p = bo_map[bo]
-                            if hasattr(p, 'optimization_score'):
-                                p.optimization_score *= 1.3
-                                boosted_count += 1
-                                self.logger.debug(f"CONSECUTIVE 2: {p.name} (BO:{bo}) x1.3")
-            
-            # PENALIZE non-consecutive players on stackable teams
-            team_total = getattr(team_players[0], 'implied_team_score', 4.5) if team_players else 4.5
-            if team_total >= 5.0:  # High-scoring team
-                for p in team_players:
-                    if not getattr(p, 'consecutive_stack', False):
-                        if hasattr(p, 'optimization_score'):
-                            p.optimization_score *= 0.5  # Heavy penalty
-                            self.logger.debug(f"NON-CONSECUTIVE PENALTY: {p.name} x0.5")
-        
-        self.logger.info(f"Boosted {boosted_count} players for consecutive stacking")
+
+        logger.info("\n🎯 APPLYING GPP STACKING BONUSES (83.2% of winners use 4-5 stacks)")
+
+        # Analyze teams for stacking potential
+        team_analysis = {}
+        for p in players:
+            if p.primary_position not in ['P', 'SP', 'RP']:
+                if p.team not in team_analysis:
+                    team_analysis[p.team] = {
+                        'players': [],
+                        'total_proj': 0,
+                        'batting_orders': [],
+                        'team_total': getattr(p, 'implied_team_score', 4.5)
+                    }
+
+                team_analysis[p.team]['players'].append(p)
+                team_analysis[p.team]['total_proj'] += p.base_projection
+
+                if hasattr(p, 'batting_order') and p.batting_order:
+                    team_analysis[p.team]['batting_orders'].append(p.batting_order)
+
+        # Score teams for stacking
+        stack_candidates = []
+        for team, data in team_analysis.items():
+            if len(data['players']) >= 4:  # Need at least 4 for a stack
+                # Calculate stack score
+                top_5_avg = sum(sorted([p.base_projection for p in data['players']], reverse=True)[:5]) / 5
+
+                # Bonus for consecutive batting orders (highest correlation)
+                consecutive_bonus = 0
+                if data['batting_orders']:
+                    sorted_orders = sorted(data['batting_orders'])
+                    for i in range(len(sorted_orders) - 1):
+                        if sorted_orders[i + 1] - sorted_orders[i] == 1:
+                            consecutive_bonus += 0.2  # 20% bonus per consecutive pair
+
+                # Team total bonus (5+ runs is elite)
+                total_bonus = 1.0
+                if data['team_total'] >= 5.5:
+                    total_bonus = 1.5
+                elif data['team_total'] >= 5.0:
+                    total_bonus = 1.3
+                elif data['team_total'] >= 4.5:
+                    total_bonus = 1.15
+
+                stack_score = top_5_avg * total_bonus * (1 + consecutive_bonus)
+                stack_candidates.append((team, stack_score, len(data['players'])))
+
+        # Sort by stack score
+        stack_candidates.sort(key=lambda x: x[1], reverse=True)
+
+        if stack_candidates:
+            # Apply bonuses to top 3 stacking teams
+            for rank, (team, score, count) in enumerate(stack_candidates[:3]):
+                if rank == 0:
+                    # Primary stack - aim for 5 players (56.7% of winners)
+                    multiplier = 2.0
+                    logger.info(f"  Primary stack: {team} ({count} players) - 2.0x boost")
+                elif rank == 1:
+                    # Secondary stack option
+                    multiplier = 1.5
+                    logger.info(f"  Secondary: {team} ({count} players) - 1.5x boost")
+                else:
+                    multiplier = 1.25
+                    logger.info(f"  Tertiary: {team} ({count} players) - 1.25x boost")
+
+                # Apply bonuses with batting order consideration
+                for p in team_analysis[team]['players']:
+                    old_score = p.optimization_score
+
+                    # Extra bonus for consecutive lineup spots (1-2-3-4-5)
+                    order_bonus = 1.0
+                    if hasattr(p, 'batting_order') and p.batting_order:
+                        if 1 <= p.batting_order <= 5:
+                            order_bonus = 1.2  # Top 5 hitters
+                        elif p.batting_order >= 7:
+                            order_bonus = 0.9  # Discount bottom of order
+
+                    p.optimization_score = p.base_projection * multiplier * order_bonus
+
+                    logger.debug(f"    {p.name}: {old_score:.1f} -> {p.optimization_score:.1f}")
+
 
     def _load_park_factors(self) -> Dict[str, float]:
         """Load park factors for teams"""
@@ -700,45 +717,61 @@ class UnifiedMILPOptimizer:
         logger.info(f"PERFORMANCE: Reduced to {len(filtered)} players")
         return filtered
 
-    def calculate_player_scores(self, players: List) -> List:
-        """
-        Calculate scores for all players.
-        Uses contest-specific scores from enhanced scoring engine.
-        """
+    def calculate_player_scores(self, players):
+        """Calculate optimization scores based on strategy"""
+        # Get contest type
         contest_type = getattr(self.config, 'contest_type', 'gpp')
-        logger.info(f"DEBUG: calculate_player_scores - contest_type = {contest_type}")
-        
-        for player in players:
-            # Use contest-specific scores!
-            if contest_type.lower() == 'cash' and hasattr(player, 'cash_score'):
-                logger.info(f"DEBUG: Using cash_score for {player.name}: {player.cash_score}")
-                player.optimization_score = player.cash_score
-            elif contest_type.lower() == 'gpp' and hasattr(player, 'gpp_score'):
-                logger.info(f"DEBUG: Using gpp_score for {player.name}: {player.gpp_score}")
-                player.optimization_score = player.gpp_score
-            elif hasattr(player, 'enhanced_score'):
-                # Fallback to enhanced_score
-                player.optimization_score = player.enhanced_score
-            else:
-                # No score available
-                player.optimization_score = 0
-                logger.warning(f"No valid score for {player.name}")
 
-        # Apply correlation bonuses for stacking
-        self.apply_correlation_bonuses(players)
-        # Apply correlation bonuses for stacking
-        self.apply_correlation_bonuses(players)
-        return players
+        if contest_type == 'cash':
+            # CASH: Focus on floor and consistency
+            for player in players:
+                if player.primary_position in ['P', 'SP', 'RP']:
+                    # Pitchers: K-rate and win probability
+                    score = player.base_projection
 
-    def pre_calculate_correlation_bonuses(self, players: List) -> List:
-        """Pre-calculate correlation adjustments for optimization"""
-        # This is where correlation logic would go
-        # For now, just copy enhanced_score to optimization_score
-        for player in players:
-            player.optimization_score = getattr(player, 'enhanced_score', 0)
+                    # K-rate bonus
+                    if hasattr(player, 'k_rate'):
+                        if player.k_rate >= 25:
+                            score *= 1.2
+                        elif player.k_rate < 20:
+                            score *= 0.9
 
-        # Apply correlation bonuses for stacking
-        self.apply_correlation_bonuses(players)
+                    # Win probability
+                    if hasattr(player, 'win_odds'):
+                        if player.win_odds >= 0.6:
+                            score *= 1.15
+
+                    # Use floor for cash games
+                    if hasattr(player, 'floor'):
+                        score = player.floor * 0.7 + score * 0.3
+
+                    player.optimization_score = score
+                else:
+                    # Hitters: Consistency and batting order
+                    score = player.base_projection
+
+                    # Batting order bonus
+                    if hasattr(player, 'batting_order') and player.batting_order:
+                        if player.batting_order <= 3:
+                            score *= 1.2
+                        elif player.batting_order <= 5:
+                            score *= 1.1
+                        elif player.batting_order >= 7:
+                            score *= 0.85
+
+                    # Consistency bonus
+                    if hasattr(player, 'consistency_score'):
+                        score *= (0.8 + player.consistency_score * 0.4)
+
+                    player.optimization_score = score
+        else:
+            # GPP: Start with base projections
+            for player in players:
+                player.optimization_score = getattr(player, 'enhanced_score', player.base_projection)
+
+            # Apply correlation bonuses for stacking
+            self.apply_correlation_bonuses(players)
+
         return players
 
     def optimize_lineup(self,
@@ -827,7 +860,7 @@ class UnifiedMILPOptimizer:
 
     def _run_milp_optimization(self, players: List, contest_type: str = "gpp") -> Tuple[List, float]:
         """
-        SIMPLIFIED WORKING VERSION - Focuses on what matters
+        SIMPLIFIED WORKING VERSION - with proper multi-position handling
         """
         if not players:
             logger.error("No players to optimize")
@@ -841,7 +874,7 @@ class UnifiedMILPOptimizer:
         # Create optimization problem
         prob = pulp.LpProblem("DFS_Optimizer", pulp.LpMaximize)
 
-        # Decision variables
+        # Decision variables for players
         player_vars = pulp.LpVariable.dicts(
             "players",
             range(len(players)),
@@ -855,7 +888,7 @@ class UnifiedMILPOptimizer:
         ])
 
         # ============================================
-        # BASIC CONSTRAINTS (These are REQUIRED)
+        # BASIC CONSTRAINTS
         # ============================================
 
         # 1. Salary constraint
@@ -864,7 +897,6 @@ class UnifiedMILPOptimizer:
             for i in range(len(players))
         ]) <= self.config.salary_cap, "max_salary"
 
-        # Minimum salary (use 90% for flexibility)
         prob += pulp.lpSum([
             players[i].salary * player_vars[i]
             for i in range(len(players))
@@ -873,147 +905,118 @@ class UnifiedMILPOptimizer:
         # 2. Roster size = 10 players
         prob += pulp.lpSum(player_vars.values()) == 10, "roster_size"
 
-        # 3. Position requirements (SIMPLIFIED)
-        # Group players by position
-        position_groups = {
-            'P': [],
-            'C': [],
-            '1B': [],
-            '2B': [],
-            '3B': [],
-            'SS': [],
-            'OF': []
+        # 3. Position requirements - NEW APPROACH FOR MULTI-POSITION
+
+        # First, identify single-position and multi-position players
+        single_position_players = {
+            'P': [], 'C': [], '1B': [], '2B': [],
+            '3B': [], 'SS': [], 'OF': []
         }
 
+        multi_position_players = []  # List of (player_index, [positions])
+
         for i, player in enumerate(players):
-            # Get player position
-            pos = getattr(player, 'primary_position', player.position)
+            positions_str = player.position
 
             # Normalize pitcher positions
-            if pos in ['SP', 'RP', 'P']:
-                pos = 'P'
+            if positions_str in ['SP', 'RP', 'P']:
+                positions_str = 'P'
 
-            # Handle multi-position eligibility
-            if '/' in player.position:
-                # Add to all eligible positions
-                for p in player.position.split('/'):
-                    if p in ['SP', 'RP']:
-                        p = 'P'
-                    if p in position_groups:
-                        position_groups[p].append(i)
+            if '/' in positions_str:
+                # Multi-position player
+                positions = []
+                for pos in positions_str.split('/'):
+                    if pos in ['SP', 'RP']:
+                        pos = 'P'
+                    if pos in single_position_players:
+                        positions.append(pos)
+                multi_position_players.append((i, positions))
+                print(f"DEBUG: Player {i} ({player.name}) is multi-position: {positions}")
             else:
-                # Single position
-                if pos in position_groups:
-                    position_groups[pos].append(i)
+                # Single position player
+                pos = positions_str
+                if pos in ['SP', 'RP']:
+                    pos = 'P'
+                if pos in single_position_players:
+                    single_position_players[pos].append(i)
 
-        # Add position constraints
-        prob += pulp.lpSum([player_vars[i] for i in position_groups['P']]) == 2, "exactly_2_P"
-        prob += pulp.lpSum([player_vars[i] for i in position_groups['C']]) >= 1, "min_1_C"
-        prob += pulp.lpSum([player_vars[i] for i in position_groups['1B']]) >= 1, "min_1_1B"
-        prob += pulp.lpSum([player_vars[i] for i in position_groups['2B']]) >= 1, "min_1_2B"
-        prob += pulp.lpSum([player_vars[i] for i in position_groups['3B']]) >= 1, "min_1_3B"
-        prob += pulp.lpSum([player_vars[i] for i in position_groups['SS']]) >= 1, "min_1_SS"
-        prob += pulp.lpSum([player_vars[i] for i in position_groups['OF']]) >= 3, "min_3_OF"
+        print(f"DEBUG: Single position players: {[(k, len(v)) for k, v in single_position_players.items()]}")
+        print(f"DEBUG: Multi-position players: {len(multi_position_players)}")
 
-        # ============================================
-        # STACKING CONSTRAINTS (SIMPLIFIED VERSION)
-        # ============================================
+        # Create position assignment variables for multi-position players
+        position_assignments = {}
+        for player_idx, positions in multi_position_players:
+            for pos in positions:
+                var_name = f"assign_{player_idx}_to_{pos}"
+                position_assignments[var_name] = pulp.LpVariable(var_name, cat="Binary")
+                print(f"DEBUG: Created variable {var_name}")
 
-        # Group players by team
-        teams = {}
-        for i, player in enumerate(players):
-            if player.team not in teams:
-                teams[player.team] = []
-            teams[player.team].append(i)
+        # Constraint: Multi-position player can only be assigned to one position
+        for player_idx, positions in multi_position_players:
+            assignment_vars = []
+            for pos in positions:
+                var_name = f"assign_{player_idx}_to_{pos}"
+                assignment_vars.append(position_assignments[var_name])
 
-        if contest_type.lower() == "gpp":
-            # GPP: ENCOURAGE stacking without making it impossible
+            # If player is selected, they must be assigned to exactly one position
+            # If not selected, they can't be assigned to any position
+            prob += pulp.lpSum(assignment_vars) == player_vars[player_idx], f"one_position_for_player_{player_idx}"
 
-            # Find hitters by team
-            team_hitters = {}
-            for team, indices in teams.items():
-                hitters = []
-                for i in indices:
-                    pos = getattr(players[i], 'primary_position', players[i].position)
-                    if pos not in ['P', 'SP', 'RP']:
-                        hitters.append(i)
+        # Position requirements
+        requirements = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
 
-                if len(hitters) >= 4:  # Team CAN be stacked
-                    team_hitters[team] = hitters
+        for pos, required in requirements.items():
+            # Count players for this position
+            position_sum = []
 
-            if team_hitters:
-                logger.info(f"GPP: {len(team_hitters)} teams available for stacking")
+            # Add single-position players
+            for player_idx in single_position_players[pos]:
+                position_sum.append(player_vars[player_idx])
 
-                # SIMPLE APPROACH: Just limit teams to either 0-1 or 4-5 players
-                # This naturally encourages stacking
-                for team, hitter_indices in team_hitters.items():
-                    # Max 5 from any team
-                    prob += pulp.lpSum([player_vars[i] for i in hitter_indices]) <= 5, f"max_5_{team}"
+            # Add multi-position players who can fill this position
+            for player_idx, positions in multi_position_players:
+                if pos in positions:
+                    var_name = f"assign_{player_idx}_to_{pos}"
+                    position_sum.append(position_assignments[var_name])
 
-                # For non-stackable teams, limit to 2
-                for team, indices in teams.items():
-                    if team not in team_hitters:
-                        hitters = [i for i in indices if
-                                   getattr(players[i], 'primary_position', players[i].position) not in ['P', 'SP',
-                                                                                                        'RP']]
-                        if hitters:
-                            prob += pulp.lpSum([player_vars[i] for i in hitters]) <= 2, f"limit_{team}"
+            # Must have exactly the required number
+            if position_sum:  # Only add constraint if there are players for this position
+                prob += pulp.lpSum(position_sum) == required, f"exactly_{required}_{pos}"
+                print(f"DEBUG: Added constraint for {pos}: need {required}, have {len(position_sum)} eligible")
 
-            else:
-                logger.warning("No teams have 4+ hitters for stacking")
-                # Just limit all teams to 4
-                for team, indices in teams.items():
-                    hitters = [i for i in indices if
-                               getattr(players[i], 'primary_position', players[i].position) not in ['P', 'SP', 'RP']]
-                    if hitters:
-                        prob += pulp.lpSum([player_vars[i] for i in hitters]) <= 4, f"max_4_{team}"
+        # Each player can only be selected once (already handled by Binary variables)
 
-        else:  # CASH
-            # Cash: Conservative, max 3 per team
-            for team, indices in teams.items():
-                hitters = [i for i in indices if
-                           getattr(players[i], 'primary_position', players[i].position) not in ['P', 'SP', 'RP']]
-                if hitters:
-                    prob += pulp.lpSum([player_vars[i] for i in hitters]) <= 3, f"max_3_{team}"
-
-        # 4. Pitcher-Hitter Anti-Correlation (SIMPLIFIED)
-        # Don't stack against your own pitchers
-        for i, player in enumerate(players):
-            pos = getattr(player, 'primary_position', player.position)
-            if pos in ['P', 'SP', 'RP']:
-                # Find opposing team hitters
-                opp_team = getattr(player, 'opponent', None)
-                if opp_team:
-                    opp_hitters = []
-                    for j, h in enumerate(players):
-                        if h.team == opp_team and getattr(h, 'primary_position', h.position) not in ['P', 'SP', 'RP']:
-                            opp_hitters.append(j)
-
-                    if opp_hitters:
-                        # If we select this pitcher, limit opposing hitters to 1 max
-                        max_opp = 0 if contest_type == 'cash' else 1
-                        for h_idx in opp_hitters:
-                            prob += player_vars[i] + player_vars[h_idx] <= 1 + max_opp, f"anti_corr_{i}_{h_idx}"
-
-        # 5. Manual selections
-        for i, player in enumerate(players):
-            if getattr(player, 'is_manual_selected', False):
-                prob += player_vars[i] == 1, f"force_{player.name}"
-
-        # ============================================
-        # SOLVE
-        # ============================================
+        print("DEBUG: About to solve")
 
         try:
             # Solve with timeout
             solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=10)
             prob.solve(solver)
 
+            print(f"DEBUG: Solver returned status: {prob.status} = {pulp.LpStatus[prob.status]}")
+
             if prob.status == pulp.LpStatusOptimal:
+                print("DEBUG: Solution is optimal, building lineup")
                 lineup = []
                 for i in range(len(players)):
                     if player_vars[i].varValue == 1:
                         lineup.append(players[i])
+
+                        # Check position assignment for multi-position players
+                        is_multi = False
+                        for player_idx, positions in multi_position_players:
+                            if player_idx == i:
+                                is_multi = True
+                                for pos in positions:
+                                    var_name = f"assign_{player_idx}_to_{pos}"
+                                    if position_assignments[var_name].varValue == 1:
+                                        print(f"  Player {i} ({players[i].name}) assigned to {pos}")
+                                break
+
+                        if not is_multi:
+                            print(f"  Player {i} ({players[i].name}) at {players[i].position}")
+
+                print(f"DEBUG: Built lineup with {len(lineup)} players")
 
                 if len(lineup) != 10:
                     logger.error(f"Invalid lineup size: {len(lineup)}")
@@ -1022,72 +1025,18 @@ class UnifiedMILPOptimizer:
                 total_score = sum(getattr(p, 'optimization_score', 0) for p in lineup)
                 total_salary = sum(p.salary for p in lineup)
 
-                # Log the lineup
-                logger.info(f"\n{'=' * 60}")
-                logger.info(f"LINEUP FOUND - Score: {total_score:.1f}, Salary: ${total_salary}")
-                logger.info(f"{'=' * 60}")
-
-                # Stack analysis
-                team_counts = {}
-                for p in lineup:
-                    pos = getattr(p, 'primary_position', p.position)
-                    if pos not in ['P', 'SP', 'RP']:
-                        team_counts[p.team] = team_counts.get(p.team, 0) + 1
-
-                max_stack = max(team_counts.values()) if team_counts else 0
-
-                logger.info(f"📊 STACK ANALYSIS:")
-                logger.info(f"   Contest: {contest_type.upper()}")
-                logger.info(f"   Max Stack: {max_stack} players")
-                logger.info(f"   Teams: {team_counts}")
-
-                # Display lineup
-                for p in lineup:
-                    pos = getattr(p, 'primary_position', p.position)
-                    stack_flag = ""
-                    if pos not in ['P', 'SP', 'RP'] and p.team in team_counts and team_counts[p.team] >= 4:
-                        stack_flag = " ⭐"
-                    logger.info(f"   {pos}: {p.name} ({p.team}) - ${p.salary}{stack_flag}")
-
-                if contest_type.lower() == 'gpp':
-                    if max_stack >= 4:
-                        logger.info(f"\n🎯 SUCCESS! {max_stack}-player stack!")
-                    else:
-                        logger.warning(f"\n⚠️ Only {max_stack}-player stack (need 4+)")
+                logger.info(f"✅ LINEUP FOUND - Score: {total_score:.1f}, Salary: ${total_salary}")
 
                 return lineup, total_score
 
             else:
-                logger.error(f"Optimization failed: {pulp.LpStatus[prob.status]}")
-
-                # Debug why it failed
-                if prob.status == pulp.LpStatusInfeasible:
-                    logger.error("Problem is INFEASIBLE - constraints conflict")
-
-                    # Check basic feasibility
-                    total_min_salary = 0
-                    pos_counts = {}
-
-                    for p in players:
-                        pos = getattr(p, 'primary_position', p.position)
-                        if pos in ['SP', 'RP']:
-                            pos = 'P'
-                        pos_counts[pos] = pos_counts.get(pos, 0) + 1
-
-                    logger.error(f"Position availability: {pos_counts}")
-
-                    # Check if we have minimum positions
-                    min_reqs = {'P': 2, 'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3}
-                    for pos, req in min_reqs.items():
-                        if pos_counts.get(pos, 0) < req:
-                            logger.error(f"  ❌ Not enough {pos}: have {pos_counts.get(pos, 0)}, need {req}")
-
+                print(f"DEBUG: Solver failed with status {prob.status}")
                 return [], 0
 
         except Exception as e:
-            logger.error(f"MILP error: {str(e)}")
+            print(f"DEBUG: EXCEPTION: {e}")
             import traceback
-            logger.error(traceback.format_exc())
+            traceback.print_exc()
             return [], 0
 
     def get_position_requirements(self, players):

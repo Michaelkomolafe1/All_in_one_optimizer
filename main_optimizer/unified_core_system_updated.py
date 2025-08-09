@@ -46,7 +46,7 @@ except ImportError:
     SmartConfirmationSystem = None
 
 try:
-    from vegas_lines import VegasLines
+    from main_optimizer.vegas_lines import VegasLines
     VEGAS_AVAILABLE = True
     logger.info("✅ Vegas lines initialized")
 except ImportError:
