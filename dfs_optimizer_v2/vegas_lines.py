@@ -12,6 +12,8 @@ from typing import Dict
 logger = logging.getLogger(__name__)
 
 
+
+
 class VegasLines:
     """Real Vegas lines from The Odds API"""
 
@@ -53,6 +55,22 @@ class VegasLines:
         except Exception as e:
             logger.error(f"Vegas fetch error: {e}")
             self.set_defaults()
+
+    def get_all_lines(self) -> dict:
+        """Get all Vegas lines - compatibility method for data pipeline"""
+        # Make sure we have cache
+        if not hasattr(self, 'cache'):
+            self.cache = {}
+
+        # If cache is empty, try to populate with defaults
+        if not self.cache:
+            try:
+                self.fetch_all_lines()
+            except:
+                # If fetch fails, set basic defaults
+                self.set_defaults()
+
+        return self.cache
 
     def process_games(self, games):
         """Process API response into team totals"""

@@ -355,7 +355,20 @@ class UniversalSmartConfirmation:
                     return True
 
         return False
-        return False
+
+    def get_batting_order(self, player_name: str, team: str = None) -> Optional[int]:
+        """Get batting order for a player"""
+        if not team:
+            return None
+
+        # Use existing is_player_confirmed method which returns (confirmed, order)
+        confirmed, order = self.is_player_confirmed(player_name, team)
+
+        if confirmed and order:
+            return order
+
+        return None
+
 
     def _names_match(self, name1: str, name2: str) -> bool:
         """Fuzzy name matching"""

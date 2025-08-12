@@ -212,6 +212,65 @@ class DFSPipeline:
         logger.info(f"Player pool: {len(self.player_pool)} players")
         return len(self.player_pool)
 
+    def fetch_confirmations(self) -> int:
+        """Fetch and apply MLB confirmations - ONLY MARK ACTUAL STARTERS"""
+
+        if not self.all_players:
+            logger.error("No players loaded")
+            return 0
+
+        try:
+            from smart_confirmation import UniversalSmartConfirmation
+
+            # Show CSV teams for debugging
+            csv_teams = set()
+            for player in self.all_players:
+                csv_teams.add(player.team)
+            logger.info(f"Your CSV teams: {sorted(csv_teams)}")
+
+            # Create confirmation system with CSV filtering
+            confirmations = UniversalSmartConfirmation(
+                csv_players=self.all_players,
+                verbose=True
+            )
+
+            lineup_count, pitcher_count = confirmations.get_all_confirmations()
+            logger.info(f"MLB API found {lineup_count} lineup players, {pitcher_count} pitchers")
+
+            # Filter to ONLY actual confirmed starters
+            confirmed = 0
+            confirmed_players = []
+
+            for player in self.all_players:
+                # CRITICAL: Proper tuple unpacking
+                is_confirmed, batting_order = confirmations.is_player_confirmed(player.name, player.team)
+
+                if is_confirmed:
+                    player.confirmed = True
+                    confirmed += 1
+                    confirmed_players.append(f"{player.name} ({player.team})")
+
+                    # Set batting order for hitters
+                    if player.position not in ['P', 'SP', 'RP'] and batting_order:
+                        player.batting_order = batting_order
+                else:
+                    player.confirmed = False
+
+            logger.info(f"RESULT: {confirmed}/{len(self.all_players)} CSV players are confirmed starters")
+
+            if confirmed > 0:
+                logger.info("First 10 confirmed players:")
+                for player_info in confirmed_players[:10]:
+                    logger.info(f"  ✅ {player_info}")
+
+            return confirmed
+
+        except Exception as e:
+            logger.error(f"Failed to fetch confirmations: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return 0
+
     def _find_player(self, name: str) -> Optional[Player]:
         """Find player by name"""
 
@@ -297,10 +356,10 @@ class DFSPipeline:
                     player.confirmed = True
                     stats['confirmed'] += 1
 
-                    # Get batting order for hitters
+                    # Get batting order
                     if player.position not in ['P', 'SP', 'RP']:
-                        order = confirmations.get_batting_order(player.name, player.team)
-                        if order and order > 0:
+                        confirmed, order = confirmations.is_player_confirmed(player.name, player.team)
+                        if confirmed and order:
                             player.batting_order = order
                             stats['batting_order'] += 1
                         else:
@@ -341,342 +400,22 @@ class DFSPipeline:
 
             # 5. PITCHER-SPECIFIC STATS
             if player.position in ['P', 'SP', 'RP']:
-                if enricher:
-                    try:
-                        pitcher_stats = enricher.get_pitcher_stats(player.name)
-                        if pitcher_stats:
-                            player.k_rate = pitcher_stats.get('k_per_9', 8.0)
-                            player.whip = pitcher_stats.get('whip', 1.25)
-                            player.era = pitcher_stats.get('era', 4.00)
-                    except:
-                        player.k_rate = 8.0  # Default
-                else:
-                    # Estimate K-rate from salary (higher salary = better pitcher)
-                    player.k_rate = 6.0 + (player.salary / 2000)  # 6-11 range
-
-            # 6. STRATEGY-SPECIFIC ENRICHMENTS
-
-            # Cash: Focus on consistency and floor
-            if contest_type == 'cash':
-                # Ensure consistency score exists
-                if not hasattr(player, 'consistency_score'):
-                    # Estimate from salary and projection
-                    player.consistency_score = min(90, 40 + (player.salary / 200))
-
-                # Recent form (default to neutral if not available)
-                if not hasattr(player, 'recent_form'):
-                    player.recent_form = 1.0
-
-            # GPP: Ensure ownership exists
-            elif contest_type == 'gpp':
-                if not hasattr(player, 'ownership_projection'):
-                    # Estimate ownership from salary and projection
-                    # High salary + high projection = higher ownership
-                    value = player.projection / (player.salary / 1000) if player.salary > 0 else 2.0
-
-                    if value > 4.0:  # Great value
-                        player.ownership_projection = 25.0
-                    elif value > 3.0:  # Good value
-                        player.ownership_projection = 15.0
-                    else:
-                        player.ownership_projection = 8.0
-
-        # Log enrichment results
-        logger.info(f"Enrichment complete: {stats}")
-
-        # Log sample enriched player for debugging
-        if self.player_pool:
-            sample = self.player_pool[0]
-            logger.debug(f"Sample enriched player: {sample.name}")
-            logger.debug(f"  Team Score: {getattr(sample, 'implied_team_score', 'N/A')}")
-            logger.debug(f"  Batting Order: {getattr(sample, 'batting_order', 'N/A')}")
-            logger.debug(f"  Ownership: {getattr(sample, 'ownership_projection', 'N/A')}")
-            logger.debug(f"  Confirmed: {getattr(sample, 'confirmed', False)}")
-
-        return stats
-
-    def fetch_confirmations(self) -> int:
-        """Fetch and apply MLB confirmations"""
-
-        if not self.all_players:
-            logger.error("No players loaded")
-            return 0
-
-        try:
-            from smart_confirmation import UniversalSmartConfirmation
-
-            confirmations = UniversalSmartConfirmation(
-                csv_players=self.all_players,
-                verbose=False
-            )
-
-            lineup_count, pitcher_count = confirmations.get_all_confirmations()
-
-            # Mark confirmed players
-            confirmed = 0
-            for player in self.all_players:
-                if confirmations.is_player_confirmed(player.name, player.team):
-                    player.confirmed = True
-                    confirmed += 1
-
-                    # Get batting order
-                    if player.position not in ['P', 'SP', 'RP']:
-                        order = confirmations.get_batting_order(player.name, player.team)
-                        if order:
-                            player.batting_order = order
-
-            logger.info(f"Confirmed {confirmed} players ({lineup_count} hitters, {pitcher_count} pitchers)")
-            return confirmed
-
-        except Exception as e:
-            logger.error(f"Failed to fetch confirmations: {e}")
-            return 0
-
-    def update_player_pool_confirmations(self):
-        """Update confirmations for players in pool"""
-
-        confirmed = 0
-        for player in self.player_pool:
-            if getattr(player, 'confirmed', False):
-                confirmed += 1
-
-        logger.info(f"Pool has {confirmed}/{len(self.player_pool)} confirmed players")
-        return confirmed
-
-    # =========================================
-    # STEP 4: SCORE PLAYERS
-    # =========================================
-
-    def score_players(self, contest_type: str) -> int:
-        """Score all players in pool"""
-
-        if not self.player_pool:
-            logger.error("No players to score")
-            return 0
-
-        logger.info(f"Scoring {len(self.player_pool)} players for {contest_type}")
-
-        # Score all players
-        self.scorer.score_all_players(self.player_pool, contest_type)
-
-        return len(self.player_pool)
-
-    # =========================================
-    # STEP 5: APPLY STRATEGY
-    # =========================================
-
-    def apply_strategy(self, strategy: str = None, contest_type: str = 'gpp') -> str:
-        """Apply strategy to player pool"""
-
-        # Auto-select if not specified
-        if not strategy:
-            strategy, reason = self.strategy_manager.auto_select_strategy(
-                self.num_games, contest_type
-            )
-            logger.info(f"Auto-selected: {reason}")
-
-        # Apply strategy adjustments
-        self.player_pool = self.strategy_manager.apply_strategy(
-            self.player_pool, strategy
-        )
-
-        logger.info(f"Applied strategy: {strategy}")
-        return strategy
-
-    # =========================================
-    # STEP 6: OPTIMIZE
-    # =========================================
-
-    def optimize_lineups(self,
-                         contest_type: str = 'gpp',
-                         num_lineups: int = 1) -> List[Dict]:
-        """Generate optimized lineups"""
-
-        if not self.player_pool:
-            logger.error("No players to optimize")
-            return []
-
-        logger.info(f"Optimizing {num_lineups} {contest_type} lineups")
-
-        # Run optimization
-        self.lineups = self.optimizer.optimize(
-            self.player_pool,
-            contest_type,
-            num_lineups
-        )
-
-        # Add metadata
-        for lineup in self.lineups:
-            lineup['contest_type'] = contest_type
-            lineup['slate_size'] = self.slate_size
-            lineup['num_games'] = self.num_games
-            lineup['timestamp'] = datetime.now().isoformat()
-
-        logger.info(f"Generated {len(self.lineups)} lineups")
-        return self.lineups
-
-    # =========================================
-    # STEP 7: EXPORT
-    # =========================================
-
-    def export_lineups(self, filepath: str = None) -> bool:
-        """Export lineups to DraftKings CSV format"""
-
-        if not self.lineups:
-            logger.error("No lineups to export")
-            return False
-
-        if not filepath:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filepath = f"{self.config.EXPORT_DIR}/lineups_{timestamp}.csv"
-
-        # Create export directory if needed
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-
-        logger.info(f"Exporting {len(self.lineups)} lineups to {filepath}")
-
-        try:
-            with open(filepath, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=self.config.DK_POSITIONS)
-                writer.writeheader()
-
-                for lineup in self.lineups:
-                    row = self._format_lineup_for_dk(lineup)
-                    writer.writerow(row)
-
-            logger.info(f"Export complete: {filepath}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Export error: {e}")
-            return False
-
-    def _format_lineup_for_dk(self, lineup: Dict) -> Dict:
-        """Format lineup for DraftKings CSV"""
-
-        row = {}
-        players = lineup['players']
-
-        # Group by position
-        positions = {
-            'P': [], 'C': [], '1B': [], '2B': [],
-            '3B': [], 'SS': [], 'OF': []
-        }
-
-        for player in players:
-            pos = player.position  # NOT player['position']
-            if pos in ['SP', 'RP']:
-                pos = 'P'
-            if pos in positions:
-                positions[pos].append(player.name)  # NOT player['name']
-
-        # Fill DK positions
-        row['P1'] = positions['P'][0] if len(positions['P']) > 0 else ''
-        row['P2'] = positions['P'][1] if len(positions['P']) > 1 else ''
-        row['C'] = positions['C'][0] if positions['C'] else ''
-        row['1B'] = positions['1B'][0] if positions['1B'] else ''
-        row['2B'] = positions['2B'][0] if positions['2B'] else ''
-        row['3B'] = positions['3B'][0] if positions['3B'] else ''
-        row['SS'] = positions['SS'][0] if positions['SS'] else ''
-        row['OF1'] = positions['OF'][0] if len(positions['OF']) > 0 else ''
-        row['OF2'] = positions['OF'][1] if len(positions['OF']) > 1 else ''
-        row['OF3'] = positions['OF'][2] if len(positions['OF']) > 2 else ''
-
-        return row
-
-    # =========================================
-    # COMPLETE WORKFLOW
-    # =========================================
-
-    def run_complete_optimization(self,
-                                  csv_path: str,
-                                  contest_type: str = 'gpp',
-                                  num_lineups: int = 20,
-                                  confirmed_only: bool = False,
-                                  manual_selections: List[str] = None) -> List[Dict]:
-        """Run the complete optimization pipeline"""
-
-        logger.info("=" * 60)
-        logger.info("STARTING COMPLETE OPTIMIZATION")
-        logger.info("=" * 60)
-
-        # 1. Load CSV
-        if not self.load_csv(csv_path):
-            return []
-
-        # 2. Build pool
-        if not self.build_player_pool(confirmed_only, manual_selections):
-            return []
-
-        # 3. Auto-select strategy
-        strategy = self.apply_strategy(contest_type=contest_type)
-
-        # 4. Enrich data
-        self.enrich_players(strategy, contest_type)
-
-        # 5. Score players
-        self.score_players(contest_type)
-
-        # 6. Optimize
-        lineups = self.optimize_lineups(contest_type, num_lineups)
-
-        # 7. Log results
-        if lineups:
-            logger.info("=" * 60)
-            logger.info("OPTIMIZATION COMPLETE")
-            logger.info(f"Generated {len(lineups)} lineups")
-
-            for i, lineup in enumerate(lineups[:3]):  # Show first 3
-                logger.info(f"\nLineup {i + 1}:")
-                logger.info(f"  Salary: ${lineup['salary']:,}")
-                logger.info(f"  Projection: {lineup['projection']:.1f}")
-                logger.info(f"  Max Stack: {lineup['max_stack']} players")
-
-        return lineups
-
-
-# Test the complete system
-if __name__ == "__main__":
-    print("DFS Pipeline V2 Test")
-    print("=" * 60)
-
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(levelname)s: %(message)s'
-    )
-
-    # Create pipeline
-    pipeline = DFSPipeline()
-
-    # Create test CSV
-    test_csv = "test_slate.csv"
-    with open(test_csv, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(['Name', 'Position', 'Team', 'Salary', 'Game Info', 'AvgPointsPerGame'])
-
-        # Add test players
-        writer.writerow(['Gerrit Cole', 'P', 'NYY', '9000', 'NYY@BOS', '45'])
-        writer.writerow(['Shane Bieber', 'P', 'CLE', '8500', 'CLE@DET', '42'])
-        writer.writerow(['Tyler Glasnow', 'P', 'TB', '8000', 'TB@TOR', '40'])
-        writer.writerow(['Mike Trout', 'OF', 'LAA', '6000', 'LAA@HOU', '15'])
-        writer.writerow(['Aaron Judge', 'OF', 'NYY', '5800', 'NYY@BOS', '14'])
-        writer.writerow(['Ronald Acuna Jr.', 'OF', 'ATL', '5600', 'ATL@MIA', '13'])
-        # Add more players for complete lineup...
-
-    # Run optimization
-    lineups = pipeline.run_complete_optimization(
-        csv_path=test_csv,
-        contest_type='gpp',
-        num_lineups=3,
-        confirmed_only=False
-    )
-
-    if lineups:
-        print("\n✅ Pipeline working correctly!")
-        print(f"Generated {len(lineups)} lineups")
-    else:
-        print("\n❌ Pipeline failed")
-
-    # Clean up
-    os.remove(test_csv)
+                
+        # REAL DATA ENRICHMENTS - ENSURE BARREL RATE IS SET
+        if enricher:
+            try:
+                # Call the enricher for this player
+                enrichment_success = enricher.enrich_player(player)
+                if enrichment_success:
+                    stats['statcast'] += 1
+
+                # FORCE barrel rate if not set (backup)
+                if not hasattr(player, 'barrel_rate'):
+                    player.barrel_rate = 8.5  # Default value
+
+            except Exception as e:
+                # If enricher fails, set defaults
+                if not hasattr(player, 'barrel_rate'):
+                    player.barrel_rate = 8.5
+                if not hasattr(player, 'xwoba'):
+                    player.xwoba = 0.320
