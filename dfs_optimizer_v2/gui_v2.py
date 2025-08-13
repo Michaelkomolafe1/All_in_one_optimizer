@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-DFS OPTIMIZER GUI V2
-====================
-Clean, simple interface using the new components
+DFS OPTIMIZER GUI V2 - FIXED VERSION
+=====================================
+Fixed tuple handling and improved data source status
 """
 
 import sys
 import os
 from datetime import datetime
-from typing import List, Set
+from typing import List, Set, Tuple
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
+# gui_v2.py - TOP OF FILE
+from typing import List, Set, Tuple, Dict  # Add Dict here
 
 # Import our new clean components
 from data_pipeline_v2 import DFSPipeline
@@ -24,8 +26,9 @@ class DFSOptimizerGUI(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        # Initialize pipeline
+        # ✅ Restore this line
         self.pipeline = DFSPipeline()
+
         self.config = get_config()
 
         # State
@@ -61,70 +64,26 @@ class DFSOptimizerGUI(QMainWindow):
     def create_load_section(self) -> QGroupBox:
         """Section 1: Load CSV"""
 
-        group = QGroupBox("1. Load Data")
+        group = QGroupBox("1. Load CSV")
         layout = QHBoxLayout()
-
-        # CSV info
-        self.csv_label = QLabel("No CSV loaded")
-        self.csv_label.setMinimumWidth(300)
-        layout.addWidget(self.csv_label)
 
         # Load button
         self.load_btn = QPushButton("Load CSV")
         self.load_btn.clicked.connect(self.load_csv)
-        self.load_btn.setStyleSheet("font-weight: bold; padding: 5px 15px;")
         layout.addWidget(self.load_btn)
+
+        # CSV info
+        self.csv_label = QLabel("No file loaded")
+        layout.addWidget(self.csv_label)
 
         # Slate info
         self.slate_label = QLabel("")
-        self.slate_label.setStyleSheet("color: blue; font-weight: bold;")
+        self.slate_label.setStyleSheet("color: green; margin-left: 20px;")
         layout.addWidget(self.slate_label)
 
         layout.addStretch()
         group.setLayout(layout)
         return group
-
-    def fetch_confirmations(self):
-        """Fetch MLB confirmations"""
-
-        self.log("Fetching MLB confirmations...")
-        self.fetch_btn.setEnabled(False)
-        self.fetch_btn.setText("Fetching...")
-        QApplication.processEvents()
-
-        try:
-            confirmed = self.pipeline.fetch_confirmations()
-
-            if confirmed > 0:
-                self.log(f"✅ Found {confirmed} confirmed players")
-                # Update the confirmed label
-                self.confirmed_label.setText(f"({confirmed} confirmed)")
-                self.confirmed_label.setStyleSheet("color: green; margin-left: 5px; font-weight: bold;")
-
-                # Update pool if "confirmed only" is checked
-                if self.confirmed_cb.isChecked():
-                    self.update_pool_label()
-            else:
-                self.log("⚠️ No confirmations found (games may not have started)")
-                self.confirmed_label.setText("(0 confirmed)")
-
-        except Exception as e:
-            self.log(f"❌ Error fetching confirmations: {str(e)}")
-
-        finally:
-            self.fetch_btn.setEnabled(True)
-            self.fetch_btn.setText("Fetch Confirmations")
-
-    def on_confirmed_changed(self):
-        """Handle confirmed-only checkbox change"""
-
-        if self.csv_loaded:
-            self.update_pool_label()
-
-            if self.confirmed_cb.isChecked():
-                self.log("Showing confirmed players only")
-            else:
-                self.log("Showing all players")
 
     def create_settings_section(self) -> QGroupBox:
         """Section 2: Contest Settings"""
@@ -164,10 +123,10 @@ class DFSOptimizerGUI(QMainWindow):
         # Pool controls
         controls = QHBoxLayout()
 
-        # Fetch confirmations button (NEW!)
+        # Fetch confirmations button
         self.fetch_btn = QPushButton("Fetch Confirmations")
         self.fetch_btn.clicked.connect(self.fetch_confirmations)
-        self.fetch_btn.setEnabled(False)  # Will enable after CSV load
+        self.fetch_btn.setEnabled(False)
         self.fetch_btn.setStyleSheet("""
             QPushButton {
                 padding: 5px 10px;
@@ -183,6 +142,11 @@ class DFSOptimizerGUI(QMainWindow):
         """)
         controls.addWidget(self.fetch_btn)
 
+        # Data source status (NEW!)
+        self.data_status_label = QLabel("Data Sources: Not Connected")
+        self.data_status_label.setStyleSheet("color: gray; margin-left: 10px;")
+        controls.addWidget(self.data_status_label)
+
         # Separator
         separator = QLabel("|")
         separator.setStyleSheet("color: #ccc; margin: 0 10px;")
@@ -191,7 +155,7 @@ class DFSOptimizerGUI(QMainWindow):
         # Confirmed only checkbox
         self.confirmed_cb = QCheckBox("Confirmed Players Only")
         self.confirmed_cb.setChecked(False)
-        self.confirmed_cb.stateChanged.connect(self.on_confirmed_changed)  # NEW handler
+        self.confirmed_cb.stateChanged.connect(self.on_confirmed_changed)
         controls.addWidget(self.confirmed_cb)
 
         # Pool info
@@ -199,33 +163,33 @@ class DFSOptimizerGUI(QMainWindow):
         self.pool_label.setStyleSheet("font-weight: bold; margin-left: 20px;")
         controls.addWidget(self.pool_label)
 
-        # Confirmed count (NEW!)
-        self.confirmed_label = QLabel("(0 confirmed)")
+        # Confirmed count
+        self.confirmed_label = QLabel("")
         self.confirmed_label.setStyleSheet("color: green; margin-left: 5px;")
         controls.addWidget(self.confirmed_label)
 
         controls.addStretch()
         layout.addLayout(controls)
 
-        # Manual selections
+        # Manual selection
         manual_layout = QHBoxLayout()
         manual_layout.addWidget(QLabel("Manual:"))
 
         self.manual_input = QLineEdit()
-        self.manual_input.setPlaceholderText("Player name (optional)")
+        self.manual_input.setPlaceholderText("Enter player name")
         self.manual_input.returnPressed.connect(self.add_manual)
         manual_layout.addWidget(self.manual_input)
 
-        self.add_btn = QPushButton("Add")
-        self.add_btn.clicked.connect(self.add_manual)
-        manual_layout.addWidget(self.add_btn)
+        self.add_manual_btn = QPushButton("Add")
+        self.add_manual_btn.clicked.connect(self.add_manual)
+        manual_layout.addWidget(self.add_manual_btn)
 
         self.manual_label = QLabel("0 selected")
         manual_layout.addWidget(self.manual_label)
 
-        self.clear_btn = QPushButton("Clear")
-        self.clear_btn.clicked.connect(self.clear_manual)
-        manual_layout.addWidget(self.clear_btn)
+        self.clear_manual_btn = QPushButton("Clear")
+        self.clear_manual_btn.clicked.connect(self.clear_manual)
+        manual_layout.addWidget(self.clear_manual_btn)
 
         manual_layout.addStretch()
         layout.addLayout(manual_layout)
@@ -233,9 +197,8 @@ class DFSOptimizerGUI(QMainWindow):
         group.setLayout(layout)
         return group
 
-
     def create_optimize_section(self) -> QGroupBox:
-        """Section 4: Optimization"""
+        """Section 4: Optimize"""
 
         group = QGroupBox("4. Optimize")
         layout = QVBoxLayout()
@@ -248,22 +211,20 @@ class DFSOptimizerGUI(QMainWindow):
         self.optimize_btn.clicked.connect(self.run_optimization)
         self.optimize_btn.setStyleSheet("""
             QPushButton {
-                font-weight: bold;
-                font-size: 14px;
                 padding: 10px 30px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:enabled {
                 background-color: #4CAF50;
                 color: white;
-                border-radius: 5px;
             }
-            QPushButton:hover {
+            QPushButton:hover:enabled {
                 background-color: #45a049;
             }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
         """)
-        btn_layout.addStretch()
         btn_layout.addWidget(self.optimize_btn)
+
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
@@ -272,11 +233,10 @@ class DFSOptimizerGUI(QMainWindow):
         self.progress.setVisible(False)
         layout.addWidget(self.progress)
 
-        # Status
+        # Status log
         self.status_text = QTextEdit()
         self.status_text.setReadOnly(True)
         self.status_text.setMaximumHeight(100)
-        self.status_text.setFont(QFont("Courier", 9))
         layout.addWidget(self.status_text)
 
         group.setLayout(layout)
@@ -312,11 +272,11 @@ class DFSOptimizerGUI(QMainWindow):
         return group
 
     # =========================================
-    # EVENT HANDLERS
+    # EVENT HANDLERS - FIXED
     # =========================================
 
     def load_csv(self):
-        """Load CSV file"""
+        """Load CSV file - FIXED to handle tuple return"""
 
         filepath, _ = QFileDialog.getOpenFileName(
             self, "Load DraftKings CSV", "", "CSV Files (*.csv)"
@@ -328,18 +288,33 @@ class DFSOptimizerGUI(QMainWindow):
         self.log("Loading CSV...")
         QApplication.processEvents()
 
-        # Load CSV
-        count = self.pipeline.load_csv(filepath)
+        # Load CSV - FIX: Handle tuple return
+        result = self.pipeline.load_csv(filepath)
 
-        if count > 0:
+        # Check if result is tuple or int
+        if isinstance(result, tuple):
+            player_count, game_count = result
+        else:
+            player_count = result
+            game_count = self.pipeline.num_games
+
+        if player_count > 0:
             self.csv_loaded = True
             filename = os.path.basename(filepath)
-            self.csv_label.setText(f"{filename} ({count} players)")
+            self.csv_label.setText(f"{filename} ({player_count} players)")
 
             # Show slate info
-            games = self.pipeline.num_games
-            slate = self.pipeline.slate_size
-            self.slate_label.setText(f"{games} games ({slate} slate)")
+            self.slate_label.setText(f"{game_count} games")
+
+            # Detect slate size
+            if game_count <= 4:
+                slate_size = "small"
+            elif game_count <= 9:
+                slate_size = "medium"
+            else:
+                slate_size = "large"
+
+            self.pipeline.num_games = game_count
 
             # Update strategy label
             self.update_strategy_label()
@@ -347,13 +322,77 @@ class DFSOptimizerGUI(QMainWindow):
             # Update pool
             self.update_pool_label()
 
-            # Enable buttons (UPDATED!)
+            # Enable buttons
             self.optimize_btn.setEnabled(True)
-            self.fetch_btn.setEnabled(True)  # NEW - Enable fetch button!
+            self.fetch_btn.setEnabled(True)
 
-            self.log(f"✅ Loaded {count} players from {games} games")
+            # Check data sources
+            self.check_data_sources()
+
+            self.log(f"✅ Loaded {player_count} players from {game_count} games")
         else:
             QMessageBox.warning(self, "Error", "Failed to load CSV")
+
+    def check_data_sources(self):
+        """Check which data sources are available"""
+        available = []
+
+        # Check each data source
+        try:
+            from vegas_lines import VegasLines
+            available.append("Vegas")
+        except ImportError:
+            pass
+
+        try:
+            from smart_confirmation import UniversalSmartConfirmation
+            available.append("MLB")
+        except ImportError:
+            pass
+
+        try:
+            from real_data_enrichments import RealDataEnrichments
+            available.append("Stats")
+        except ImportError:
+            pass
+
+        try:
+            from ownership_calculator import OwnershipCalculator
+            available.append("Own%")
+        except ImportError:
+            pass
+
+        try:
+            from weather_integration import WeatherIntegration
+            available.append("Weather")
+        except ImportError:
+            pass
+
+        # Update status label
+        if available:
+            self.data_status_label.setText(f"Data: {', '.join(available)}")
+            self.data_status_label.setStyleSheet("color: green; margin-left: 10px;")
+        else:
+            self.data_status_label.setText("Data: Using Defaults")
+            self.data_status_label.setStyleSheet("color: orange; margin-left: 10px;")
+
+    def fetch_confirmations(self):
+        """Fetch MLB confirmations"""
+
+        self.log("Fetching MLB confirmations...")
+        QApplication.processEvents()
+
+        count = self.pipeline.fetch_confirmations()
+
+        if count > 0:
+            self.log(f"✅ Found {count} confirmed players")
+            self.confirmed_label.setText(f"({count} confirmed)")
+
+            # Update pool if showing confirmed only
+            if self.confirmed_cb.isChecked():
+                self.update_pool_label()
+        else:
+            self.log("No confirmations found (may be too early)")
 
     def on_contest_changed(self):
         """Handle contest type change"""
@@ -366,6 +405,10 @@ class DFSOptimizerGUI(QMainWindow):
                 self.lineups_spin.setValue(3)
             else:
                 self.lineups_spin.setValue(20)
+
+    def on_confirmed_changed(self):
+        """Handle confirmed checkbox change"""
+        self.update_pool_label()
 
     def update_strategy_label(self):
         """Update strategy label based on slate"""
@@ -426,7 +469,6 @@ class DFSOptimizerGUI(QMainWindow):
         # Update confirmed count if not showing confirmed-only
         if not confirmed:
             self.confirmed_label.setText(f"({confirmed_in_pool} confirmed)")
-            
 
     def run_optimization(self):
         """Run the optimization"""
@@ -469,9 +511,18 @@ class DFSOptimizerGUI(QMainWindow):
             QApplication.processEvents()
 
             # Enrich and score
-            self.pipeline.enrich_players(strategy, contest)
+            stats = self.pipeline.enrich_players(strategy, contest)
+
+            # Log enrichment stats
+            if stats:
+                active_stats = [k for k, v in stats.items() if v > 0]
+                if active_stats:
+                    self.log(f"Enriched with: {', '.join(active_stats)}")
+                else:
+                    self.log("Using default values (no external data)")
+
             self.pipeline.score_players(contest)
-            self.log("Players enriched and scored")
+            self.log("Players scored")
 
             # Progress: Optimize
             self.progress.setValue(80)
@@ -487,25 +538,25 @@ class DFSOptimizerGUI(QMainWindow):
                 self.generated_lineups = lineups
                 self.display_results(lineups)
                 self.log(f"✅ Generated {len(lineups)} lineups!")
-                self.export_btn.setEnabled(True)
             else:
-                self.log("❌ Failed to generate lineups")
+                self.log("❌ No lineups generated (may need more players)")
 
         except Exception as e:
-            self.log(f"❌ Error: {str(e)}")
-            QMessageBox.critical(self, "Error", str(e))
+            self.log(f"❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
 
         finally:
             self.progress.setVisible(False)
 
-    def display_results(self, lineups: List):
-        """Display lineup results"""
+    def display_results(self, lineups: List[Dict]):
+        """Display optimization results"""
 
         self.results_table.setRowCount(len(lineups))
 
         for i, lineup in enumerate(lineups):
             # Lineup number
-            self.results_table.setItem(i, 0, QTableWidgetItem(f"#{i + 1}"))
+            self.results_table.setItem(i, 0, QTableWidgetItem(f"Lineup {i + 1}"))
 
             # Score
             score = lineup.get('projection', 0)
@@ -515,18 +566,20 @@ class DFSOptimizerGUI(QMainWindow):
             salary = lineup.get('salary', 0)
             self.results_table.setItem(i, 2, QTableWidgetItem(f"${salary:,}"))
 
-            # Stack
-            stack = lineup.get('max_stack', 0)
-            self.results_table.setItem(i, 3, QTableWidgetItem(f"{stack}"))
+            # Stack info
+            max_stack = lineup.get('max_stack', 0)
+            self.results_table.setItem(i, 3, QTableWidgetItem(f"{max_stack} players"))
 
-            # Strategy (from metadata)
-            strategy = lineup.get('strategy', 'auto')
+            # Strategy (simplified)
+            strategy = lineup.get('strategy', 'optimized')
             self.results_table.setItem(i, 4, QTableWidgetItem(strategy))
 
             # View button
             view_btn = QPushButton("View")
             view_btn.clicked.connect(lambda checked, idx=i: self.view_lineup(idx))
             self.results_table.setCellWidget(i, 5, view_btn)
+
+        self.export_btn.setEnabled(True)
 
     def view_lineup(self, index: int):
         """View detailed lineup"""
@@ -538,24 +591,23 @@ class DFSOptimizerGUI(QMainWindow):
 
         # Create dialog
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"Lineup #{index + 1}")
-        dialog.setModal(True)
-        dialog.resize(500, 400)
+        dialog.setWindowTitle(f"Lineup {index + 1}")
+        dialog.setMinimumWidth(600)
 
         layout = QVBoxLayout()
 
-        # Lineup details
+        # Player list
         text = QTextEdit()
         text.setReadOnly(True)
 
-        content = f"LINEUP #{index + 1}\n"
+        content = f"Lineup {index + 1}\n"
         content += "=" * 40 + "\n\n"
 
-        # Players by position
+        # Show players by position
         for player in lineup['players']:
-            content += f"{player.position:3} {player.name:20} ({player.team}) ${player.salary:,}\n"
+            content += f"{player.position:3} {player.name:20} ${player.salary:,} ({player.team})\n"
 
-        content += "\n" + "-" * 40 + "\n"
+        content += "\n" + "=" * 40 + "\n"
         content += f"Total Salary: ${lineup['salary']:,}\n"
         content += f"Projection: {lineup['projection']:.1f} points\n"
         content += f"Max Stack: {lineup['max_stack']} players\n"
@@ -589,7 +641,7 @@ class DFSOptimizerGUI(QMainWindow):
         )
 
         if filepath:
-            if self.pipeline.export_lineups(filepath):
+            if self.pipeline.export_lineups(self.generated_lineups, filepath):
                 self.log(f"✅ Exported to {filepath}")
                 QMessageBox.information(self, "Success", "Lineups exported!")
             else:

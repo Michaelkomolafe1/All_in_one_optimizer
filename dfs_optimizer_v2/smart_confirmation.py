@@ -10,6 +10,7 @@ import requests
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
 import threading
 import time
 
@@ -33,6 +34,7 @@ class UniversalSmartConfirmation:
     }
 
     def __init__(self, csv_players: List = None, verbose: bool = True):
+        self.csv_players = deepcopy(csv_players) if csv_players else []
         self.verbose = verbose
         self.csv_players = csv_players or []
         self.confirmed_lineups = {}
@@ -54,23 +56,18 @@ class UniversalSmartConfirmation:
         """Build comprehensive team set with all variations"""
         teams = set()
 
-        if self.csv_players:
-            for player in self.csv_players:
-                team = None
+        for player in self.csv_players:
+            team = None
 
-                # Extract team from different formats
-                if hasattr(player, 'team'):
-                    team = player.team
-                elif isinstance(player, dict):
-                    team = player.get('team') or player.get('TeamAbbrev')
+            if hasattr(player, 'team'):
+                team = player.team
+            elif isinstance(player, dict):
+                team = player.get('team') or player.get('TeamAbbrev')
 
-                if team:
-                    team = team.upper().strip()
-                    teams.add(team)
-
-                    # Add variations
-                    if team in self.TEAM_VARIATIONS:
-                        teams.update(self.TEAM_VARIATIONS[team])
+            if team:
+                team = team.upper().strip()
+                teams.add(team)
+                teams.update(self.TEAM_VARIATIONS.get(team, []))
 
         return teams
 

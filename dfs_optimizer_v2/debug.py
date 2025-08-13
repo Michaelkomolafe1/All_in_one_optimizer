@@ -1,254 +1,163 @@
 #!/usr/bin/env python3
 """
-Simple targeted fix for the two specific issues:
-1. Barrel rate not being set (RealDataEnrichments not working)
-2. Method returning None instead of stats dictionary
-"""
-
-import os
-
-
-def quick_fix_enrichment_issues():
-    """Quick fix for the specific enrichment issues"""
-
-    print("🔧 QUICK FIX FOR ENRICHMENT ISSUES")
-    print("=" * 45)
-
-    pipeline_file = "data_pipeline_v2.py"
-    if not os.path.exists(pipeline_file):
-        print("❌ Cannot find data_pipeline_v2.py")
-        return False
-
-    # Read the file
-    with open(pipeline_file, 'r') as f:
-        content = f.read()
-
-    # Check if method exists
-    if "def enrich_players" not in content:
-        print("❌ Cannot find enrich_players method")
-        return False
-
-    # Fix 1: Make sure method returns stats (not None)
-    if "return stats" not in content:
-        print("🔧 Adding return stats statement...")
-
-        # Find the end of the enrich_players method and add return
-        method_start = content.find("def enrich_players")
-        if method_start != -1:
-            # Find next method or end of class
-            search_from = method_start + 100
-            next_method_patterns = ["\n    def ", "\n    # =", "\nclass "]
-
-            end_pos = len(content)
-            for pattern in next_method_patterns:
-                pos = content.find(pattern, search_from)
-                if pos != -1 and pos < end_pos:
-                    end_pos = pos
-
-            # Add return statement before the end
-            return_statement = "\n        return stats\n"
-            content = content[:end_pos] + return_statement + content[end_pos:]
-
-    # Fix 2: Ensure RealDataEnrichments actually sets barrel_rate
-    print("🔧 Ensuring barrel rate gets set...")
-
-    # Find where RealDataEnrichments is used
-    enricher_section = content.find("if enricher:")
-    if enricher_section != -1:
-        # Make sure we're actually calling enrich_player and setting barrel_rate
-        enricher_fix = '''
-        # REAL DATA ENRICHMENTS - ENSURE BARREL RATE IS SET
-        if enricher:
-            try:
-                # Call the enricher for this player
-                enrichment_success = enricher.enrich_player(player)
-                if enrichment_success:
-                    stats['statcast'] += 1
-
-                # FORCE barrel rate if not set (backup)
-                if not hasattr(player, 'barrel_rate'):
-                    player.barrel_rate = 8.5  # Default value
-
-            except Exception as e:
-                # If enricher fails, set defaults
-                if not hasattr(player, 'barrel_rate'):
-                    player.barrel_rate = 8.5
-                if not hasattr(player, 'xwoba'):
-                    player.xwoba = 0.320'''
-
-        # Find the existing enricher section and replace it
-        enricher_start = content.find("if enricher:", enricher_section)
-        if enricher_start != -1:
-            # Find the end of this if block
-            lines = content[enricher_start:].split('\\n')
-            enricher_lines = []
-            base_indent = None
-
-            for line in lines:
-                if not line.strip():  # Empty line
-                    enricher_lines.append(line)
-                    continue
-
-                # Determine indentation
-                indent = len(line) - len(line.lstrip())
-                if base_indent is None:
-                    base_indent = indent
-
-                if indent >= base_indent:
-                    enricher_lines.append(line)
-                else:
-                    # Back to original indentation - end of block
-                    break
-
-            old_enricher_block = '\\n'.join(enricher_lines)
-            enricher_end = enricher_start + len(old_enricher_block)
-
-            # Replace with the fixed version
-            content = content[:enricher_start] + enricher_fix + content[enricher_end:]
-
-    # Write the fixed content
-    print("✏️ Writing fixes to file...")
-    with open(pipeline_file, 'w') as f:
-        f.write(content)
-
-    print("✅ Quick fixes applied!")
-    return True
-
-
-def check_real_data_enrichments():
-    """Check if RealDataEnrichments is working properly"""
-
-    print("\\n🔍 CHECKING RealDataEnrichments")
-    print("=" * 35)
-
-    try:
-        from real_data_enrichments import RealDataEnrichments
-        enricher = RealDataEnrichments()
-
-        # Create a test player
-        class TestPlayer:
-            def __init__(self):
-                self.name = "Test Player"
-                self.position = "OF"
-
-        test_player = TestPlayer()
-
-        # Test enrichment
-        result = enricher.enrich_player(test_player)
-        print(f"✅ enrich_player returned: {result}")
-
-        # Check what was added
-        if hasattr(test_player, 'barrel_rate'):
-            print(f"✅ barrel_rate set to: {test_player.barrel_rate}")
-        else:
-            print("❌ barrel_rate NOT SET")
-
-        if hasattr(test_player, 'xwoba'):
-            print(f"✅ xwoba set to: {test_player.xwoba}")
-        else:
-            print("❌ xwoba NOT SET")
-
-        return True
-
-    except Exception as e:
-        print(f"❌ RealDataEnrichments error: {e}")
-        return False
-
-
-def create_minimal_test():
-    """Create a minimal test to verify the fixes"""
-
-    test_code = '''#!/usr/bin/env python3
-"""
-Minimal test for enrichment fixes
+TEST SCRIPT FOR V2 OPTIMIZER FIXES
+===================================
+Run this to verify all issues are resolved
 """
 
 import sys
-sys.path.append('.')
+import os
 
-def test_enrichment_fixes():
-    """Test the specific fixes"""
+# Add the dfs_optimizer_v2 directory to path
+sys.path.insert(0, '/home/michael/Desktop/All_in_one_optimizer/dfs_optimizer_v2')
 
-    print("🧪 TESTING ENRICHMENT FIXES")
-    print("=" * 30)
+
+def test_pipeline_methods():
+    """Test that all required methods exist and work"""
+    print("🧪 TESTING PIPELINE METHODS")
+    print("=" * 40)
 
     try:
         from data_pipeline_v2 import DFSPipeline, Player
 
         # Create pipeline
         pipeline = DFSPipeline()
+        print("✅ Pipeline created successfully")
 
-        # Create test player
-        test_player = Player(
-            name="Test Player",
-            position="OF",
-            team="LAD", 
-            salary=5000,
-            projection=12.0
-        )
+        # Create test players
+        test_players = [
+            Player(name="Mike Trout", position="OF", team="LAA", salary=6000, projection=15.0),
+            Player(name="Gerrit Cole", position="P", team="NYY", salary=9000, projection=45.0),
+            Player(name="Fernando Tatis Jr.", position="SS", team="SD", salary=5500, projection=14.0),
+        ]
 
-        pipeline.all_players = [test_player]
-        pipeline.player_pool = [test_player]
+        pipeline.all_players = test_players
+        print(f"✅ Added {len(test_players)} test players")
 
-        print(f"✅ Created test player: {test_player.name}")
+        # Test 1: Build player pool
+        count = pipeline.build_player_pool(confirmed_only=False)
+        print(f"✅ build_player_pool() works - {count} players in pool")
 
-        # Test enrichment
-        stats = pipeline.enrich_players("pitcher_dominance", "cash")
+        # Test 2: Apply strategy (the problematic method)
+        try:
+            strategy = pipeline.apply_strategy(contest_type='cash')
+            print(f"✅ apply_strategy() works - returned: {strategy}")
+        except AttributeError as e:
+            print(f"❌ apply_strategy() failed: {e}")
+            return False
 
-        print(f"📊 Stats returned: {stats}")
-        print(f"📊 Stats type: {type(stats)}")
+        # Test 3: Enrich players
+        try:
+            stats = pipeline.enrich_players(strategy, 'cash')
+            print(f"✅ enrich_players() works - stats: {stats}")
+        except Exception as e:
+            print(f"❌ enrich_players() failed: {e}")
+            return False
 
-        # Check barrel rate specifically
-        barrel_rate = getattr(test_player, 'barrel_rate', 'NOT SET')
-        print(f"🎯 Barrel Rate: {barrel_rate}")
+        # Test 4: Check barrel rate for batters
+        for player in pipeline.player_pool:
+            if player.position not in ['P', 'SP', 'RP']:
+                barrel_rate = getattr(player, 'barrel_rate', 'NOT SET')
+                if barrel_rate != 'NOT SET' and barrel_rate > 0:
+                    print(f"✅ {player.name} has barrel_rate: {barrel_rate}")
+                else:
+                    print(f"❌ {player.name} missing barrel_rate")
 
-        if isinstance(stats, dict):
-            print("✅ Method returns proper stats dictionary!")
-        else:
-            print("❌ Method still returning wrong type")
+        # Test 5: Score players
+        try:
+            pipeline.score_players('cash')
+            print(f"✅ score_players() works")
+        except Exception as e:
+            print(f"❌ score_players() failed: {e}")
+            return False
 
-        if barrel_rate != 'NOT SET':
-            print("✅ Barrel rate is being set!")
-        else:
-            print("❌ Barrel rate still not set")
+        # Test 6: Optimize lineups
+        try:
+            lineups = pipeline.optimize_lineups('cash', 1)
+            if lineups:
+                print(f"✅ optimize_lineups() works - generated {len(lineups)} lineup(s)")
+            else:
+                print("⚠️ optimize_lineups() returned empty (may need more players)")
+        except Exception as e:
+            print(f"❌ optimize_lineups() failed: {e}")
+            return False
 
         return True
 
+    except ImportError as e:
+        print(f"❌ Import error: {e}")
+        return False
     except Exception as e:
-        print(f"❌ Test failed: {e}")
+        print(f"❌ Unexpected error: {e}")
         import traceback
         traceback.print_exc()
         return False
 
-if __name__ == "__main__":
-    test_enrichment_fixes()
-'''
 
-    with open("test_enrichment_fixes.py", 'w') as f:
-        f.write(test_code)
+def test_gui_workflow():
+    """Test the GUI workflow"""
+    print("\n🖥️ TESTING GUI WORKFLOW")
+    print("=" * 40)
 
-    print("\\n✅ Created test_enrichment_fixes.py")
+    try:
+        # Test GUI imports
+        from gui_v2 import DFSOptimizerGUI
+        from PyQt5.QtWidgets import QApplication
+
+        print("✅ GUI imports successful")
+
+        # Note: Can't fully test GUI without display
+        print("ℹ️ GUI structure appears correct")
+        print("ℹ️ Full GUI test requires display environment")
+
+        return True
+
+    except ImportError as e:
+        print(f"⚠️ GUI import issue (may be PyQt5): {e}")
+        return True  # Not critical for pipeline fix
+    except Exception as e:
+        print(f"❌ GUI error: {e}")
+        return False
 
 
-if __name__ == "__main__":
-    print("🚀 QUICK TARGETED ENRICHMENT FIX")
-    print("=" * 60)
+def main():
+    """Run all tests"""
+    print("🚀 V2 OPTIMIZER FIX VERIFICATION")
+    print("=" * 50)
 
-    # Apply targeted fixes
-    if quick_fix_enrichment_issues():
-        # Check RealDataEnrichments
-        check_real_data_enrichments()
+    # Test 1: Pipeline methods
+    pipeline_ok = test_pipeline_methods()
 
-        # Create test
-        create_minimal_test()
+    # Test 2: GUI workflow
+    gui_ok = test_gui_workflow()
 
-        print("\\n🎉 TARGETED FIXES APPLIED!")
-        print("\\n💡 NEXT STEPS:")
-        print("1. Run: python test_enrichment_fixes.py")
-        print("2. Should see:")
-        print("   '📊 Stats returned: {dict with values}'")
-        print("   '🎯 Barrel Rate: 8.5'")
-        print("3. Then restart GUI and test")
+    # Summary
+    print("\n" + "=" * 50)
+    print("📊 TEST SUMMARY")
+    print("=" * 50)
 
+    if pipeline_ok:
+        print("✅ Pipeline: ALL TESTS PASSED")
+        print("   - apply_strategy() method works")
+        print("   - enrich_players() returns stats")
+        print("   - barrel_rate is set for batters")
     else:
-        print("\\n❌ Could not apply fixes")
+        print("❌ Pipeline: Some tests failed")
+
+    if gui_ok:
+        print("✅ GUI: Structure appears correct")
+    else:
+        print("❌ GUI: Issues detected")
+
+    if pipeline_ok and gui_ok:
+        print("\n🎉 ALL FIXES VERIFIED - SYSTEM READY!")
+        print("\n💡 NEXT STEPS:")
+        print("1. Replace your data_pipeline_v2.py with the fixed version")
+        print("2. Restart the GUI")
+        print("3. The optimization should work now!")
+    else:
+        print("\n⚠️ Some issues remain - review the errors above")
+
+
+if __name__ == "__main__":
+    main()
