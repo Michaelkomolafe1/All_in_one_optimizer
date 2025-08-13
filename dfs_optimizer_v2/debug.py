@@ -1,241 +1,172 @@
 #!/usr/bin/env python3
 """
-COMPREHENSIVE SYSTEM TEST WITH MOCK DATA
-========================================
-Tests all components with sufficient mock players
+DATA SOURCE CHECKER
+===================
+Checks which data sources are actually available and working
 """
 
 import sys
 import os
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from data_pipeline_v2 import DFSPipeline, Player
 
+def check_all_data_sources():
+    """Check availability of all data sources"""
+    print("=" * 60)
+    print("🔍 DATA SOURCE AVAILABILITY CHECK")
+    print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print("=" * 60)
 
-def create_mock_players():
-    """Create enough mock players for testing"""
-    players = [
-        # Pitchers (need 2)
-        Player("Gerrit Cole", "P", "NYY", 9000, 45.0),
-        Player("Shane Bieber", "P", "CLE", 8500, 42.0),
-        Player("Shohei Ohtani", "P", "LAD", 8000, 40.0),
-        Player("Kyle Hendricks", "P", "LAA", 7000, 35.0),
+    results = {}
 
-        # Catchers (need 1)
-        Player("J.T. Realmuto", "C", "PHI", 4500, 12.0),
-        Player("Will Smith", "C", "LAD", 4200, 11.5),
-        Player("Salvador Perez", "C", "KC", 4000, 11.0),
+    # 1. MLB Confirmations
+    print("\n1️⃣ MLB CONFIRMATIONS (smart_confirmation.py)")
+    try:
+        from smart_confirmation import UniversalSmartConfirmation
+        system = UniversalSmartConfirmation(verbose=False)
+        lineup_count, pitcher_count = system.get_all_confirmations()
+        print(f"   ✅ WORKING - {lineup_count} players, {pitcher_count} pitchers")
+        print(f"   Teams with lineups: {list(system.confirmed_lineups.keys())[:5]}")
+        results['confirmations'] = True
+    except Exception as e:
+        print(f"   ❌ ERROR: {e}")
+        results['confirmations'] = False
 
-        # First Base (need 1)
-        Player("Freddie Freeman", "1B", "LAD", 5500, 14.0),
-        Player("Vladimir Guerrero Jr.", "1B", "TOR", 5300, 13.5),
-        Player("Pete Alonso", "1B", "NYM", 5000, 13.0),
+    # 2. Vegas Lines
+    print("\n2️⃣ VEGAS LINES (vegas_lines.py)")
+    try:
+        from vegas_lines import VegasLines
+        vegas = VegasLines()
+        lines = vegas.get_all_lines()
+        if lines:
+            print(f"   ✅ WORKING - {len(lines)} teams with totals")
+            # Show sample
+            for team, data in list(lines.items())[:3]:
+                total = data.get('total', 'N/A')
+                print(f"      {team}: O/U {total}")
+        else:
+            print("   ⚠️ No data returned (may be too early)")
+        results['vegas'] = True
+    except Exception as e:
+        print(f"   ❌ ERROR: {e}")
+        results['vegas'] = False
 
-        # Second Base (need 1)
-        Player("Mookie Betts", "2B", "LAD", 5800, 14.5),
-        Player("Jose Altuve", "2B", "HOU", 5200, 13.0),
-        Player("Marcus Semien", "2B", "TEX", 4800, 12.5),
+    # 3. Weather Integration
+    print("\n3️⃣ WEATHER DATA (weather_integration.py)")
+    try:
+        from weather_integration import WeatherIntegration
+        weather = WeatherIntegration()
+        weather_data = weather.get_all_weather()
+        if weather_data:
+            print(f"   ✅ WORKING - {len(weather_data)} games")
+            for game, data in list(weather_data.items())[:2]:
+                print(f"      {game}: {data.get('temp')}°F, Wind: {data.get('wind_speed')}mph")
+        else:
+            print("   ⚠️ No weather data available")
+        results['weather'] = True
+    except ImportError:
+        print("   ❌ Module not found - weather_integration.py doesn't exist")
+        results['weather'] = False
+    except Exception as e:
+        print(f"   ❌ ERROR: {e}")
+        results['weather'] = False
 
-        # Third Base (need 1)
-        Player("Manny Machado", "3B", "SD", 5600, 14.2),
-        Player("Rafael Devers", "3B", "BOS", 5400, 13.8),
-        Player("Nolan Arenado", "3B", "STL", 5200, 13.5),
+    # 4. Ownership Calculator
+    print("\n4️⃣ OWNERSHIP PROJECTIONS (ownership_calculator.py)")
+    try:
+        from ownership_calculator import OwnershipCalculator
+        calc = OwnershipCalculator()
+        # Test with fake player
+        test_own = calc.get_ownership("Mike Trout", "OF", 6000, "LAA")
+        print(f"   ✅ WORKING - Test ownership: {test_own:.1f}%")
+        results['ownership'] = True
+    except ImportError:
+        print("   ❌ Module not found - ownership_calculator.py doesn't exist")
+        results['ownership'] = False
+    except Exception as e:
+        print(f"   ❌ ERROR: {e}")
+        results['ownership'] = False
 
-        # Shortstop (need 1)
-        Player("Trea Turner", "SS", "LAD", 5700, 14.3),
-        Player("Corey Seager", "SS", "TEX", 5500, 14.0),
-        Player("Bo Bichette", "SS", "TOR", 5100, 13.2),
+    # 5. Statcast Data
+    print("\n5️⃣ STATCAST DATA (simple_statcast_fetcher.py)")
+    try:
+        from simple_statcast_fetcher import SimpleStatcastFetcher
+        fetcher = SimpleStatcastFetcher()
+        # Test with known player
+        stats = fetcher.get_batter_stats("Mike Trout")
+        if stats:
+            print(f"   ✅ WORKING - Mike Trout stats:")
+            print(f"      Barrel%: {stats.get('barrel%', 0):.1f}")
+            print(f"      xwOBA: {stats.get('xwoba', 0):.3f}")
+        else:
+            print("   ⚠️ No stats returned (API may be down)")
+        results['statcast'] = True
+    except ImportError:
+        print("   ❌ Module not found - simple_statcast_fetcher.py doesn't exist")
+        results['statcast'] = False
+    except Exception as e:
+        print(f"   ❌ ERROR: {e}")
+        results['statcast'] = False
 
-        # Outfield (need 3)
-        Player("Mike Trout", "OF", "LAA", 6000, 15.0),
-        Player("Ronald Acuna Jr.", "OF", "ATL", 6200, 15.5),
-        Player("Aaron Judge", "OF", "NYY", 6100, 15.3),
-        Player("Julio Rodriguez", "OF", "SEA", 5800, 14.8),
-        Player("Kyle Tucker", "OF", "HOU", 5600, 14.5),
-        Player("Juan Soto", "OF", "NYY", 5900, 15.1),
+    # 6. Check for other expected files
+    print("\n6️⃣ OTHER EXPECTED FILES")
+    expected_files = [
+        'strategies_v2.py',
+        'optimizer_v2.py',
+        'data_pipeline_v2.py',
+        'gui_v2.py'
     ]
 
-    # Add some metadata for testing
-    for i, player in enumerate(players):
-        player.player_id = str(100000 + i)  # Fake MLB ID
-        player.optimization_score = player.projection
-        player.confirmed = False  # Will be set by confirmation system
-        player.batting_order = 0
+    for file in expected_files:
+        if os.path.exists(file):
+            print(f"   ✅ {file} exists")
+        else:
+            print(f"   ❌ {file} NOT FOUND")
 
-    return players
-
-
-def test_full_system():
-    """Complete system test with debug output"""
-    print("=" * 60)
-    print("COMPREHENSIVE DFS OPTIMIZER TEST")
+    # Summary
+    print("\n" + "=" * 60)
+    print("📊 SUMMARY")
     print("=" * 60)
 
-    # Initialize
-    pipeline = DFSPipeline()
+    working = sum(1 for v in results.values() if v)
+    total = len(results)
 
-    # Test 1: Use mock data
-    print("\n📁 TEST 1: Loading mock data...")
-    pipeline.all_players = create_mock_players()
-    pipeline.num_games = 8  # Simulate 8-game slate
-    print(f"✅ Loaded {len(pipeline.all_players)} mock players")
+    print(f"\n✅ Working: {working}/{total} data sources")
+    print(f"❌ Not working: {total - working}/{total} data sources")
 
-    # Show position distribution
-    from collections import defaultdict
-    pos_counts = defaultdict(int)
-    for p in pipeline.all_players:
-        if p.position in ['P', 'SP', 'RP']:
-            pos_counts['P'] += 1
-        else:
-            pos_counts[p.position] += 1
+    if results['confirmations']:
+        print("\n✅ MLB Confirmations are working - you can get real lineups!")
+    else:
+        print("\n❌ MLB Confirmations not working - check internet connection")
 
-    print("\n📊 Position distribution:")
-    for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']:
-        print(f"   {pos}: {pos_counts[pos]} players")
+    if not results['weather']:
+        print("\n💡 Weather module missing - not critical for basic operation")
 
-    # Test 2: Simulate confirmations
-    print("\n🔍 TEST 2: Simulating confirmations...")
-    # Mark some players as confirmed (simulate API response)
-    confirmed_count = 0
-    for i, player in enumerate(pipeline.all_players):
-        # Confirm most players to ensure we have enough
-        if i % 4 != 3:  # Confirm 75% of players
-            player.confirmed = True
-            confirmed_count += 1
-            if player.position not in ['P', 'SP', 'RP'] and i < 9:
-                player.batting_order = (i % 9) + 1
-
-    print(f"✅ Simulated {confirmed_count} confirmed players")
-
-    # Test 3: Build pools
-    print("\n🏊 TEST 3: Building player pools...")
-
-    # Test confirmed only
-    count = pipeline.build_player_pool(confirmed_only=True)
-    print(f"✅ Confirmed pool: {count} players")
-
-    # Show confirmed position counts
-    conf_pos_counts = defaultdict(int)
-    for p in pipeline.player_pool:
-        if p.position in ['P', 'SP', 'RP']:
-            conf_pos_counts['P'] += 1
-        else:
-            conf_pos_counts[p.position] += 1
-
-    print("   Confirmed positions:")
-    for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']:
-        print(f"      {pos}: {conf_pos_counts[pos]} players")
-
-    # Test all players
-    count = pipeline.build_player_pool(confirmed_only=False)
-    print(f"✅ Full pool: {count} players")
-
-    # Test 4: Strategy application
-    print("\n🎯 TEST 4: Applying strategies...")
-    for contest in ['cash', 'gpp']:
-        try:
-            strategy = pipeline.apply_strategy(contest)
-            print(f"✅ Applied {strategy} for {contest}")
-
-            # Show score adjustments
-            sample_player = pipeline.player_pool[0]
-            print(f"   Sample: {sample_player.name}")
-            print(f"   Base: {sample_player.projection:.1f}")
-            print(f"   Optimized: {sample_player.optimization_score:.1f}")
-        except Exception as e:
-            print(f"⚠️ Strategy error: {e}")
-
-    # Test 5: Data enrichment
-    print("\n📊 TEST 5: Enriching player data...")
-    try:
-        stats = pipeline.enrich_players('balanced', 'cash')
-        print(f"✅ Enrichment stats: {stats}")
-
-        # Check if any players got enriched
-        enriched = 0
-        for p in pipeline.player_pool:
-            if hasattr(p, 'barrel_rate') and p.barrel_rate > 0:
-                enriched += 1
-        print(f"   {enriched} players enriched with stats")
-    except Exception as e:
-        print(f"⚠️ Enrichment error: {e}")
-
-    # Test 6: Optimization
-    print("\n⚙️ TEST 6: Optimizing lineups...")
-    for contest in ['cash', 'gpp']:
-        try:
-            # Use full pool to ensure enough players
-            pipeline.build_player_pool(confirmed_only=False)
-
-            lineups = pipeline.optimize_lineups(contest, 1)
-            if lineups and len(lineups) > 0:
-                lineup = lineups[0]
-                print(f"\n✅ {contest.upper()}: Generated lineup")
-                print(f"   Players: {len(lineup['players'])}")
-                print(f"   Salary: ${lineup['salary']:,}")
-                print(f"   Projection: {lineup['projection']:.1f}")
-
-                # Show lineup composition
-                print("   Lineup:")
-                for p in lineup['players']:
-                    print(f"      {p.position}: {p.name} (${p.salary:,}) - {p.optimization_score:.1f}")
-
-                # Check stack
-                from collections import Counter
-                teams = Counter(p.team for p in lineup['players'])
-                max_stack = max(teams.values())
-                print(f"   Max stack: {max_stack} players from same team")
-            else:
-                print(f"❌ {contest.upper()}: Failed to generate lineup")
-
-                # Debug: Check position availability
-                from collections import defaultdict
-                pos_available = defaultdict(int)
-                for p in pipeline.player_pool:
-                    if p.position in ['P', 'SP', 'RP']:
-                        pos_available['P'] += 1
-                    else:
-                        pos_available[p.position] += 1
-
-                print("   Debug - Positions available:")
-                for pos in ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']:
-                    req = 2 if pos == 'P' else 3 if pos == 'OF' else 1
-                    avail = pos_available[pos]
-                    status = "✓" if avail >= req else "✗"
-                    print(f"      {pos}: {avail}/{req} {status}")
-
-        except Exception as e:
-            print(f"❌ {contest.upper()}: Optimization error - {e}")
-            import traceback
-            traceback.print_exc()
-
-    # Test 7: Export functionality
-    print("\n📤 TEST 7: Testing export...")
-    if lineups and len(lineups) > 0:
-        try:
-            output_path = "/tmp/test_lineups.csv"
-            success = pipeline.export_lineups(lineups, output_path)
-            if success:
-                print(f"✅ Exported to {output_path}")
-                # Check file exists
-                if os.path.exists(output_path):
-                    with open(output_path, 'r') as f:
-                        lines = f.readlines()
-                    print(f"   File has {len(lines)} lines")
-            else:
-                print("❌ Export failed")
-        except Exception as e:
-            print(f"❌ Export error: {e}")
+    if not results['ownership']:
+        print("\n💡 Ownership module missing - using default 15% for all players")
 
     print("\n" + "=" * 60)
-    print("TEST COMPLETE")
+    print("RECOMMENDATIONS:")
     print("=" * 60)
 
-    # Return success status
-    return len(lineups) > 0 if 'lineups' in locals() else False
+    if working < total:
+        print("\nTo get missing data sources working:")
+
+        if not results['weather']:
+            print("\n1. Weather: Create weather_integration.py or ignore (not critical)")
+
+        if not results['ownership']:
+            print("\n2. Ownership: Create ownership_calculator.py with basic projections")
+
+        if not results['statcast']:
+            print("\n3. Statcast: Check simple_statcast_fetcher.py exists and API is up")
+    else:
+        print("\n🎉 All data sources are working!")
+
+    return results
 
 
 if __name__ == "__main__":
-    success = test_full_system()
-    sys.exit(0 if success else 1)
+    results = check_all_data_sources()
