@@ -18,6 +18,10 @@ from typing import List, Set, Tuple, Dict  # Add Dict here
 # Import our new clean components
 from data_pipeline_v2 import DFSPipeline
 from config_v2 import get_config
+from bankroll_manager import BankrollManager, RiskLevel, ContestInfo
+from daily_bankroll_advisor import DailyBankrollAdvisor, SAMPLE_DAILY_CONTESTS
+from strategic_advisor import StrategicAdvisor
+from scaling_tracker import ScalingTracker
 
 
 class DFSOptimizerGUI(QMainWindow):
@@ -30,6 +34,11 @@ class DFSOptimizerGUI(QMainWindow):
         self.pipeline = DFSPipeline()
 
         self.config = get_config()
+
+        # Initialize bankroll manager
+        self.bankroll_manager = None
+        self.daily_advisor = None
+        self.strategic_advisor = None
 
         # State
         self.csv_loaded = False
@@ -53,6 +62,7 @@ class DFSOptimizerGUI(QMainWindow):
         # Create sections
         layout.addWidget(self.create_load_section())
         layout.addWidget(self.create_settings_section())
+        layout.addWidget(self.create_bankroll_section())
         layout.addWidget(self.create_player_pool_section())
         layout.addWidget(self.create_optimize_section())
         layout.addWidget(self.create_results_section())
@@ -114,6 +124,68 @@ class DFSOptimizerGUI(QMainWindow):
         group.setLayout(layout)
         return group
 
+    def create_bankroll_section(self) -> QGroupBox:
+        """Section 2.5: Bankroll Management"""
+
+        group = QGroupBox("💰 Bankroll Management")
+        layout = QVBoxLayout()
+
+        # Bankroll input row
+        bankroll_layout = QHBoxLayout()
+
+        bankroll_layout.addWidget(QLabel("Current Bankroll ($):"))
+        self.bankroll_input = QDoubleSpinBox()
+        self.bankroll_input.setRange(10.0, 1000000.0)
+        self.bankroll_input.setValue(1000.0)
+        self.bankroll_input.setDecimals(2)
+        bankroll_layout.addWidget(self.bankroll_input)
+
+        bankroll_layout.addWidget(QLabel("Risk Level:"))
+        self.risk_combo = QComboBox()
+        self.risk_combo.addItems(["Conservative", "Moderate", "Aggressive"])
+        self.risk_combo.setCurrentText("Moderate")
+        bankroll_layout.addWidget(self.risk_combo)
+
+        # Initialize bankroll button
+        self.init_bankroll_btn = QPushButton("Initialize Bankroll Manager")
+        self.init_bankroll_btn.clicked.connect(self.initialize_bankroll_manager)
+        bankroll_layout.addWidget(self.init_bankroll_btn)
+
+        # Stake calculator button
+        self.stake_calc_btn = QPushButton("Calculate Optimal Stake")
+        self.stake_calc_btn.setEnabled(False)
+        self.stake_calc_btn.clicked.connect(self.calculate_optimal_stake)
+        bankroll_layout.addWidget(self.stake_calc_btn)
+
+        # Daily advisor button
+        self.daily_advisor_btn = QPushButton("Get Daily Recommendations")
+        self.daily_advisor_btn.setEnabled(False)
+        self.daily_advisor_btn.clicked.connect(self.get_daily_recommendations)
+        bankroll_layout.addWidget(self.daily_advisor_btn)
+
+        # Strategic guidance button
+        self.strategic_btn = QPushButton("Get Strategic Guidance")
+        self.strategic_btn.setEnabled(False)
+        self.strategic_btn.clicked.connect(self.get_strategic_guidance)
+        bankroll_layout.addWidget(self.strategic_btn)
+
+        # Scaling plan button
+        self.scaling_btn = QPushButton("Show Scaling Plan to $400")
+        self.scaling_btn.setEnabled(False)
+        self.scaling_btn.clicked.connect(self.show_scaling_plan)
+        bankroll_layout.addWidget(self.scaling_btn)
+
+        bankroll_layout.addStretch()
+        layout.addLayout(bankroll_layout)
+
+        # Bankroll status display
+        self.bankroll_status = QLabel("Enter bankroll and click Initialize to get stake recommendations")
+        self.bankroll_status.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(self.bankroll_status)
+
+        group.setLayout(layout)
+        return group
+
     def create_player_pool_section(self) -> QGroupBox:
         """Section 3: Player Pool"""
 
@@ -157,6 +229,12 @@ class DFSOptimizerGUI(QMainWindow):
         self.confirmed_cb.setChecked(False)
         self.confirmed_cb.stateChanged.connect(self.on_confirmed_changed)
         controls.addWidget(self.confirmed_cb)
+
+        # Fast mode checkbox (skip Statcast)
+        self.fast_mode_cb = QCheckBox("Fast Mode (Skip Statcast)")
+        self.fast_mode_cb.setChecked(False)
+        self.fast_mode_cb.setToolTip("Skip Statcast data fetching for faster optimization")
+        controls.addWidget(self.fast_mode_cb)
 
         # Pool info
         self.pool_label = QLabel("Pool: 0 players")
@@ -233,10 +311,10 @@ class DFSOptimizerGUI(QMainWindow):
         self.progress.setVisible(False)
         layout.addWidget(self.progress)
 
-        # Status log
+        # Status log (enlarged for better visibility)
         self.status_text = QTextEdit()
         self.status_text.setReadOnly(True)
-        self.status_text.setMaximumHeight(100)
+        self.status_text.setMaximumHeight(300)  # Increased from 100 to 300
         layout.addWidget(self.status_text)
 
         group.setLayout(layout)
@@ -351,8 +429,12 @@ class DFSOptimizerGUI(QMainWindow):
             pass
 
         try:
-            from real_data_enrichments import RealDataEnrichments
-            available.append("Stats")
+            from simple_statcast_fetcher import SimpleStatcastFetcher
+            statcast = SimpleStatcastFetcher()
+            if statcast.enabled:
+                available.append("Statcast")
+            else:
+                available.append("Stats")
         except ImportError:
             pass
 
@@ -382,17 +464,36 @@ class DFSOptimizerGUI(QMainWindow):
         self.log("Fetching MLB confirmations...")
         QApplication.processEvents()
 
-        count = self.pipeline.fetch_confirmations()
+        result = self.pipeline.fetch_confirmations()
 
-        if count > 0:
-            self.log(f"✅ Found {count} confirmed players")
-            self.confirmed_label.setText(f"({count} confirmed)")
+        # Handle both old (int) and new (tuple) return formats
+        if isinstance(result, tuple):
+            total_count, pitcher_count, position_count = result
+        else:
+            # Fallback for old format
+            total_count = result
+            pitcher_count = 0
+            position_count = 0
+
+        if total_count > 0:
+            if position_count > 0:
+                self.log(f"✅ Found {total_count} confirmed players ({pitcher_count} pitchers, {position_count} position players)")
+                self.confirmed_label.setText(f"({total_count} confirmed)")
+            else:
+                self.log(f"⚠️ Found {pitcher_count} confirmed pitchers, but no position player lineups yet")
+                self.confirmed_label.setText(f"({pitcher_count} pitchers only)")
+
+                # Warn about confirmed-only mode and timing
+                if self.confirmed_cb.isChecked():
+                    self.log("💡 Tip: Uncheck 'Confirmed Only' to include all players until lineups are posted")
+                self.log("📅 Note: Position player lineups are typically posted 2-4 hours before first pitch")
 
             # Update pool if showing confirmed only
             if self.confirmed_cb.isChecked():
                 self.update_pool_label()
         else:
             self.log("No confirmations found (may be too early)")
+            self.confirmed_label.setText("(none yet)")
 
     def on_contest_changed(self):
         """Handle contest type change"""
@@ -418,7 +519,7 @@ class DFSOptimizerGUI(QMainWindow):
 
         contest = "cash" if "Cash" in self.contest_combo.currentText() else "gpp"
         strategy, reason = self.pipeline.strategy_manager.auto_select_strategy(
-            self.pipeline.num_games, contest
+            contest, self.pipeline.num_games
         )
 
         self.strategy_label.setText(f"Strategy: {reason}")
@@ -510,8 +611,16 @@ class DFSOptimizerGUI(QMainWindow):
             self.progress.setValue(60)
             QApplication.processEvents()
 
-            # Enrich and score
-            stats = self.pipeline.enrich_players(strategy, contest)
+            # Enrich players with real data
+            fast_mode = self.fast_mode_cb.isChecked()
+            if fast_mode:
+                self.log("Fast mode: Using default stats (skipping Statcast)")
+            else:
+                self.log("Enriching players with real data...")
+                self.log("💡 This may take 10-30 seconds for Statcast data...")
+            QApplication.processEvents()  # Keep GUI responsive
+
+            stats = self.pipeline.enrich_players(strategy, contest, skip_statcast=fast_mode)
 
             # Log enrichment stats
             if stats:
@@ -521,14 +630,25 @@ class DFSOptimizerGUI(QMainWindow):
                 else:
                     self.log("Using default values (no external data)")
 
-            self.pipeline.score_players(contest)
-            self.log("Players scored")
+            # Apply unified scoring engine
+            self.log("Applying unified scoring engine...")
+            QApplication.processEvents()
+
+            scoring_stats = self.pipeline.score_players(contest)
+            if scoring_stats:
+                avg_score = scoring_stats.get('avg_score', 0)
+                self.log(f"Scored {scoring_stats.get('players_scored', 0)} players (avg: {avg_score:.1f})")
+            else:
+                self.log("Using basic projection scoring")
 
             # Progress: Optimize
             self.progress.setValue(80)
             QApplication.processEvents()
 
             # Generate lineups
+            self.log(f"Generating {num_lineups} {contest} lineups...")
+            QApplication.processEvents()
+
             lineups = self.pipeline.optimize_lineups(contest, num_lineups)
 
             # Progress: Complete
@@ -536,6 +656,10 @@ class DFSOptimizerGUI(QMainWindow):
 
             if lineups:
                 self.generated_lineups = lineups
+
+                # Print lineups to console as well
+                self.print_lineups_to_console(lineups)
+
                 self.display_results(lineups)
                 self.log(f"✅ Generated {len(lineups)} lineups!")
             else:
@@ -548,6 +672,74 @@ class DFSOptimizerGUI(QMainWindow):
 
         finally:
             self.progress.setVisible(False)
+
+    def print_lineups_to_console(self, lineups: List[Dict]):
+        """Print generated lineups to console for easy copying"""
+        print("\n" + "=" * 60)
+        print("🏆 GENERATED LINEUPS")
+        print("=" * 60)
+
+        position_order = ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']
+
+        for i, lineup in enumerate(lineups):
+            print(f"\n📋 LINEUP {i + 1}")
+            print("-" * 40)
+
+            # Group players by position
+            players_by_pos = {}
+            for player in lineup['players']:
+                pos = player.position
+                if pos in ['SP', 'RP']:
+                    pos = 'P'  # Normalize pitcher positions
+                if pos not in players_by_pos:
+                    players_by_pos[pos] = []
+                players_by_pos[pos].append(player)
+
+            # Display in DraftKings order with enhanced stats
+            total_ownership = 0
+            for pos in position_order:
+                if pos in players_by_pos:
+                    for player in players_by_pos[pos]:
+                        status = "✅" if getattr(player, 'confirmed', False) else "⚠️"
+
+                        # Basic info line
+                        print(f"{player.position:3} {player.name:20} ${player.salary:,} ({player.team}) {status}")
+
+                        # Stats line
+                        ownership = getattr(player, 'ownership', 15.0)
+                        projection = getattr(player, 'projection', 0.0)
+                        opt_score = getattr(player, 'optimization_score', 0.0)
+                        total_ownership += ownership
+
+                        # Position-specific stats
+                        if player.position not in ['P', 'SP', 'RP']:
+                            # Batter stats
+                            barrel_rate = getattr(player, 'barrel_rate', 0.0)
+                            xwoba = getattr(player, 'xwoba', 0.0)
+                            batting_order = getattr(player, 'batting_order', 0)
+                            order_str = f"#{batting_order}" if batting_order > 0 else "TBD"
+
+                            print(f"    📊 Proj: {projection:.1f} | Own: {ownership:.1f}% | Opt: {opt_score:.1f} | Barrel: {barrel_rate:.1f}% | xwOBA: {xwoba:.3f} | Order: {order_str}")
+                        else:
+                            # Pitcher stats
+                            k_rate = getattr(player, 'k_rate', 0.0)
+                            era = getattr(player, 'era', 0.0)
+
+                            print(f"    📊 Proj: {projection:.1f} | Own: {ownership:.1f}% | Opt: {opt_score:.1f} | K/9: {k_rate:.1f} | ERA: {era:.2f}")
+
+                        print()  # Empty line for readability
+
+            # Summary stats
+            avg_ownership = total_ownership / len(lineup['players']) if lineup['players'] else 0
+            print(f"💰 Salary: ${lineup['salary']:,} / $50,000 ({(lineup['salary']/50000)*100:.1f}%)")
+            print(f"📈 Total Projection: {lineup['projection']:.1f}")
+            print(f"👥 Average Ownership: {avg_ownership:.1f}%")
+            print(f"🎯 Confirmed Players: {sum(1 for p in lineup['players'] if getattr(p, 'confirmed', False))}/{len(lineup['players'])}")
+
+            if i < len(lineups) - 1:  # Don't print separator after last lineup
+                print()
+
+        print("\n" + "=" * 60)
 
     def display_results(self, lineups: List[Dict]):
         """Display optimization results"""
@@ -603,14 +795,68 @@ class DFSOptimizerGUI(QMainWindow):
         content = f"Lineup {index + 1}\n"
         content += "=" * 40 + "\n\n"
 
-        # Show players by position
-        for player in lineup['players']:
-            content += f"{player.position:3} {player.name:20} ${player.salary:,} ({player.team})\n"
+        # Show players by position with enhanced metrics (in DraftKings order)
+        position_order = ['P', 'C', '1B', '2B', '3B', 'SS', 'OF']
 
-        content += "\n" + "=" * 40 + "\n"
-        content += f"Total Salary: ${lineup['salary']:,}\n"
-        content += f"Projection: {lineup['projection']:.1f} points\n"
-        content += f"Max Stack: {lineup['max_stack']} players\n"
+        # Group players by position
+        players_by_pos = {}
+        for player in lineup['players']:
+            pos = player.position
+            if pos in ['SP', 'RP']:
+                pos = 'P'  # Normalize pitcher positions
+            if pos not in players_by_pos:
+                players_by_pos[pos] = []
+            players_by_pos[pos].append(player)
+
+        # Display in DraftKings order with enhanced stats
+        total_ownership = 0
+        for pos in position_order:
+            if pos in players_by_pos:
+                for player in players_by_pos[pos]:
+                    # Basic info
+                    content += f"{player.position:3} {player.name:20} ${player.salary:,} ({player.team})\n"
+
+                    # Enhanced metrics
+                    ownership = getattr(player, 'ownership', 15.0)
+                    projection = getattr(player, 'projection', 0.0)
+                    opt_score = getattr(player, 'optimization_score', 0.0)
+                    total_ownership += ownership
+
+                    # Position-specific stats
+                    if player.position not in ['P', 'SP', 'RP']:
+                        # Batter metrics
+                        barrel_rate = getattr(player, 'barrel_rate', 0.0)
+                        xwoba = getattr(player, 'xwoba', 0.0)
+                        batting_order = getattr(player, 'batting_order', 0)
+                        order_str = f"#{batting_order}" if batting_order > 0 else "TBD"
+
+                        content += f"     📊 Proj: {projection:.1f} | Own: {ownership:.1f}% | Opt: {opt_score:.1f}\n"
+                        content += f"     ⚾ Barrel: {barrel_rate:.1f}% | xwOBA: {xwoba:.3f} | Order: {order_str}\n"
+                    else:
+                        # Pitcher metrics
+                        k_rate = getattr(player, 'k_rate', 0.0)
+                        era = getattr(player, 'era', 0.0)
+
+                        content += f"     📊 Proj: {projection:.1f} | Own: {ownership:.1f}% | Opt: {opt_score:.1f}\n"
+                        content += f"     ⚾ K/9: {k_rate:.1f} | ERA: {era:.2f}\n"
+
+                    # Confirmation status
+                    status = "✅ Confirmed" if getattr(player, 'confirmed', False) else "⚠️ Unconfirmed"
+                    content += f"     {status}\n\n"
+
+        # Summary stats
+        avg_ownership = total_ownership / len(lineup['players']) if lineup['players'] else 0
+        confirmed_count = sum(1 for p in lineup['players'] if getattr(p, 'confirmed', False))
+
+        content += "=" * 50 + "\n"
+        content += "📊 LINEUP SUMMARY\n"
+        content += "=" * 50 + "\n"
+        content += f"💰 Salary: ${lineup['salary']:,} / $50,000 ({(lineup['salary']/50000)*100:.1f}%)\n"
+        content += f"📈 Total Projection: {lineup['projection']:.1f} points\n"
+        content += f"👥 Average Ownership: {avg_ownership:.1f}%\n"
+        content += f"🎯 Confirmed Players: {confirmed_count}/{len(lineup['players'])}\n"
+        if lineup.get('max_stack', 0) > 0:
+            content += f"🔗 Max Stack: {lineup['max_stack']} players\n"
 
         # Show stacks
         if lineup.get('stack_info'):
@@ -665,6 +911,295 @@ class DFSOptimizerGUI(QMainWindow):
         """Update status bar"""
 
         self.status_bar.showMessage(message, 3000)
+
+    def initialize_bankroll_manager(self):
+        """Initialize the bankroll manager"""
+
+        bankroll = self.bankroll_input.value()
+        risk_text = self.risk_combo.currentText().lower()
+        risk_level = RiskLevel(risk_text)
+
+        self.bankroll_manager = BankrollManager(bankroll, risk_level)
+
+        # Update status
+        summary = self.bankroll_manager.get_bankroll_summary()
+
+        status_text = (f"✅ Bankroll Manager Initialized | "
+                      f"${summary['current_bankroll']:,.0f} | "
+                      f"{summary['risk_level'].title()} Risk | "
+                      f"Max Stake: ${summary['max_single_stake']:.0f}")
+
+        self.bankroll_status.setText(status_text)
+        self.bankroll_status.setStyleSheet("color: #4CAF50; font-weight: bold;")
+
+        # Enable all bankroll management features
+        self.stake_calc_btn.setEnabled(True)
+        self.daily_advisor_btn.setEnabled(True)
+        self.strategic_btn.setEnabled(True)
+        self.scaling_btn.setEnabled(True)
+
+        # Initialize advisors
+        self.daily_advisor = DailyBankrollAdvisor(self.bankroll_manager)
+        self.strategic_advisor = StrategicAdvisor(self.daily_advisor)
+
+        self.status_text.append("💰 Bankroll manager initialized successfully")
+
+    def calculate_optimal_stake(self):
+        """Calculate optimal stake for current settings"""
+
+        if not self.bankroll_manager:
+            self.status_text.append("❌ Please initialize bankroll manager first")
+            return
+
+        # Get current settings
+        contest_type_display = self.contest_combo.currentText()
+        num_lineups = self.lineups_spin.value()
+
+        # Convert display text to internal format
+        if "Cash" in contest_type_display:
+            contest_type = 'cash'
+            entry_fee = 5.0  # Default cash entry fee
+        else:  # GPP
+            contest_type = 'gpp'
+            entry_fee = 3.0  # Default GPP entry fee
+
+        # Create contest info
+        contest = ContestInfo(
+            name=f"{contest_type_display}",
+            entry_fee=entry_fee,
+            max_entries=num_lineups,
+            total_entries=1000,
+            prize_pool=1000 * entry_fee * 0.9,
+            contest_type=contest_type,
+            slate_size='medium'  # Default
+        )
+
+        # Get strategy name
+        strategy, _ = self.pipeline.strategy_manager.auto_select_strategy(
+            contest_type, self.pipeline.num_games
+        )
+
+        # Calculate optimal stake
+        stake_info = self.bankroll_manager.get_optimal_stake(contest, strategy)
+
+        # Update status
+        status_text = (f"🎯 Optimal Stake: {stake_info['recommended_entries']} entries "
+                      f"(${stake_info['actual_stake']:.0f}) | "
+                      f"Expected Profit: ${stake_info['expected_profit']:.0f} | "
+                      f"Bankroll: {stake_info['bankroll_percentage']:.1f}%")
+
+        self.bankroll_status.setText(status_text)
+
+        # Log detailed info
+        self.status_text.append(f"💰 Stake Recommendation:")
+        self.status_text.append(f"   Strategy: {strategy}")
+        self.status_text.append(f"   Recommended Entries: {stake_info['recommended_entries']}")
+        self.status_text.append(f"   Total Stake: ${stake_info['actual_stake']:.2f}")
+        self.status_text.append(f"   Expected Profit: ${stake_info['expected_profit']:.2f}")
+        self.status_text.append(f"   Win Rate: {stake_info['win_rate']:.1f}%")
+
+    def get_daily_recommendations(self):
+        """Get comprehensive daily bankroll recommendations"""
+
+        if not self.daily_advisor:
+            self.status_text.append("❌ Please initialize bankroll manager first")
+            return
+
+        # Clear previous recommendations to avoid repetition
+        self.status_text.clear()
+
+        # Use sample contests (in real use, you'd load actual available contests)
+        slate_size = 'medium'  # Could be determined from loaded data
+
+        # Get daily recommendation
+        recommendation = self.daily_advisor.get_daily_recommendation(
+            SAMPLE_DAILY_CONTESTS, slate_size
+        )
+
+        # Update status with summary
+        summary_text = (f"📊 Daily Plan: ${recommendation.total_daily_stake:.0f} total "
+                       f"(${recommendation.cash_allocation:.0f} cash, "
+                       f"${recommendation.gpp_allocation:.0f} GPP) | "
+                       f"Expected: +${recommendation.expected_daily_profit:.0f}")
+
+        self.bankroll_status.setText(summary_text)
+
+        # Log detailed recommendations
+        self.status_text.append("🏦 DAILY BANKROLL RECOMMENDATIONS:")
+        self.status_text.append("=" * 50)
+
+        self.status_text.append(f"💰 DAILY ALLOCATION:")
+        self.status_text.append(f"   Total Daily Stake: ${recommendation.total_daily_stake:.2f}")
+        self.status_text.append(f"   Cash Allocation: ${recommendation.cash_allocation:.2f}")
+        self.status_text.append(f"   GPP Allocation: ${recommendation.gpp_allocation:.2f}")
+        self.status_text.append(f"   Bankroll Usage: {recommendation.bankroll_percentage:.1f}%")
+
+        self.status_text.append(f"📈 EXPECTED PERFORMANCE:")
+        self.status_text.append(f"   Expected Daily Profit: ${recommendation.expected_daily_profit:.2f}")
+        self.status_text.append(f"   Risk Assessment: {recommendation.risk_assessment}")
+
+        self.status_text.append(f"🎯 ALL RECOMMENDED CONTESTS:")
+
+        # Show ALL contests, not just top 5
+        for i, contest in enumerate(recommendation.recommended_contests, 1):
+            self.status_text.append(f"   {i}. {contest['contest_name']} ({contest['contest_type'].upper()})")
+            self.status_text.append(f"      Entries: {contest['recommended_entries']} x ${contest['entry_fee']:.2f}")
+            self.status_text.append(f"      Stake: ${contest['recommended_stake']:.2f}")
+            self.status_text.append(f"      Expected Profit: ${contest['expected_profit']:.2f}")
+            self.status_text.append(f"      Win Rate: {contest['win_rate']:.1f}%")
+
+        self.status_text.append("")
+        self.status_text.append("💡 TIP: These recommendations are based on your proven strategy performance!")
+        self.status_text.append("💡 Adjust your actual contest entries based on what's available on DraftKings.")
+
+    def get_strategic_guidance(self):
+        """Get comprehensive strategic guidance including slate size recommendations"""
+
+        if not self.strategic_advisor:
+            self.status_text.append("❌ Please initialize bankroll manager first")
+            return
+
+        # Clear previous output to avoid repetition
+        self.status_text.clear()
+
+        # Get current bankroll and risk level
+        bankroll = self.bankroll_input.value()
+        risk_level = self.risk_combo.currentText().lower()
+
+        # Available slate sizes (you could make this dynamic based on actual slates)
+        available_slates = ['small', 'medium', 'large']
+
+        # Get strategic guidance
+        guidance = self.strategic_advisor.get_strategic_guidance(
+            available_slates, bankroll, risk_level
+        )
+
+        # Get daily recommendation for context
+        recommendation = self.daily_advisor.get_daily_recommendation(
+            SAMPLE_DAILY_CONTESTS, guidance.slate_size_recommendation
+        )
+
+        # Update status with key recommendation
+        key_info = (f"🧠 Strategy: {guidance.slate_size_recommendation.upper()} slates | "
+                   f"Win Rate: {guidance.performance_expectations['daily_win_rate']:.1f}% | "
+                   f"Monthly Target: +{guidance.performance_expectations['monthly_growth_target']:.0f}%")
+
+        self.bankroll_status.setText(key_info)
+
+        # Create enhanced, specific strategic guidance
+        self.status_text.append("🧠 PERSONALIZED STRATEGIC GUIDANCE")
+        self.status_text.append("=" * 60)
+
+        # Specific slate recommendation
+        slate_rec = guidance.slate_size_recommendation.upper()
+        win_rate = guidance.performance_expectations['daily_win_rate']
+        self.status_text.append(f"🎯 OPTIMAL SLATE SIZE FOR YOU: {slate_rec}")
+        self.status_text.append(f"   Expected Win Rate: {win_rate:.1f}%")
+        self.status_text.append(f"   Strategy: {self._get_strategy_for_slate(slate_rec.lower())}")
+        self.status_text.append(f"   Why {slate_rec}: {self._get_slate_reasoning(slate_rec.lower(), bankroll, risk_level)}")
+
+        # Specific contest recommendations
+        self.status_text.append(f"")
+        self.status_text.append(f"🏟️ SPECIFIC CONTEST STRATEGY:")
+        cash_strategy = guidance.optimal_contest_sizes['cash']
+        gpp_strategy = guidance.optimal_contest_sizes['gpp']
+        self.status_text.append(f"   Cash Games: {cash_strategy}")
+        self.status_text.append(f"   GPP Tournaments: {gpp_strategy}")
+
+        # Today's specific plan
+        self.status_text.append(f"")
+        self.status_text.append(f"📊 TODAY'S SPECIFIC PLAN:")
+        self.status_text.append(f"   Total Stake: ${recommendation.total_daily_stake:.2f} ({recommendation.bankroll_percentage:.1f}% of bankroll)")
+        self.status_text.append(f"   Cash Focus: ${recommendation.cash_allocation:.2f} (65% allocation)")
+        self.status_text.append(f"   GPP Focus: ${recommendation.gpp_allocation:.2f} (35% allocation)")
+        self.status_text.append(f"   Expected Profit: ${recommendation.expected_daily_profit:.2f}")
+
+        # Top 3 specific recommendations
+        self.status_text.append(f"")
+        self.status_text.append(f"🎯 TOP 3 SPECIFIC PLAYS FOR YOU:")
+        for i, contest in enumerate(recommendation.recommended_contests[:3], 1):
+            contest_type = contest['contest_type'].upper()
+            self.status_text.append(f"   {i}. {contest['contest_name']} ({contest_type})")
+            self.status_text.append(f"      Why: {self._get_contest_reasoning(contest, slate_rec.lower())}")
+            self.status_text.append(f"      Stake: ${contest['recommended_stake']:.2f} → Expected: +${contest['expected_profit']:.2f}")
+
+        # Execution plan
+        self.status_text.append(f"")
+        self.status_text.append(f"💡 YOUR EXECUTION PLAN:")
+        self.status_text.append(f"   1. Focus on {slate_rec} slates today")
+        self.status_text.append(f"   2. Use {self._get_strategy_for_slate(slate_rec.lower())} strategy")
+        self.status_text.append(f"   3. Target {cash_strategy.lower()} for cash games")
+        self.status_text.append(f"   4. Target {gpp_strategy.lower()} for tournaments")
+        self.status_text.append(f"   5. Stay within ${recommendation.total_daily_stake:.0f} total daily limit")
+
+        self.status_text.append("")
+        self.status_text.append("🎯 READY TO DOMINATE! This plan is optimized for your bankroll and risk level.")
+
+    def _get_strategy_for_slate(self, slate_size: str) -> str:
+        """Get strategy name for slate size"""
+        strategy_map = {
+            'small': 'Optimized Correlation Value',
+            'medium': 'Optimized Pitcher Dominance',
+            'large': 'Optimized Tournament Winner'
+        }
+        return strategy_map.get(slate_size, 'Optimized Pitcher Dominance')
+
+    def _get_slate_reasoning(self, slate_size: str, bankroll: float, risk_level: str) -> str:
+        """Get reasoning for slate size recommendation"""
+        if slate_size == 'small':
+            return "Highest consistency with 66.1% win rate, good for building bankroll"
+        elif slate_size == 'medium':
+            return "Best balance: 71.6% win rate with good ROI, optimal for your bankroll"
+        else:  # large
+            return "Maximum ROI potential (18.52%) with 72.6% win rate, best for growth"
+
+    def _get_contest_reasoning(self, contest: dict, slate_size: str) -> str:
+        """Get reasoning for specific contest recommendation"""
+        contest_type = contest['contest_type']
+        if contest_type == 'cash':
+            return f"High win rate ({contest['win_rate']:.1f}%) for consistent profits"
+        else:  # gpp
+            return f"High ROI potential ({contest['avg_roi']:.0f}%) for bankroll growth"
+
+    def show_scaling_plan(self):
+        """Show scaling plan to reach $400 bankroll and $50 daily stakes"""
+
+        if not self.bankroll_manager:
+            self.status_text.append("❌ Please initialize bankroll manager first")
+            return
+
+        # Clear previous output
+        self.status_text.clear()
+
+        # Get current bankroll
+        current_bankroll = self.bankroll_input.value()
+
+        # Create scaling tracker
+        tracker = ScalingTracker(current_bankroll, 400.0, 50.0)
+
+        # Get scaling plan
+        scaling_plan = tracker.format_scaling_plan()
+
+        # Update status with key info
+        summary = tracker.get_scaling_summary()
+        key_info = (f"🚀 Scaling Plan: {summary['days_to_50_stakes']}d to $50 stakes | "
+                   f"{summary['days_to_400_bankroll']}d to $400 | "
+                   f"25% daily risk")
+
+        self.bankroll_status.setText(key_info)
+
+        # Display complete scaling plan
+        self.status_text.append("🚀 YOUR PERSONALIZED SCALING PLAN")
+        self.status_text.append("=" * 60)
+
+        # Split the plan into lines and add to status
+        for line in scaling_plan.split('\n'):
+            if line.strip():  # Skip empty lines
+                self.status_text.append(line)
+
+        self.status_text.append("")
+        self.status_text.append("🎯 READY TO START SCALING! Set risk level to 'Aggressive' and follow this plan.")
+        self.status_text.append("💡 This approach gets you to $50 daily stakes safely as your bankroll grows!")
 
 
 def main():

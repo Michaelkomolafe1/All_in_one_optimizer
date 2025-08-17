@@ -11,7 +11,7 @@
     "default_budget": 50000,
     "default_min_salary": 49000,
     "cash_game_settings": {
-      "max_stack_size": 4,
+      "max_stack_size": 5,
       "min_stack_size": 2,
       "floor_emphasis": 0.35,
       "confirmed_player_bonus": 1.2

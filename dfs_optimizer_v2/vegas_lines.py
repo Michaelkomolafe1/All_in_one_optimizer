@@ -49,7 +49,7 @@ class VegasLines:
                 remaining = response.headers.get('x-requests-remaining', 'unknown')
                 logger.info(f"✅ Vegas data fetched. Requests remaining: {remaining}")
             else:
-                logger.warning(f"Vegas API error: {response.status_code}")
+                logger.info(f"Vegas API unavailable (status {response.status_code}), using defaults")
                 self.set_defaults()
 
         except Exception as e:
